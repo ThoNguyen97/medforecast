@@ -1,0 +1,128 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+data/*.db
+
+# ML Models
+ml_models/
+*.pkl
+*.h5
+*.joblib
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Environment variables
+.env
+.env.local
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Build
+dist/
+build/
+*.tsbuildinfo
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+coverage/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Large CSV data files (exceed GitHub 100MB limit)
+data*.csv
+*.csv
+
+# Image files (project assets)
+*.jpg
+*.jpeg
+*.png
+!frontend/public/**
+
+# Backend uploads / cache
+backend/data/
+backend/logs/
+backend/__pycache__/
+backend/app/__pycache__/
+backend/app/**/__pycache__/
+
+# Frontend build artifacts
+frontend/dist/
+frontend/.vite/
+
+# Backend models cache
+backend/app/ai_engine/models/checkpoints/
+backend/app/ai_engine/models/saved_models/*.pkl
+
+# Playwright test results
+frontend/test-results/
+frontend/playwright-report/
+
+# External cloned repos (not part of this project)
+open-meteo/
+
+# Cấu hình phiên làm việc cục bộ
+.claude/
+
+# npm install chạy nhầm ở thư mục gốc — dependency thật nằm ở frontend/package.json
+/package.json
+/package-lock.json
+
+# Script dựng repo dùng một lần — không thuộc mã nguồn dự án
+LICH_SU_GIT_CU.txt
+git_lam_lai.sh
+commit_medforecast.sh
+env_stagging.txt

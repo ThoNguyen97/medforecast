@@ -1,0 +1,68 @@
+﻿# FastAPI and Web Framework
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
+pydantic>=2.9.0
+pydantic[email]>=2.9.0
+pydantic-settings>=2.5.0
+
+# Database
+sqlalchemy>=2.0.36
+alembic>=1.13.0
+aiosqlite>=0.19.0
+
+# Authentication & Security
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+bcrypt>=4.0.0
+
+# Data Processing
+pandas>=2.1.0
+numpy>=1.26.0
+
+# Machine Learning
+scikit-learn>=1.3.0
+xgboost>=2.0.0
+prophet>=1.1.5
+# keras>=3.0.0  # Requires TensorFlow backend (Python 3.9-3.12 compatible)
+
+# HTTP Clients
+httpx>=0.25.0
+requests>=2.31.0
+
+# Email
+aiosmtplib>=3.0.0
+
+# Utilities
+python-dateutil>=2.8.2
+pytz>=2023.3
+python-dotenv>=1.0.0
+
+# Task Queue
+celery>=5.3.0
+redis>=5.0.0
+
+# PDF / Excel Generation
+reportlab>=4.0.0
+openpyxl>=3.1.0
+
+# Logging
+loguru>=0.7.0
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+
+# Development
+black>=23.0.0
+flake8>=6.0.0
+
+# --- data_pipeline (tầng dữ liệu trung gian) ---
+psycopg2-binary>=2.9.9   # PostgreSQL (DB trung gian khi triển khai)
+pyodbc>=5.1.0            # SQL Server (đọc trực tiếp HIS)
+apscheduler>=3.10.0      # lịch đồng bộ định kỳ
+# --- end data_pipeline ---
+
+# forecasting nâng cao (tùy chọn — bật SARIMAX trong app/forecasting)
+statsmodels>=0.14.0
