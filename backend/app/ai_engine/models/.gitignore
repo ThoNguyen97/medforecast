@@ -1,0 +1,17 @@
+# Ignore all model files
+*.pkl
+*.h5
+*.hdf5
+*.pb
+*.pth
+*.pt
+*.onnx
+*.joblib
+
+# Ignore saved models and checkpoints
+saved_models/*
+checkpoints/*
+
+# Keep the directory structure
+!.gitignore
+!README.md
