@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.disease_case import DiseaseCase
+from app.utils.icd_groups import NHOM_ICD, dieu_kien_benh
 from app.models.disease_forecast import DiseaseForecast
 from app.models.environmental_data import EnvironmentalData
 from app.models.user import User
@@ -44,6 +45,11 @@ class AnalyzeRequest(BaseModel):
 def _norm_disease(d: str) -> str:
     """Map Vietnamese disease name → ICD code if needed (4 bệnh hô hấp)."""
     map_vi = {
+        # NHÓM ICD — đơn vị phân tích chính từ 08/2026 (đề cương + backtest)
+        "Nhiễm khuẩn cấp đường hô hấp trên": "J00-J06",
+        "Cúm và viêm phổi": "J09-J18",
+        "Nhiễm khuẩn cấp đường hô hấp dưới khác": "J20-J22",
+        # Mã lẻ — tương thích dữ liệu/API cũ
         "Viêm phế quản cấp": "J20",
         "Nhiễm trùng đường hô hấp trên cấp": "J06",
         "Nhiễm trùng hô hấp trên cấp": "J06",
@@ -56,6 +62,7 @@ def _norm_disease(d: str) -> str:
 
 def _disease_label(d: str) -> str:
     labels = {
+        **NHOM_ICD,
         "J20": "Viêm phế quản cấp",
         "J06": "Nhiễm trùng đường hô hấp trên cấp",
         "J02": "Viêm họng cấp",
@@ -99,7 +106,7 @@ def _query_cases(
     region là tỉnh/thành (DiseaseCase.location).
     """
     q = db.query(func.coalesce(func.sum(DiseaseCase.case_count), 0)).filter(
-        DiseaseCase.icd_code == disease,
+        dieu_kien_benh(DiseaseCase, disease),
         extract("year", DiseaseCase.recorded_at) == year,
         extract("month", DiseaseCase.recorded_at) == month,
     )
@@ -201,6 +208,11 @@ def _weather_factor(
             return None
         return (curr - hist) / hist * 100
 
+    # Các bullet dưới nói về BỆNH HÔ HẤP — bản trước là văn mẫu sốt xuất huyết
+    # (muỗi/lăng quăng), sai bệnh học với đề tài. Mốc mùa vụ trích từ dữ liệu
+    # thật 2019–2026: đáy T4–T6, đỉnh T10–T11, biên độ 1,7–2,2 lần
+    # (sql_his/06_danh_gia_du_lieu.sql mục 4b).
+
     # Mưa
     rain_d = diff_pct(forecast_w.get("rainfall"), history_w.get("rainfall"))
     if rain_d is not None and abs(rain_d) >= 10:
@@ -208,7 +220,11 @@ def _weather_factor(
         sign = "tăng" if rain_d > 0 else "giảm"
         bullets.append(
             f"Lượng mưa {sign} {abs(rain_d):.0f}% so với cùng kỳ — "
-            f"{'thuận lợi cho lăng quăng phát triển.' if rain_d > 0 else 'giảm môi trường sinh sản muỗi.'}"
+            + ("mùa mưa người dân ở trong nhà nhiều hơn, không gian kín làm "
+               "virus hô hấp dễ lây; dữ liệu 2019–2026 cho thấy số ca vào đỉnh "
+               "T10–T11 cuối mùa mưa." if rain_d > 0 else
+               "thời tiết khô hanh hơn cùng kỳ, giai đoạn này số ca hô hấp "
+               "thường ở vùng đáy (T4–T6 theo dữ liệu lịch sử).")
         )
 
     # Nhiệt độ + độ ẩm
@@ -218,19 +234,24 @@ def _weather_factor(
         if 26 <= temp <= 30 and 75 <= hum <= 85:
             factor *= 1.1
             bullets.append(
-                f"Độ ẩm & Nhiệt độ lý tưởng — Độ ẩm {hum:.0f}% và nhiệt độ {temp:.0f}°C "
-                "tối ưu cho vòng đời muỗi vằn."
+                f"Độ ẩm {hum:.0f}% và nhiệt độ {temp:.0f}°C — điều kiện virus "
+                "hô hấp tồn tại lâu trong không khí và trên bề mặt, lây lan "
+                "thuận lợi trong môi trường đông người."
             )
         elif temp > 35:
             factor *= 0.9
-            bullets.append(f"Nhiệt độ cao {temp:.0f}°C — bất lợi cho vector truyền bệnh.")
+            bullets.append(
+                f"Nắng nóng {temp:.0f}°C — các tháng khô nóng số ca nhiễm khuẩn "
+                "hô hấp thường giảm về vùng đáy theo mùa vụ đo được."
+            )
 
     # AQI / PM2.5
     aqi = forecast_w.get("aqi")
     if aqi is not None and aqi > 100:
         factor *= 1.05
         bullets.append(
-            f"AQI {aqi:.0f} ở mức cao — có thể làm tăng các ca hô hấp & dị ứng."
+            f"AQI {aqi:.0f} ở mức kém — bụi mịn kích ứng niêm mạc đường thở, "
+            "làm nặng thêm nhóm viêm phế quản và viêm phổi."
         )
 
     return round(factor, 3), bullets
@@ -312,13 +333,14 @@ async def list_diseases(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> List[Dict[str, str]]:
-    """Danh sách bệnh có dữ liệu trong DB (4 bệnh hô hấp - dùng icd_code)."""
-    rows = db.query(DiseaseCase.icd_code, DiseaseCase.disease_name).distinct().all()
-    seen: dict[str, str] = {}
-    for icd, name in rows:
-        if icd:
-            seen[icd] = name or _disease_label(icd)
-    return [{"key": k, "label": v} for k, v in sorted(seen.items())]
+    """Danh sách BỆNH cho combobox = ba NHÓM ICD của đề tài.
+
+    Vì sao không trả 20 mã lẻ nữa: đề cương chốt dự báo cấp nhóm, và backtest
+    trên dữ liệu thật cho thấy chuỗi mã lẻ thưa làm mô hình mất ổn định
+    (bottom-up MASE 483 trên mã thưa). Mã lẻ vẫn nằm trong dữ liệu — API này
+    chỉ quyết định NGƯỜI DÙNG chọn gì.
+    """
+    return [{"key": k, "label": v} for k, v in NHOM_ICD.items()]
 
 
 @router.get("/regions")
@@ -485,7 +507,7 @@ async def analyze_forecast(
         # Toàn quốc = Σ forecast từng tỉnh có data
         provinces = [
             r[0] for r in db.query(DiseaseCase.location)
-            .filter(DiseaseCase.icd_code == disease)
+            .filter(dieu_kien_benh(DiseaseCase, disease))
             .distinct().all()
             if r[0]
         ]
@@ -557,6 +579,30 @@ async def analyze_forecast(
         }
     except Exception as exc:
         logger.warning("ML forecast unavailable, fallback heuristic: %s", exc)
+
+    # ── Engine CHÍNH: ensemble NHÓM đã kiểm chứng walk-forward (09/08/2026) ──
+    # Heuristic cùng-kỳ và MonthlyForecaster phía trên chỉ còn là fallback: cả
+    # hai tựa vào trung bình nhiều năm nên bị dịch chuyển mức nền kéo tụt
+    # (đo thật trên T6/2026: dự báo 65 ca cho tháng thực tế ~110 — hụt ~40%).
+    # Ensemble học xu hướng + mùa vụ + thời tiết trên toàn chuỗi, CÙNG engine
+    # với trang Kế hoạch nhập kho — hai màn hình thống nhất một con số.
+    try:
+        from app.services.group_ensemble_service import du_bao_nhom
+        kq_ens = du_bao_nhom(db, disease, region,
+                             payload.target_year, payload.target_month)
+        if kq_ens is not None:
+            predicted = kq_ens["predicted"]
+            model_used = kq_ens["model_used"]
+            if kq_ens.get("accuracy"):
+                a = kq_ens["accuracy"]
+                ml_accuracy = {
+                    "mae": a["mae"], "rmse": a["mae"],  # rmse không đo ở bản nhanh
+                    "mape": a["wape"], "r2": 0,
+                    "n_samples": a["n_steps"],
+                    "accuracy_pct": a["accuracy_pct"],
+                }
+    except Exception:
+        logger.exception("Ensemble nhóm lỗi — dùng dự báo fallback")
 
     risk_level, increase_pct = _classify_risk(predicted, baseline)
 
@@ -756,7 +802,7 @@ async def analyze_forecast(
             svc = DBForecastingService(db)
             provinces_to_forecast = [
                 r[0] for r in db.query(DiseaseCase.location)
-                .filter(DiseaseCase.icd_code == disease)
+                .filter(dieu_kien_benh(DiseaseCase, disease))
                 .distinct().all()
                 if r[0]
             ]

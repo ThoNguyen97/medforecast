@@ -217,14 +217,33 @@ class DataPipeline:
 
     # ── DIM ──
     def _upsert_dims(self, db, clean: pd.DataFrame, inv: pd.DataFrame):
-        # dim_icd: từ mã xuất hiện + danh mục phân cấp
+        # dim_icd: từ mã xuất hiện + danh mục phân cấp.
+        # Tên bệnh lấy từ chính dữ liệu (cột disease_name = TENICD thật từ HIS)
+        # — bản trước ghi cứng icd_name="" nên mọi màn hình hiển thị mã thô.
+        ten_theo_ma: dict = {}
+        nhom_theo_ma: dict = {}
+        if not clean.empty:
+            for c, g in clean.groupby("icd_code"):
+                ten = g["disease_name"].dropna().astype(str).str.strip()
+                ten = ten[(ten != "") & (ten.str.lower() != "nan")]
+                if not ten.empty:
+                    ten_theo_ma[c] = ten.iloc[0][:400]
+                if "block_code" in g.columns:
+                    nb = g["block_code"].dropna().astype(str).str.strip()
+                    if not nb.empty:
+                        nhom_theo_ma[c] = nb.iloc[0]
+
         codes = set(clean["icd_code"]) if not clean.empty else set()
-        existing_icd = set(db.execute(select(m.DimIcd.icd_code)).scalars().all())
-        for code in codes - existing_icd:
-            block = self.hier.block_of(code)
+        existing_icd = {r.icd_code: r for r in db.query(m.DimIcd).all()}
+        # Bổ sung tên cho mã đã tồn tại từ lần đồng bộ cũ (icd_name rỗng)
+        for code, row in existing_icd.items():
+            if not row.icd_name and ten_theo_ma.get(code):
+                row.icd_name = ten_theo_ma[code]
+        for code in codes - set(existing_icd):
+            block = nhom_theo_ma.get(code) or self.hier.block_of(code)
             chap = self.hier.chapter_of(code)
             db.add(m.DimIcd(
-                icd_code=code, icd_name="",
+                icd_code=code, icd_name=ten_theo_ma.get(code, ""),
                 block_code=block, block_name=self.hier.block_label(block) if block else None,
                 chapter_code=chap, chapter_name=self.hier.chapter_name.get(chap, "") if chap else None,
                 is_target=(block in TARGET_BLOCKS),
@@ -352,12 +371,26 @@ class DataPipeline:
         # phép cộng dồn nhưng phải ghi cảnh báo, đừng để sai âm thầm.
         full = self._ap_so_ca_nhom(full, case_group)
 
+        # Tên nhóm: ưu tiên tên do nguồn cấp (HIS), thiếu thì tra bảng ICD, thiếu
+        # nữa thì lấy chính mã nhóm. Nhờ vậy không còn cần TM_ICD.xlsx khi đọc STA.
+        ten_nhom = {}
+        if case_group is not None and not case_group.empty \
+                and "disease_group_name" in case_group.columns:
+            for g, n in (case_group.dropna(subset=["disease_group_name"])
+                         .groupby("disease_group")["disease_group_name"].first().items()):
+                ten = str(n).strip()
+                if ten and ten.lower() != "nan":
+                    ten_nhom[str(g).strip()] = ten
+
+        def nhan_nhom(code):
+            return ten_nhom.get(code) or self.hier.block_label(code)
+
         cur = _current_period()
         db.execute(delete(m.MartMonthlyCasesByBlock))
         db.bulk_save_objects([
             m.MartMonthlyCasesByBlock(
                 period=r.period, year=int(r.year), month=int(r.month),
-                block_code=r.block_code, block_name=self.hier.block_label(r.block_code),
+                block_code=r.block_code, block_name=nhan_nhom(r.block_code),
                 region=r.region, cases=int(r.cases),
                 is_covid=bool(r.is_covid),
                 # Suy ra từ chính period thay vì dùng cờ đã lưu — xem

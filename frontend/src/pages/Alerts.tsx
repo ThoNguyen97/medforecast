@@ -11,6 +11,28 @@ import {
 } from '../services/supplyRecommendationService';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 
+// ─── Cảnh báo 4 mức theo Bảng 4 đề cương ─────────────────────────────────────
+// Tính tại client để badge tự cập nhật khi người dùng sửa Ngưỡng AT tay;
+// backend cũng trả level/reason/action (nguồn chân lý) — hai bên cùng công thức:
+//   ĐỎ  tồn < nhu cầu chưa dự phòng · VÀNG tồn < ngưỡng AT · XANH đủ · XÁM thiếu dữ liệu
+type MucCanhBao = { level: 'red' | 'yellow' | 'green' | 'gray'; label: string; reason: string };
+
+function mucCanhBao(needBeforeBuffer: number, safetyStock: number, currentStock: number): MucCanhBao {
+  if (currentStock < needBeforeBuffer)
+    return { level: 'red', label: 'Đỏ', reason: `Tồn ${currentStock.toLocaleString('vi-VN')} thấp hơn nhu cầu chưa tính dự phòng ${Math.round(needBeforeBuffer).toLocaleString('vi-VN')} — đặt hàng ngay.` };
+  if (currentStock < safetyStock)
+    return { level: 'yellow', label: 'Vàng', reason: `Đủ nhu cầu cơ bản nhưng dưới ngưỡng an toàn ${Math.round(safetyStock).toLocaleString('vi-VN')} — đưa vào kỳ đặt hàng kế tiếp.` };
+  return { level: 'green', label: 'Xanh', reason: 'Tồn kho cao hơn ngưỡng an toàn — theo dõi định kỳ.' };
+}
+
+const MAU_MUC: Record<MucCanhBao['level'], string> = {
+  red: 'bg-red-50 text-red-700 border border-red-200',
+  yellow: 'bg-amber-50 text-amber-700 border border-amber-200',
+  green: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+  gray: 'bg-slate-100 text-slate-600 border border-slate-200',
+};
+
+
 /**
  * Module 7 — Đề xuất nhập kho
  *
@@ -469,15 +491,21 @@ export default function Alerts() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      {it.status === 'shortage' ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-orange-50 text-orange-700 text-xs font-medium">
-                          Cần nhập
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium">
-                          Đủ
-                        </span>
-                      )}
+                      {(() => {
+                        const muc = mucCanhBao(
+                          it.need_before_buffer_total,
+                          it.safety_stock,
+                          it.current_stock,
+                        );
+                        return (
+                          <span
+                            title={muc.reason}
+                            className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium cursor-help ${MAU_MUC[muc.level]}`}
+                          >
+                            {muc.label}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <button

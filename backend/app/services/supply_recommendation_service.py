@@ -29,6 +29,63 @@ logger = logging.getLogger(__name__)
 DEFAULT_BUFFER_RATE = 15.0
 
 
+def phan_muc_canh_bao(
+    need_before_buffer: float,
+    predicted_need: float,
+    current_stock: float,
+    co_du_lieu_ton: bool = True,
+    unit: str = "",
+    suggested_import: float = 0,
+) -> Dict[str, Any]:
+    """Phân mức cảnh báo 4 trạng thái theo Bảng 4 đề cương — mỗi mức kèm
+    NGUYÊN NHÂN (số liệu đầu vào) và HÀNH ĐỘNG hỗ trợ.
+
+    Ngữ nghĩa (từ chặt đến lỏng):
+      ĐỎ   — tồn < nhu cầu CHƯA tính dự phòng → thiếu gần như chắc chắn,
+             không còn đệm nào giữa kho và bệnh nhân.
+      VÀNG — tồn đủ nhu cầu cơ bản nhưng DƯỚI ngưỡng an toàn (nhu cầu × (1 +
+             dự phòng)) → một biến động nhỏ là thiếu.
+      XANH — tồn ≥ ngưỡng an toàn.
+      XÁM  — không đủ dữ liệu để kết luận (chưa có bản ghi tồn kho) → hiển thị
+             thay vì im lặng, vì "không biết" khác với "đủ".
+    Vì sao không gộp Đỏ/Vàng làm một: hành động khác nhau — Đỏ phải đặt NGAY
+    (trong lead time), Vàng chỉ cần đưa vào kỳ đặt hàng kế tiếp.
+    """
+    n_truoc = float(need_before_buffer or 0)
+    n_at = float(predicted_need or 0)
+    ton = float(current_stock or 0)
+    de_xuat = float(suggested_import or 0)
+
+    if not co_du_lieu_ton:
+        return {
+            "level": "gray", "level_label": "Xám",
+            "reason": "Chưa có bản ghi tồn kho cho vật tư này trong hệ thống.",
+            "action": "Cập nhật tồn kho (đồng bộ HIS hoặc nhập tay) rồi tính lại.",
+        }
+    if ton < n_truoc:
+        return {
+            "level": "red", "level_label": "Đỏ",
+            "reason": (f"Tồn {ton:,.0f} {unit} thấp hơn nhu cầu chưa tính dự phòng "
+                       f"{n_truoc:,.0f} {unit} — không còn khoảng đệm."),
+            "action": (f"Đặt hàng ngay {de_xuat:,.0f} {unit}, ưu tiên trong "
+                       "thời gian cung ứng gần nhất."),
+        }
+    if ton < n_at:
+        return {
+            "level": "yellow", "level_label": "Vàng",
+            "reason": (f"Tồn {ton:,.0f} {unit} đủ nhu cầu cơ bản {n_truoc:,.0f} "
+                       f"nhưng dưới ngưỡng an toàn {n_at:,.0f} {unit}."),
+            "action": (f"Đưa {de_xuat:,.0f} {unit} vào kỳ đặt hàng kế tiếp; "
+                       "theo dõi sát số ca thực tế."),
+        }
+    return {
+        "level": "green", "level_label": "Xanh",
+        "reason": (f"Tồn {ton:,.0f} {unit} cao hơn ngưỡng an toàn "
+                   f"{n_at:,.0f} {unit}."),
+        "action": "Không cần nhập; theo dõi định kỳ theo lịch đồng bộ.",
+    }
+
+
 class SupplyRecommendationService:
     """Service tính nhu cầu thuốc và đề xuất nhập kho."""
 
@@ -89,9 +146,15 @@ class SupplyRecommendationService:
             .filter(Inventory.supply_id == supply_id)
             .first()
         )
+        so_dong = (
+            self.db.query(func.count(Inventory.id))
+            .filter(Inventory.supply_id == supply_id).scalar() or 0
+        )
         return {
             "current_stock": int(row.current if row else 0),
             "safety_stock": int(row.safety if row else 0),
+            # found=False → mức cảnh báo XÁM: "không biết" khác với "tồn = 0"
+            "found": bool(so_dong > 0),
         }
 
     # ── Core calculation (mục 5.1 + 6 + 7) ──────────────────────────────────
@@ -185,8 +248,11 @@ class SupplyRecommendationService:
                 "safety_stock": calculated_safety_stock,  # Luôn dùng giá trị tính toán, không lấy từ Inventory
                 # Đề xuất nhập (mục 7)
                 "suggested_import": suggested_import,
-                # Trạng thái
+                # Trạng thái cũ (giữ tương thích) + 4 mức theo Bảng 4 đề cương
                 "status": "shortage" if suggested_import > 0 else "sufficient",
+                **phan_muc_canh_bao(need_before_buffer, predicted_need,
+                                    inv["current_stock"], inv.get("found", True),
+                                    supply.unit or "", suggested_import),
             })
 
         # Sort theo suggested_import giảm dần (cần nhập nhiều nhất lên đầu)
@@ -290,6 +356,10 @@ class SupplyRecommendationService:
             data["status"] = (
                 "shortage" if data["suggested_import"] > 0 else "sufficient"
             )
+            data.update(phan_muc_canh_bao(
+                data["need_before_buffer_total"], data["predicted_need_total"],
+                data["current_stock"], data.get("found", True),
+                data.get("unit") or "", data["suggested_import"]))
             agg_items.append(data)
 
         agg_items.sort(key=lambda x: x["suggested_import"], reverse=True)
@@ -353,9 +423,13 @@ class SupplyRecommendationService:
             if latest and latest.predicted_cases:
                 return int(latest.predicted_cases)
 
-        # 2. Fallback: tổng case_count thực tế
+        # 2. Fallback: tổng case_count thực tế.
+        # dieu_kien_benh: icd_code giờ có thể là KHOÁ NHÓM ('J09-J18') vì
+        # severity_rates đã chuyển sang mức nhóm — so bằng (=) sẽ ra 0 ca
+        # và nhóm bị bỏ qua trong tính nhu cầu một cách âm thầm.
+        from app.utils.icd_groups import dieu_kien_benh
         q2 = self.db.query(func.sum(DiseaseCase.case_count)).filter(
-            DiseaseCase.icd_code == icd_code,
+            dieu_kien_benh(DiseaseCase, icd_code),
             extract("year", DiseaseCase.recorded_at) == forecast_month.year,
             extract("month", DiseaseCase.recorded_at) == forecast_month.month,
         )

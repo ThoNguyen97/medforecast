@@ -21,7 +21,8 @@ logger = logging.getLogger(__name__)
 
 def build_pipeline() -> DataPipeline:
     icd_dir = os.environ.get("PIPELINE_ICD_DIR", "../data")
-    hier = IcdHierarchy.from_files(f"{icd_dir}/TM_ICD.xlsx", f"{icd_dir}/TM_ICD_CHUONG.xlsx")
+    # Không bắt buộc có TM_ICD*.xlsx: nguồn STA đã kèm sẵn cột disease_group.
+    hier = IcdHierarchy.from_dir_optional(icd_dir)
     source = os.environ.get("PIPELINE_SOURCE", "file")
     if source == "sqlserver":
         conn = os.environ["PIPELINE_SQLSERVER_CONN"]

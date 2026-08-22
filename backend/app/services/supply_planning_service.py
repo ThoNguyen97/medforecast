@@ -53,7 +53,8 @@ class SupplyPlanningService:
         """Tồn kho khóa theo drug_code (mã thật). mart_inventory.supply_code = drug_code."""
         out = {}
         for r in self._rows("SELECT drug_code, supply_code, stock_quantity FROM mart_inventory"):
-            key = r[0] or r[1]
+            dc = (str(r[0]) if r[0] is not None else "").strip()
+            key = dc if dc.lower() not in ("", "nan", "none") else r[1]
             if key:
                 out[str(key)] = out.get(str(key), 0) + int(r[2] or 0)
         return out
@@ -64,20 +65,46 @@ class SupplyPlanningService:
         by_code = fc["by_code"]            # điểm
         by_code_upper = fc["by_code_upper"]  # cận trên = cơ sở mức an toàn
         sev = self._severity()
-        norms = self._norms(list(by_code.keys()))
         stock = self._stock()
+
+        # ── Định mức + tỷ lệ nặng/nhẹ giờ ở MỨC NHÓM ─────────────────────────
+        # Từ 10/08/2026, severity_rates và disease_supply_norms chuyển sang khoá
+        # nhóm ('J09-J18'); các dòng severity mức mã đã bị xoá (tránh đúp nhu
+        # cầu). Bản cũ của hàm này tra cả hai bảng bằng KHOÁ MÃ nên sau chuyển
+        # đổi trả về 0 vật tư cho MỌI nhóm — trang Kế hoạch trống trơn.
+        #
+        # Cách tra mới, ưu tiên nhóm:
+        #   • định mức: lấy dòng khoá NHÓM nếu có; không có mới rơi về dòng mã
+        #     (KHÔNG trộn hai loại — trộn là cộng nhu cầu hai lần)
+        #   • số ca cho dòng định mức nhóm = TỔNG các mã trong nhóm
+        #   • tỷ lệ nặng/nhẹ: tra theo khoá của dòng định mức, thiếu thì rơi về
+        #     khoá nhóm
+        norms = self._norms([block] + list(by_code.keys()))
+        dong_nhom = [r for r in norms if r[0] == block]
+        if dong_nhom:
+            norms = dong_nhom
+        group_point = sum(by_code.values())
+        group_upper = sum(by_code_upper.values())
 
         # gộp theo vật tư: nhu cầu điểm + nhu cầu an toàn (cận trên)
         agg: Dict[str, dict] = {}
         for (icd, severity, qty, scode, dcode, sname, unit, grp, lead) in norms:
-            if icd not in sev or severity not in SEVERITIES:
+            rate_map = sev.get(icd) or sev.get(block)
+            if not rate_map or severity not in SEVERITIES:
                 continue
-            rate = sev[icd][severity] / 100.0
-            cases_point = by_code.get(icd, 0) * rate
-            cases_safe = by_code_upper.get(icd, 0) * rate
+            rate = rate_map[severity] / 100.0
+            if icd == block:                       # định mức mức nhóm
+                cases_point = group_point * rate
+                cases_safe = group_upper * rate
+            else:                                  # định mức mức mã (tương thích cũ)
+                cases_point = by_code.get(icd, 0) * rate
+                cases_safe = by_code_upper.get(icd, 0) * rate
             demand_point = cases_point * float(qty or 0)
             demand_safe = cases_safe * float(qty or 0)
-            key = dcode or scode
+            # 'nan' là chuỗi rác từ pandas — coi như không có drug_code,
+            # nếu không hàng nghìn vật tư gộp chung một khoá và lệch kho.
+            dc = (dcode or "").strip()
+            key = dc if dc.lower() not in ("", "nan", "none") else scode
             it = agg.setdefault(key, {
                 "supply_code": dcode or scode, "name": sname, "unit": unit,
                 "group_name": grp, "lead_time_days": int(lead or 0),

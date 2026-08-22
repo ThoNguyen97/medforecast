@@ -299,21 +299,33 @@ BEGIN
              2 — LOẠI BỎ hẳn: đúng hành vi query export gốc, nhưng làm hụt tổng
                  (đo trên dữ liệu thật: 342/14.215 ca, tức 2,4%)
            ===================================================================== */
+        /* Nhận diện nhãn "không rõ tỉnh" bằng LIKE chứ không so bằng (=):
+           ngoài nhãn '(Không xác định)' do chính thủ tục sinh ra, bảng
+           TM_DONVIHANHCHINH của HIS còn chứa các dòng placeholder do người
+           dùng tạo — đã gặp thật: đơn vị tên 'Không Xác Định Tỉnh' (7 ca lọt
+           qua bộ lọc và hiện lên ứng dụng như một tỉnh). Placeholder là dữ
+           liệu nhập tay nên so khớp phải bao quát biến thể viết hoa/thường.  */
+        IF OBJECT_ID('tempdb..#VungKhongRo') IS NOT NULL DROP TABLE #VungKhongRo;
+        SELECT DISTINCT Region INTO #VungKhongRo FROM #Dx
+        WHERE  Region = N'(Không xác định)'
+           OR  LOWER(Region) LIKE N'%không xác định%'
+           OR  LOWER(Region) LIKE N'%khong xac dinh%';
+
         IF @XuLyVungKhongXacDinh = 1
         BEGIN
             UPDATE #Dx SET Region = @NhanGopVung
-            WHERE  Region = N'(Không xác định)';
+            WHERE  Region IN (SELECT Region FROM #VungKhongRo);
             PRINT CONCAT(N'Vùng không xác định: đã gộp vào "', @NhanGopVung, N'".');
         END
         ELSE IF @XuLyVungKhongXacDinh = 2
         BEGIN
             SELECT @nCaKhongRoTinh = SUM(Cases) FROM (
                 SELECT COUNT(DISTINCT TIEPNHAN_ID) AS Cases
-                FROM   #Dx WHERE Region = N'(Không xác định)'
+                FROM   #Dx WHERE Region IN (SELECT Region FROM #VungKhongRo)
                 GROUP BY MonthStart, DiseaseCode) zk;
             SET @nCaKhongRoTinh = ISNULL(@nCaKhongRoTinh, 0);
 
-            DELETE FROM #Dx WHERE Region = N'(Không xác định)';
+            DELETE FROM #Dx WHERE Region IN (SELECT Region FROM #VungKhongRo);
             PRINT CONCAT(N'Vùng không xác định: đã loại bỏ ', @nCaKhongRoTinh, N' ca.');
         END
 

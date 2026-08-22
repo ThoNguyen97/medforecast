@@ -171,6 +171,13 @@ class InventoryResponse(ORMBase, InventoryBase):
     id: int
     last_updated: datetime
     supply: Optional[MedicalSupplyResponse] = None
+    # KHO ÂM có thật trong dữ liệu HIS (xuất trước – nhập bù sau; đã gặp:
+    # Metoprolol tồn -30). Ràng buộc ge=0 ở InventoryBase là để chặn NHẬP sai
+    # từ người dùng; response thì phải phản ánh đúng thực tế kho — giữ ge=0 ở
+    # đây làm MỘT dòng âm đánh sập nguyên endpoint danh sách (ResponseValidationError
+    # → 500, trang Vật tư trống trơn). Ghi đè để bỏ ràng buộc ở chiều trả ra.
+    current_stock: int
+    safety_stock: int
 
 
 # ── Environmental Data schemas ────────────────────────────────────────────────
@@ -214,6 +221,7 @@ class DiseaseCaseBase(BaseModel):
     recorded_at: datetime
     icd_code: str = Field(..., min_length=1, description="Mã ICD: J20, J06, J02, J01")
     disease_name: str = Field(..., min_length=1, description="Tên bệnh")
+    disease_group: Optional[str] = Field(None, description="Nhóm ICD: J00-J06 / J09-J18 / J20-J22")
     disease_type: Optional[str] = Field(None, description="Loại bệnh (respiratory)")
     case_count: int = Field(..., ge=0)
     location: str = Field(..., min_length=1)

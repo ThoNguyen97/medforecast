@@ -14,6 +14,8 @@ from app.models.user import User
 from app.schemas.base import DiseaseCaseCreate, DiseaseCaseResponse, DiseaseCaseUpdate
 from app.services.disease_case_service import DiseaseCaseService
 
+from app.utils.icd_groups import NHOM_ICD, dieu_kien_nhom, nhom_cua_ma
+
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
@@ -31,6 +33,7 @@ def list_disease_cases(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1),  # Bỏ giới hạn tối đa
     disease_type: Optional[str] = Query(None, description="Filter by ICD code (J20, J06, J02, J01)"),
+    disease_group: Optional[str] = Query(None, description="Lọc theo NHÓM ICD: J00-J06 / J09-J18 / J20-J22"),
     location: Optional[str] = Query(None, description="Filter by location (Tỉnh/Thành)"),
     start_date: Optional[str] = Query(None, description="Start date filter (YYYY-MM-DD format)"),
     end_date: Optional[str] = Query(None, description="End date filter (YYYY-MM-DD format)"),
@@ -45,6 +48,10 @@ def list_disease_cases(
     from app.models.disease_case import DiseaseCase
 
     q = db.query(DiseaseCase)
+    if disease_group:
+        # Nhóm là chiều lọc chính của UI; OR thêm dải mã để không bỏ sót bản
+        # ghi cũ chưa được điền cột disease_group (xem app/utils/icd_groups.py)
+        q = q.filter(dieu_kien_nhom(DiseaseCase, disease_group))
     if disease_type:
         q = q.filter(DiseaseCase.icd_code == disease_type)
     if location:
@@ -1043,8 +1050,18 @@ async def distinct_values(
         for icd, name in diseases_rows
         if icd
     ]
+    # Danh mục NHÓM — chiều lọc chính của UI (đề cương: dự báo cấp nhóm).
+    # Chỉ liệt kê nhóm thật sự có dữ liệu, kèm các mã con quan sát được.
+    disease_groups = []
+    for khoa, ten in NHOM_ICD.items():
+        ma_con = sorted({icd for icd in icd_codes if nhom_cua_ma(icd) == khoa})
+        if ma_con:
+            disease_groups.append({"key": khoa, "name": ten, "icd_codes": ma_con})
+
     return {
-        # Trường mới
+        # Chiều lọc chính: NHÓM ICD
+        "disease_groups": disease_groups,
+        # Mức mã — dùng cho drill-down, KHÔNG dùng cho combobox chính
         "icd_codes": icd_codes,
         "diseases": diseases_list,
         # Tương thích frontend cũ — disease_types là list ICD code

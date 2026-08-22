@@ -33,6 +33,10 @@ logger = logging.getLogger(__name__)
 DISEASE_ICDS: List[str] = ["J20", "J06", "J02", "J01"]
 
 ICD_LABELS: Dict[str, str] = {
+    # Nhóm ICD — đơn vị phân tích chính
+    "J00-J06": "Nhiễm khuẩn cấp đường hô hấp trên",
+    "J09-J18": "Cúm và viêm phổi",
+    "J20-J22": "Nhiễm khuẩn cấp đường hô hấp dưới khác",
     "J20": "Viêm phế quản cấp",
     "J06": "Nhiễm trùng đường hô hấp trên cấp",
     "J02": "Viêm họng cấp",
@@ -56,11 +60,15 @@ class DBForecastingService:
         Returns DataFrame [YearMonth(Period), year, month, total_cases].
         Gộp tất cả tỉnh nếu region=None.
         """
+        # dieu_kien_benh: nhận KHOÁ NHÓM ('J09-J18') — cộng số ca mọi mã trong
+        # nhóm — hoặc mã lẻ ('J20') như cũ. Nhóm là đơn vị phân tích chính:
+        # chuỗi mã lẻ thưa từng làm mô hình mất ổn định (backtest 09/08/2026).
+        from app.utils.icd_groups import dieu_kien_benh
         q = self.db.query(
             extract("year", DiseaseCase.recorded_at).label("year"),
             extract("month", DiseaseCase.recorded_at).label("month"),
             func.sum(DiseaseCase.case_count).label("total_cases"),
-        ).filter(DiseaseCase.icd_code == icd_code)
+        ).filter(dieu_kien_benh(DiseaseCase, icd_code))
 
         if region:
             q = q.filter(DiseaseCase.location.in_(province_aliases(region)))

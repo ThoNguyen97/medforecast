@@ -63,6 +63,16 @@ export default function Epidemiology() {
 
   // Filter state - temporary (for UI inputs)
   const [tempDisease, setTempDisease] = useState<string>('all');
+
+  // 'J13' -> 'J09-J18'. Fallback khi bản ghi cũ chưa có cột disease_group.
+  const nhomCuaMa = (icd?: string): string | null => {
+    const n = parseInt((icd ?? '').replace(/^J/i, ''), 10);
+    if (Number.isNaN(n)) return null;
+    if (n >= 0 && n <= 6) return 'J00-J06';
+    if (n >= 9 && n <= 18) return 'J09-J18';
+    if (n >= 20 && n <= 22) return 'J20-J22';
+    return null;
+  };
   const [tempRegion, setTempRegion] = useState<string>('all');
   const [tempStartMonth, setTempStartMonth] = useState<string>('');
   const [tempEndMonth, setTempEndMonth] = useState<string>('');
@@ -74,7 +84,9 @@ export default function Epidemiology() {
   const [endMonth, setEndMonth] = useState<string>('');
 
   // Distinct values for dropdowns
-  const [diseaseOptions, setDiseaseOptions] = useState<string[]>([]);
+  // Combobox "Loại bệnh" = BA NHÓM ICD (đề cương: dự báo cấp nhóm; backtest:
+  // chuỗi mã lẻ thưa làm mô hình mất ổn định). Mã lẻ vẫn hiện ở từng dòng.
+  const [diseaseOptions, setDiseaseOptions] = useState<{ key: string; label: string }[]>([]);
   const [regionOptions, setRegionOptions] = useState<string[]>([]);
 
   // Pagination
@@ -140,8 +152,20 @@ export default function Epidemiology() {
         })),
       ]);
 
-      // Diseases — cho dropdown filter, vẫn dùng danh sách thực tế từ DB
-      setDiseaseOptions(distinctRes.data?.disease_types ?? []);
+      // Diseases — dropdown lọc theo NHÓM ICD (nguồn: /distinct-values).
+      // Fallback danh mục tĩnh khi backend cũ chưa trả disease_groups.
+      const nhom = (distinctRes.data?.disease_groups ?? []) as {
+        key: string; name: string;
+      }[];
+      setDiseaseOptions(
+        nhom.length > 0
+          ? nhom.map((g) => ({ key: g.key, label: `${g.name} (${g.key})` }))
+          : [
+              { key: 'J00-J06', label: 'Nhiễm khuẩn cấp đường hô hấp trên (J00-J06)' },
+              { key: 'J09-J18', label: 'Cúm và viêm phổi (J09-J18)' },
+              { key: 'J20-J22', label: 'Nhiễm khuẩn cấp đường hô hấp dưới khác (J20-J22)' },
+            ],
+      );
 
       // Regions = Tỉnh/Thành. Lấy từ admin.regions có trường province (nếu có)
       // gộp với lịch sử DB.
@@ -216,7 +240,11 @@ export default function Epidemiology() {
     const to = toStr ? new Date(new Date(toStr).getFullYear(), new Date(toStr).getMonth() + 1, 0, 23, 59, 59) : null;
 
     return items.filter((it) => {
-      if (selectedDisease !== 'all' && it.icd_code !== selectedDisease) return false;
+      if (
+        selectedDisease !== 'all' &&
+        ((it as any).disease_group ?? nhomCuaMa(it.icd_code)) !== selectedDisease
+      )
+        return false;
       if (
         selectedRegion !== 'all' &&
         normalizeProvinceName(it.location) !== normalizeProvinceName(selectedRegion)
@@ -516,8 +544,8 @@ export default function Epidemiology() {
               >
                 <option value="all">Tất cả các bệnh</option>
                 {diseaseOptions.map((d) => (
-                  <option key={d} value={d}>
-                    {diseaseLabel(d)}
+                  <option key={d.key} value={d.key}>
+                    {d.label}
                   </option>
                 ))}
               </select>

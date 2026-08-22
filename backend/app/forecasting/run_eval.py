@@ -18,6 +18,16 @@ LABELS = {"bottom_up": "Bottom-up", "top_down_fixed": "Top-down cố định",
 
 
 def main():
+    # Chỉ lọc cảnh báo trong CLI backtest cho dễ đọc — không lọc trong app.
+    # ConvergenceWarning là SARIMAX báo không hội tụ trên chuỗi thưa: vô hại
+    # với kết quả (ensemble tự hạ trọng số mô hình tồi) nhưng in hàng trăm
+    # dòng che mất bảng kết quả.
+    import warnings
+    from statsmodels.tools.sm_exceptions import ConvergenceWarning
+    warnings.filterwarnings("ignore", category=ConvergenceWarning)
+    warnings.filterwarnings("ignore", category=UserWarning, module="statsmodels")
+    warnings.filterwarnings("ignore", category=RuntimeWarning)
+
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", default=os.environ.get("PIPELINE_DB_URL", "").replace("sqlite:///", "") or "/tmp/mart.db")
     ap.add_argument("--min-train", type=int, default=24)

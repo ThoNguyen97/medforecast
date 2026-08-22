@@ -10,6 +10,7 @@ import {
   Shield,
   Percent,
   Pill,
+  Database,
 } from 'lucide-react';
 import { useUIStore } from '../store/uiStore';
 import { useAuthStore } from '../store/authStore';
@@ -22,10 +23,12 @@ import ThresholdsAndRatiosSection from '../components/admin/ThresholdsAndRatiosS
 import AuditLogsSection from '../components/admin/AuditLogsSection';
 import SeverityRateSection from '../components/admin/SeverityRateSection';
 import SupplyNormSection from '../components/admin/SupplyNormSection';
+import HisConnectionSection from '../components/admin/HisConnectionSection';
 
 type TabKey =
   | 'users'
   | 'roles'
+  | 'his-connection'
   | 'configurations'
   | 'thresholds'
   | 'severity-rates'
@@ -35,6 +38,7 @@ type TabKey =
 const TABS: { key: TabKey; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { key: 'users', label: 'Quản lý tài khoản', icon: Users },
   { key: 'roles', label: 'Phân quyền', icon: ShieldCheck },
+  { key: 'his-connection', label: 'Kết nối HIS', icon: Database },
   { key: 'configurations', label: 'Cấu hình bệnh & khu vực', icon: Boxes },
   { key: 'severity-rates', label: 'Tỷ lệ Nhẹ/TB/Nặng', icon: Percent },
   { key: 'supply-norms', label: 'Định mức thuốc/vật tư', icon: Pill },
@@ -108,6 +112,7 @@ export default function Settings() {
       <div>
         {activeTab === 'users' && <UsersSection />}
         {activeTab === 'roles' && <RolesPermissionsSection />}
+        {activeTab === 'his-connection' && <HisConnectionSection />}
         {activeTab === 'configurations' && <ConfigurationsSection />}
         {activeTab === 'severity-rates' && <SeverityRateSection />}
         {activeTab === 'supply-norms' && <SupplyNormSection />}

@@ -32,9 +32,8 @@ def main():
     ap.add_argument("--target-only", action="store_true", help="chỉ giữ 3 nhóm hô hấp đích")
     args = ap.parse_args()
 
-    hier = IcdHierarchy.from_files(
-        f"{args.icd_dir}/TM_ICD.xlsx", f"{args.icd_dir}/TM_ICD_CHUONG.xlsx"
-    )
+    # Không bắt buộc có TM_ICD*.xlsx: nguồn STA đã kèm sẵn cột disease_group.
+    hier = IcdHierarchy.from_dir_optional(args.icd_dir)
 
     if args.source == "file":
         connector = FileConnector(args.data_dir)

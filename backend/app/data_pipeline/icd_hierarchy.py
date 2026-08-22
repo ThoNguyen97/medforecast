@@ -10,12 +10,15 @@ Nguồn: TM_ICD.xlsx (cột MAICD, TENICD, PHANNHOM) + TM_ICD_CHUONG.xlsx
 """
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Optional
 
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 TARGET_BLOCKS = {
     "J00-J06": "Nhiễm khuẩn hô hấp trên cấp",
@@ -43,6 +46,31 @@ class IcdHierarchy:
     block_name: Dict[str, str] = field(default_factory=dict)          # 'J20-J22' -> tên
     block_to_chapter: Dict[str, str] = field(default_factory=dict)    # 'J20-J22' -> 'J00-J99'
     chapter_name: Dict[str, str] = field(default_factory=dict)
+
+    @classmethod
+    def from_dir_optional(cls, icd_dir: str | Path) -> "IcdHierarchy":
+        """Đọc TM_ICD*.xlsx nếu có; thiếu file thì trả bảng tra RỖNG, không ném lỗi.
+
+        Vì sao không bắt buộc: khi nguồn là DB trung chuyển STA, mỗi dòng dữ liệu
+        đã kèm sẵn cột `disease_group` (thủ tục bên PROD lấy từ TM_ICD.PHANNHOM),
+        nên không cần tra Excel nữa. Bắt buộc có file sẽ làm máy chủ triển khai
+        chết ngay lúc khởi động chỉ vì thiếu hai file không còn dùng tới.
+
+        Khi nguồn là file CSV export thì vẫn cần — lúc đó thiếu file sẽ lộ ra ở
+        chỗ khác: mọi dòng không tra được nhóm và bị loại, log báo rõ.
+        """
+        icd = Path(icd_dir) / "TM_ICD.xlsx"
+        chapter = Path(icd_dir) / "TM_ICD_CHUONG.xlsx"
+        if not (icd.exists() and chapter.exists()):
+            logger.info(
+                "Không thấy %s / %s — bỏ qua bảng tra ICD. Không sao nếu nguồn là "
+                "STA (dữ liệu đã kèm cột disease_group).", icd, chapter)
+            return cls()
+        try:
+            return cls.from_files(icd, chapter)
+        except Exception as exc:                                    # file hỏng, sai cột
+            logger.warning("Đọc bảng tra ICD thất bại (%s) — dùng bảng rỗng.", exc)
+            return cls()
 
     @classmethod
     def from_files(cls, icd_path: str | Path, chapter_path: str | Path) -> "IcdHierarchy":

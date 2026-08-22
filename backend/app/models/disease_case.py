@@ -16,6 +16,11 @@ class DiseaseCase(Base):
     # Thông tin bệnh - sử dụng mã ICD
     icd_code = Column(String(20), nullable=False, index=True)  # J20, J06, J02, J01
     disease_name = Column(String(200), nullable=False, index=True)  # Viêm phế quản cấp...
+    # Nhóm ICD (TM_ICD.PHANNHOM): 'J00-J06' / 'J09-J18' / 'J20-J22'.
+    # Góc nhìn mặc định của mọi màn hình là NHÓM (đề cương: dự báo cấp nhóm rồi
+    # phân bổ về mã) — cột này cho phép lọc/gộp theo nhóm ngay trên bảng nghiệp
+    # vụ. Cầu nối trong SyncService tự ALTER thêm cột nếu DB cũ chưa có.
+    disease_group = Column(String(20), index=True)
     disease_type = Column(String(100), index=True)  # respiratory (để tương thích code cũ)
     
     # Thông tin ca bệnh
