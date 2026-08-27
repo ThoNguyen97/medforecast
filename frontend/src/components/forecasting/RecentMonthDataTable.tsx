@@ -5,11 +5,58 @@ import api from '../../services/api';
 interface DiseaseCaseData {
   month: string; // 'MM/YYYY'
   disease_name: string;
+  /** Khoá ghép nội bộ (mã ICD hoặc mã NHÓM) — không hiển thị, chỉ dùng để
+   *  nối ca bệnh thực tế với dự báo. Xem giải thích ở resolveGroup() bên dưới. */
+  matchKey: string;
   total_cases: number;
   predicted_cases?: number;
   deviation_pct?: number;
   location: string;
 }
+
+// Ba nhóm ICD của đề tài — PHẢI khớp với backend (app/utils/icd_groups.py,
+// NHOM_ICD). Từ 08/2026, trang Dự báo lưu disease_forecasts.icd_code ở CẤP
+// NHÓM (vd 'J09-J18'), trong khi /disease-cases/ vẫn trả disease_name ở cấp
+// MÃ lẻ (vd 'Viêm phổi, tác nhân không xác định'). Ghép hai bên bằng so
+// chuỗi disease_name tự do (cách cũ) không bao giờ khớp vì khác cấp — đây là
+// lý do cột "Số ca dự báo"/"Độ lệch" luôn trống. Sửa bằng cách ghép theo MÃ,
+// gộp ca bệnh thực tế lên cùng cấp NHÓM với dự báo trước khi so sánh.
+const NHOM_ICD: Record<string, string> = {
+  'J00-J06': 'Nhiễm khuẩn cấp đường hô hấp trên',
+  'J09-J18': 'Cúm và viêm phổi',
+  'J20-J22': 'Nhiễm khuẩn cấp đường hô hấp dưới khác',
+};
+
+/** 'J09-J18' → ['J09', 'J10', ..., 'J18']. */
+const maThuocNhom = (nhom: string): string[] => {
+  const [dau, cuoi] = nhom.split('-');
+  if (!dau || !cuoi) return [];
+  const chu = dau[0];
+  const start = parseInt(dau.slice(1), 10);
+  const end = parseInt(cuoi.slice(1), 10);
+  if (Number.isNaN(start) || Number.isNaN(end)) return [];
+  const out: string[] = [];
+  for (let n = start; n <= end; n++) out.push(`${chu}${String(n).padStart(2, '0')}`);
+  return out;
+};
+
+/** 'J13' → 'J09-J18'. undefined nếu mã không thuộc nhóm nào trong 3 nhóm đề tài. */
+const nhomCuaMa = (icdCode?: string | null): string | undefined => {
+  const ma = (icdCode || '').trim().toUpperCase().slice(0, 3);
+  if (!ma) return undefined;
+  return Object.keys(NHOM_ICD).find((nhom) => maThuocNhom(nhom).includes(ma));
+};
+
+/** Suy ra khoá NHÓM cho 1 ca bệnh: ưu tiên cột disease_group đã đồng bộ sẵn,
+ *  rơi về suy từ icd_code nếu cột đó chưa có (bản ghi cũ), cuối cùng mới
+ *  giữ nguyên mã lẻ cho bệnh ngoài 3 nhóm đề tài đang theo dõi. */
+const resolveGroup = (
+  icdCode?: string | null,
+  diseaseGroup?: string | null
+): string | undefined => {
+  if (diseaseGroup && diseaseGroup in NHOM_ICD) return diseaseGroup;
+  return nhomCuaMa(icdCode);
+};
 
 interface Props {
   currentMonth?: number;
@@ -89,19 +136,29 @@ export default function RecentMonthDataTable({ currentMonth, currentYear }: Prop
         }).catch(() => ({ data: [] })), // Fallback nếu chưa có dữ liệu forecast
       ]);
       
-      // Group cases by month + disease + location
+      // Group cases by month + (NHÓM ICD nếu có, mã lẻ nếu không) + location.
+      // Gộp theo NHÓM vì dự báo (xem forEach forecast bên dưới) được lưu ở
+      // cấp nhóm — phải cùng cấp mới ghép được. Lưu ý: nếu 1 lượt khám có 2
+      // chẩn đoán trong cùng nhóm, tổng theo nhóm ở đây có thể đếm lượt đó 2
+      // lần (đặc thù dữ liệu HIS đã ghi ở sql_his/README.md, không phải lỗi
+      // riêng của bảng này) — chỉ dùng để đối chiếu nhanh, không thay số
+      // chính thức từ tầng MART.
       const grouped: Record<string, DiseaseCaseData> = {};
-      
+
       casesResponse.data.forEach((item: any) => {
         const date = new Date(item.recorded_at);
         const month = `${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
         const normalizedLocation = normalizeLocation(item.location || 'Toàn quốc');
-        const key = `${month}_${item.disease_name}_${normalizedLocation}`;
-        
+        const groupCode = resolveGroup(item.icd_code, item.disease_group);
+        const matchKey = groupCode || item.icd_code || item.disease_name;
+        const displayName = groupCode ? NHOM_ICD[groupCode] : item.disease_name;
+        const key = `${month}_${matchKey}_${normalizedLocation}`;
+
         if (!grouped[key]) {
           grouped[key] = {
             month,
-            disease_name: item.disease_name,
+            disease_name: displayName,
+            matchKey,
             total_cases: 0,
             location: normalizedLocation,
           };
@@ -109,13 +166,17 @@ export default function RecentMonthDataTable({ currentMonth, currentYear }: Prop
         grouped[key].total_cases += item.case_count || 0;
       });
 
-      // Thêm dữ liệu dự báo vào grouped data
+      // Thêm dữ liệu dự báo vào grouped data — ghép bằng MÃ (icd_code), không
+      // so tên tiếng Việt tự do. forecast.icd_code là mã NHÓM ('J09-J18') cho
+      // dự báo mới, hoặc mã lẻ cho dự báo cũ tương thích ngược — cả hai
+      // trường hợp đều khớp đúng với matchKey đã tính ở trên.
       forecastResponse.data.forEach((forecast: any) => {
         const month = forecast.month; // Đã ở dạng MM/YYYY
-        const disease_name = forecast.disease_label || forecast.disease_name;
+        const matchKey: string = forecast.icd_code || forecast.disease_label || forecast.disease_name;
+        const displayName = NHOM_ICD[matchKey] || forecast.disease_label || forecast.disease_name;
         const normalizedLocation = normalizeLocation(forecast.region || 'Toàn thành phố');
-        const key = `${month}_${disease_name}_${normalizedLocation}`;
-        
+        const key = `${month}_${matchKey}_${normalizedLocation}`;
+
         if (grouped[key]) {
           // Đã có dữ liệu thực tế, thêm forecast và deviation
           grouped[key].predicted_cases = forecast.predicted_cases;
@@ -126,14 +187,15 @@ export default function RecentMonthDataTable({ currentMonth, currentYear }: Prop
             grouped[key].deviation_pct = forecast.deviation_pct;
           } else if (grouped[key].total_cases > 0) {
             // Tính deviation nếu chưa có
-            grouped[key].deviation_pct = 
+            grouped[key].deviation_pct =
               ((forecast.predicted_cases - grouped[key].total_cases) / grouped[key].total_cases) * 100;
           }
         } else {
-          // Chỉ có dự báo, chưa có thực tế
+          // Chỉ có dự báo, chưa có thực tế (vd chưa đến kỳ đóng dữ liệu tháng đó)
           grouped[key] = {
             month,
-            disease_name,
+            disease_name: displayName,
+            matchKey,
             total_cases: forecast.actual_cases || 0,
             predicted_cases: forecast.predicted_cases,
             deviation_pct: forecast.deviation_pct,
