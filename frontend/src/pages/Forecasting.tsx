@@ -307,6 +307,7 @@ export default function Forecasting() {
             currentMonth={targetMonthNum}
             currentYear={targetYearNum}
             diseaseLabel={displayResult.forecast.disease_label}
+            regionFilter={filters.province}
           />
         </>
       )}

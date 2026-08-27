@@ -66,6 +66,10 @@ interface Props {
    *  parent remount qua key={forecast.id} mỗi khi có kết quả mới, nên chỉ cần
    *  đặt state khởi tạo theo prop này là đủ, không cần thêm effect đồng bộ lại. */
   diseaseLabel?: string;
+  /** Tỉnh/thành đang chọn ở thanh lọc phân tích (filters.province — giá trị gốc,
+   *  'all' nghĩa là "Toàn quốc"/không lọc theo tỉnh). Dùng để tự động lọc sẵn
+   *  bảng theo đúng khu vực vừa phân tích, tương tự diseaseLabel ở trên. */
+  regionFilter?: string;
 }
 
 // Chuẩn hóa tên tỉnh/thành để gộp các biến thể khác nhau
@@ -99,19 +103,21 @@ const normalizeLocation = (location: string): string => {
   return normalized;
 };
 
-export default function RecentMonthDataTable({ currentMonth, currentYear, diseaseLabel }: Props) {
+export default function RecentMonthDataTable({ currentMonth, currentYear, diseaseLabel, regionFilter }: Props) {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<DiseaseCaseData[]>([]);
   // Thanh lọc cố định — luôn hiển thị, không còn ẩn/hiện qua nút bấm.
   // Temp = đang chỉnh trên dropdown; Applied = đã bấm Lọc, dùng để filter thật.
-  // Mặc định lọc sẵn theo đúng bệnh vừa chọn để phân tích ở trên (nếu có).
+  // Mặc định lọc sẵn theo đúng bệnh/khu vực vừa chọn để phân tích ở trên (nếu có).
   const initialDisease = diseaseLabel || 'all';
+  const initialLocation =
+    regionFilter && regionFilter !== 'all' ? normalizeLocation(regionFilter) : 'all';
   const [tempMonth, setTempMonth] = useState<string>('latest');
   const [tempDisease, setTempDisease] = useState<string>(initialDisease);
-  const [tempLocation, setTempLocation] = useState<string>('all');
+  const [tempLocation, setTempLocation] = useState<string>(initialLocation);
   const [filterMonth, setFilterMonth] = useState<string>('latest');
   const [filterDisease, setFilterDisease] = useState<string>(initialDisease);
-  const [filterLocation, setFilterLocation] = useState<string>('all');
+  const [filterLocation, setFilterLocation] = useState<string>(initialLocation);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
@@ -364,19 +370,19 @@ export default function RecentMonthDataTable({ currentMonth, currentYear, diseas
             </button>
             {(tempMonth !== 'latest' ||
               tempDisease !== initialDisease ||
-              tempLocation !== 'all' ||
+              tempLocation !== initialLocation ||
               filterMonth !== 'latest' ||
               filterDisease !== initialDisease ||
-              filterLocation !== 'all') && (
+              filterLocation !== initialLocation) && (
               <button
                 type="button"
                 onClick={() => {
                   setTempMonth('latest');
                   setTempDisease(initialDisease);
-                  setTempLocation('all');
+                  setTempLocation(initialLocation);
                   setFilterMonth('latest');
                   setFilterDisease(initialDisease);
-                  setFilterLocation('all');
+                  setFilterLocation(initialLocation);
                 }}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-neutral-200 rounded-lg text-xs text-neutral-600 hover:bg-white"
               >
