@@ -1,4 +1,4 @@
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
   HeartPulse,
@@ -6,12 +6,10 @@ import {
   TrendingUp,
   Boxes,
   ShoppingCart,
-  ClipboardList,
   FileBarChart,
   Settings,
   HelpCircle,
   LogOut,
-  Plus,
   Stethoscope,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
@@ -32,14 +30,12 @@ const navItems: NavItem[] = [
   { label: 'Phân tích & Dự báo', path: ROUTES.FORECASTING, icon: TrendingUp },
   { label: 'Vật tư y tế', path: ROUTES.INVENTORY, icon: Boxes },
   { label: 'Đề xuất nhập kho', path: ROUTES.ALERTS, icon: ShoppingCart },
-  { label: 'Kế hoạch nhập kho', path: ROUTES.SUPPLY_PLAN, icon: ClipboardList },
   { label: 'Báo cáo', path: ROUTES.REPORTS, icon: FileBarChart },
   { label: 'Quản trị', path: ROUTES.SETTINGS, icon: Settings, adminOnly: true },
 ];
 
 export default function Sidebar() {
   const { user, logout } = useAuthStore();
-  const navigate = useNavigate();
   const isAdmin = user?.role === 'Administrator';
 
   return (
@@ -53,16 +49,6 @@ export default function Sidebar() {
           <p className="font-bold text-sm text-neutral-900 leading-tight">MedForecast AI</p>
           <p className="text-xs text-neutral-500 leading-tight">Dự báo vật tư y tế</p>
         </div>
-      </div>
-
-      {/* CTA */}
-      <div className="px-4 pb-4">
-        <button
-          onClick={() => navigate(ROUTES.SUPPLY_PLAN)}
-          className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 active:bg-blue-800 transition shadow-sm shadow-blue-600/20"
-        >
-          <Plus size={16} /> Tạo kế hoạch mới
-        </button>
       </div>
 
       {/* Navigation */}

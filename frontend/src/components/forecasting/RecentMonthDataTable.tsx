@@ -97,7 +97,7 @@ const normalizeLocation = (location: string): string => {
 export default function RecentMonthDataTable({ currentMonth, currentYear }: Props) {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<DiseaseCaseData[]>([]);
-  const [showFilter, setShowFilter] = useState(false);
+  // Thanh lọc cố định — luôn hiển thị, không còn ẩn/hiện qua nút bấm.
   // Temp = đang chỉnh trên dropdown; Applied = đã bấm Lọc, dùng để filter thật.
   const [tempMonth, setTempMonth] = useState<string>('latest');
   const [tempDisease, setTempDisease] = useState<string>('all');
@@ -276,26 +276,15 @@ export default function RecentMonthDataTable({ currentMonth, currentYear }: Prop
             Dữ liệu ca bệnh gần đây
           </h3>
           <p className="text-xs text-neutral-500 mt-0.5">
-            {filterMonth === 'latest' && latestMonth 
+            {filterMonth === 'latest' && latestMonth
               ? `Tháng ${latestMonth} (tháng gần nhất)`
               : 'Dữ liệu đã nhập vào hệ thống'}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowFilter(!showFilter)}
-          className={`w-9 h-9 inline-flex items-center justify-center rounded-lg text-neutral-500 hover:text-neutral-700 hover:bg-neutral-50 ${
-            showFilter ? 'bg-blue-50 text-blue-600' : ''
-          }`}
-          aria-label="Lọc dữ liệu"
-        >
-          <Filter className="w-4 h-4" />
-        </button>
       </div>
 
-      {/* Filter panel */}
-      {showFilter && (
-        <div className="px-5 py-3 bg-neutral-50 border-y border-neutral-100 space-y-3">
+      {/* Filter panel — cố định, luôn hiển thị */}
+      <div className="px-5 py-3 bg-neutral-50 border-y border-neutral-100 space-y-3">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <label className="block">
               <span className="text-xs font-medium text-neutral-600 mb-1.5 block">
@@ -389,7 +378,6 @@ export default function RecentMonthDataTable({ currentMonth, currentYear }: Prop
             )}
           </div>
         </div>
-      )}
 
       <table className="w-full text-sm">
         <thead>
