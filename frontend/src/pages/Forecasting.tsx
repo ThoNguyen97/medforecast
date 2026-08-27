@@ -306,6 +306,7 @@ export default function Forecasting() {
             key={displayResult.forecast.id} // Force reload khi có forecast mới
             currentMonth={targetMonthNum}
             currentYear={targetYearNum}
+            diseaseLabel={displayResult.forecast.disease_label}
           />
         </>
       )}

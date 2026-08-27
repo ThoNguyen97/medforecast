@@ -61,6 +61,11 @@ const resolveGroup = (
 interface Props {
   currentMonth?: number;
   currentYear?: number;
+  /** Tên bệnh đang được chọn để phân tích (displayResult.forecast.disease_label) —
+   *  dùng để tự động lọc sẵn bảng theo đúng bệnh vừa phân tích. Component được
+   *  parent remount qua key={forecast.id} mỗi khi có kết quả mới, nên chỉ cần
+   *  đặt state khởi tạo theo prop này là đủ, không cần thêm effect đồng bộ lại. */
+  diseaseLabel?: string;
 }
 
 // Chuẩn hóa tên tỉnh/thành để gộp các biến thể khác nhau
@@ -94,16 +99,18 @@ const normalizeLocation = (location: string): string => {
   return normalized;
 };
 
-export default function RecentMonthDataTable({ currentMonth, currentYear }: Props) {
+export default function RecentMonthDataTable({ currentMonth, currentYear, diseaseLabel }: Props) {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<DiseaseCaseData[]>([]);
   // Thanh lọc cố định — luôn hiển thị, không còn ẩn/hiện qua nút bấm.
   // Temp = đang chỉnh trên dropdown; Applied = đã bấm Lọc, dùng để filter thật.
+  // Mặc định lọc sẵn theo đúng bệnh vừa chọn để phân tích ở trên (nếu có).
+  const initialDisease = diseaseLabel || 'all';
   const [tempMonth, setTempMonth] = useState<string>('latest');
-  const [tempDisease, setTempDisease] = useState<string>('all');
+  const [tempDisease, setTempDisease] = useState<string>(initialDisease);
   const [tempLocation, setTempLocation] = useState<string>('all');
   const [filterMonth, setFilterMonth] = useState<string>('latest');
-  const [filterDisease, setFilterDisease] = useState<string>('all');
+  const [filterDisease, setFilterDisease] = useState<string>(initialDisease);
   const [filterLocation, setFilterLocation] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
@@ -356,19 +363,19 @@ export default function RecentMonthDataTable({ currentMonth, currentYear }: Prop
               Lọc
             </button>
             {(tempMonth !== 'latest' ||
-              tempDisease !== 'all' ||
+              tempDisease !== initialDisease ||
               tempLocation !== 'all' ||
               filterMonth !== 'latest' ||
-              filterDisease !== 'all' ||
+              filterDisease !== initialDisease ||
               filterLocation !== 'all') && (
               <button
                 type="button"
                 onClick={() => {
                   setTempMonth('latest');
-                  setTempDisease('all');
+                  setTempDisease(initialDisease);
                   setTempLocation('all');
                   setFilterMonth('latest');
-                  setFilterDisease('all');
+                  setFilterDisease(initialDisease);
                   setFilterLocation('all');
                 }}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-neutral-200 rounded-lg text-xs text-neutral-600 hover:bg-white"
