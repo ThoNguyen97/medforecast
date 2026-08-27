@@ -197,7 +197,7 @@ export default function ForecastVsActualChart({
                     key={`${y}-actual`}
                     type="monotone"
                     dataKey={`${y}_actual_line`}
-                    name={`${y} (Hiện tại)`}
+                    name={`${y} (Thực tế)`}
                     stroke={style.color}
                     strokeWidth={style.width}
                     strokeOpacity={style.opacity}
@@ -288,7 +288,7 @@ function Legend({
               style={{ backgroundColor: swatchColor }}
             />
             {y}
-            {role === 'target' && <span className="text-neutral-400">(Hiện tại)</span>}
+            {role === 'target' && <span className="text-neutral-400">(Thực tế)</span>}
             {role === 'prev' && <span className="text-neutral-400">(Năm trước)</span>}
           </button>
         );
@@ -346,7 +346,7 @@ function CustomTooltip({ active, payload, label, targetYear, prevYear }: any) {
               {actualValue !== null && actualValue !== undefined && (
                 <div className="flex items-center justify-between gap-4 text-sm">
                   <span style={{ color }}>
-                    {year} (Hiện tại):
+                    {year} (Thực tế):
                   </span>
                   <span className="font-medium">{actualValue}</span>
                 </div>

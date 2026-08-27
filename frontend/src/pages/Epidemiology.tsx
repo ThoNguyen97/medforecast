@@ -84,7 +84,7 @@ export default function Epidemiology() {
   const [endMonth, setEndMonth] = useState<string>('');
 
   // Distinct values for dropdowns
-  // Combobox "Loại bệnh" = BA NHÓM ICD (đề cương: dự báo cấp nhóm; backtest:
+  // Combobox "Nhóm Bệnh" = BA NHÓM ICD (đề cương: dự báo cấp nhóm; backtest:
   // chuỗi mã lẻ thưa làm mô hình mất ổn định). Mã lẻ vẫn hiện ở từng dòng.
   const [diseaseOptions, setDiseaseOptions] = useState<{ key: string; label: string }[]>([]);
   const [regionOptions, setRegionOptions] = useState<string[]>([]);
@@ -422,6 +422,20 @@ export default function Epidemiology() {
     return input.disease_type || '—';
   };
 
+  // Tên NHÓM ICD hiển thị ở cột "Nhóm bệnh" — khớp với NHOM_ICD dùng ở backend
+  // (app/utils/icd_groups.py) và các nơi khác trong frontend.
+  const NHOM_ICD_NAME: Record<string, string> = {
+    'J00-J06': 'Nhiễm khuẩn cấp đường hô hấp trên',
+    'J09-J18': 'Cúm và viêm phổi',
+    'J20-J22': 'Nhiễm khuẩn cấp đường hô hấp dưới khác',
+  };
+
+  const groupLabel = (row: CaseRow) => {
+    const key = (row as any).disease_group ?? nhomCuaMa(row.icd_code);
+    if (!key) return '—';
+    return NHOM_ICD_NAME[key] ?? key;
+  };
+
   const formatMonth = (iso: string) => {
     const dt = new Date(iso);
     const m = String(dt.getMonth() + 1).padStart(2, '0');
@@ -533,7 +547,7 @@ export default function Epidemiology() {
           {/* Disease */}
           <div>
             <label className="block text-sm font-medium text-neutral-600 mb-1.5">
-              Loại bệnh
+              Nhóm Bệnh
             </label>
             <div className="relative">
               <Stethoscope className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
@@ -618,6 +632,7 @@ export default function Epidemiology() {
               <thead>
                 <tr className="text-neutral-500 text-xs">
                   <th className="text-left px-6 py-3 font-medium">Tháng/Năm</th>
+                  <th className="text-left px-6 py-3 font-medium">Nhóm bệnh</th>
                   <th className="text-left px-6 py-3 font-medium">Tên bệnh</th>
                   <th className="text-left px-6 py-3 font-medium">Tỉnh/Thành</th>
                   <th className="text-right px-6 py-3 font-medium">Số ca mắc</th>
@@ -627,7 +642,7 @@ export default function Epidemiology() {
               <tbody>
                 {paged.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center text-neutral-400">
+                    <td colSpan={6} className="px-6 py-12 text-center text-neutral-400">
                       Không có dữ liệu
                     </td>
                   </tr>
@@ -639,6 +654,9 @@ export default function Epidemiology() {
                     >
                       <td className="px-6 py-3 text-neutral-700">
                         {formatMonth(row.recorded_at)}
+                      </td>
+                      <td className="px-6 py-3 text-neutral-700">
+                        {groupLabel(row)}
                       </td>
                       <td className="px-6 py-3 text-neutral-700">
                         {diseaseLabel(row)}

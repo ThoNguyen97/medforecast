@@ -39,7 +39,7 @@ export default function ForecastFilterBar({
   return (
     <div className="bg-white rounded-2xl border border-neutral-200 p-5">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
-        <FilterField label="Bệnh dịch">
+        <FilterField label="Nhóm bệnh">
           <SelectInput
             value={filters.disease}
             onChange={(v) => update({ disease: v })}
