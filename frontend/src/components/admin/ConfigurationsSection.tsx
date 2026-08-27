@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   Activity,
-  MapPin,
+  Layers,
   Loader2,
   Plus,
   Pencil,
@@ -12,18 +12,19 @@ import {
 } from 'lucide-react';
 import {
   useAdminDiseases,
-  useAdminRegions,
+  useAdminDiseaseGroups,
   useCreateDisease,
-  useCreateRegion,
+  useCreateDiseaseGroup,
   useDeleteDisease,
-  useDeleteRegion,
+  useDeleteDiseaseGroup,
   useSafetyRate,
   useUpdateDisease,
+  useUpdateDiseaseGroup,
   useUpdateSafetyRate,
 } from '../../hooks/useAdminCatalog';
 import type {
+  DiseaseGroupItem,
   DiseaseItem,
-  RegionItem,
 } from '../../services/adminCatalogService';
 
 export default function ConfigurationsSection() {
@@ -32,7 +33,7 @@ export default function ConfigurationsSection() {
       <SafetyRateCard />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <DiseaseConfigCard />
-        <RegionConfigCard />
+        <DiseaseGroupConfigCard />
       </div>
     </div>
   );
@@ -237,37 +238,59 @@ function DiseaseConfigCard() {
   );
 }
 
-// ── Region catalog ──────────────────────────────────────────────────────────
+// ── Disease group catalog ────────────────────────────────────────────────────
 
-function RegionConfigCard() {
-  const { data: regions = [], isLoading } = useAdminRegions();
-  const createMut = useCreateRegion();
-  const deleteMut = useDeleteRegion();
+function DiseaseGroupConfigCard() {
+  const { data: groups = [], isLoading } = useAdminDiseaseGroups();
+  const { data: diseases = [] } = useAdminDiseases();
+  const createMut = useCreateDiseaseGroup();
+  const updateMut = useUpdateDiseaseGroup();
+  const deleteMut = useDeleteDiseaseGroup();
 
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState<RegionItem | null>(null);
+  const [editing, setEditing] = useState<DiseaseGroupItem | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<DiseaseGroupItem | null>(null);
+
+  const diseaseLabel = (code: string) =>
+    diseases.find((d) => d.key === code)?.label ?? code;
+
+  const onSave = async (vals: DiseaseGroupItem) => {
+    if (editing) {
+      await updateMut.mutateAsync({ key: editing.key, payload: vals });
+    } else {
+      await createMut.mutateAsync(vals);
+    }
+  };
+
+  const sortedList = useMemo(
+    () => [...groups].sort((a, b) => a.name.localeCompare(b.name, 'vi')),
+    [groups],
+  );
 
   return (
     <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden">
       <div className="px-5 py-4 border-b border-neutral-100 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center">
-            <MapPin className="w-4 h-4 text-emerald-600" />
+            <Layers className="w-4 h-4 text-emerald-600" />
           </span>
           <div>
-            <h3 className="text-sm font-semibold text-neutral-900">Khu vực địa lý</h3>
+            <h3 className="text-sm font-semibold text-neutral-900">Danh mục nhóm bệnh</h3>
             <p className="text-xs text-neutral-500">
-              Tỉnh/TP, quận/huyện được dùng cho dữ liệu bệnh & thời tiết
+              Gộp các bệnh liên quan thành nhóm — dùng để hiển thị & lọc
             </p>
           </div>
         </div>
         <button
           type="button"
-          onClick={() => setDialogOpen(true)}
+          onClick={() => {
+            setEditing(null);
+            setDialogOpen(true);
+          }}
           className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700"
         >
           <Plus className="w-3.5 h-3.5" />
-          Thêm khu vực
+          Thêm nhóm bệnh
         </button>
       </div>
 
@@ -276,49 +299,65 @@ function RegionConfigCard() {
           <li className="px-5 py-6 flex items-center gap-2 text-sm text-neutral-500">
             <Loader2 className="w-4 h-4 animate-spin" /> Đang tải...
           </li>
-        ) : regions.length === 0 ? (
+        ) : sortedList.length === 0 ? (
           <li className="px-5 py-6 text-sm text-neutral-400 text-center">
-            Chưa có khu vực nào
+            Chưa có nhóm bệnh nào
           </li>
         ) : (
-          regions.map((r) => (
+          sortedList.map((g) => (
             <li
-              key={r.name}
-              className="px-5 py-3 flex items-center justify-between hover:bg-neutral-50/60"
+              key={g.key}
+              className="px-5 py-3 flex items-center justify-between gap-3 hover:bg-neutral-50/60"
             >
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-neutral-900">{r.name}</p>
-                {r.province && (
-                  <p className="text-xs text-neutral-400 mt-0.5">{r.province}</p>
-                )}
+                <p className="text-sm font-semibold text-neutral-900">{g.name}</p>
+                <p className="text-xs text-neutral-400 mt-0.5">{g.key}</p>
+                <p className="text-xs text-neutral-500 mt-0.5 truncate max-w-sm">
+                  {g.icd_codes.length === 0
+                    ? 'Chưa gán bệnh nào'
+                    : `${g.icd_codes.length} bệnh: ${g.icd_codes
+                        .map((c) => diseaseLabel(c))
+                        .join(', ')}`}
+                </p>
               </div>
-              <IconButton
-                title="Xoá"
-                onClick={() => setConfirmDelete(r)}
-              >
-                <Trash2 className="w-3.5 h-3.5 text-red-600" />
-              </IconButton>
+              <div className="flex items-center gap-1 shrink-0">
+                <IconButton
+                  title="Sửa"
+                  onClick={() => {
+                    setEditing(g);
+                    setDialogOpen(true);
+                  }}
+                >
+                  <Pencil className="w-3.5 h-3.5 text-blue-600" />
+                </IconButton>
+                <IconButton
+                  title="Xoá"
+                  onClick={() => setConfirmDelete(g)}
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                </IconButton>
+              </div>
             </li>
           ))
         )}
       </ul>
 
       {dialogOpen && (
-        <RegionFormDialog
+        <DiseaseGroupFormDialog
+          initial={editing}
+          diseases={diseases}
           onClose={() => setDialogOpen(false)}
-          onSubmit={async (vals) => {
-            await createMut.mutateAsync(vals);
-          }}
+          onSubmit={onSave}
         />
       )}
 
       {confirmDelete && (
         <ConfirmDialog
-          title="Xoá khu vực"
-          message={`Xoá khu vực "${confirmDelete.name}"?`}
+          title="Xoá nhóm bệnh"
+          message={`Xoá nhóm bệnh "${confirmDelete.name}"? Các bệnh trong nhóm vẫn còn ở Danh mục bệnh, chỉ nhóm bị xoá.`}
           onCancel={() => setConfirmDelete(null)}
           onConfirm={async () => {
-            await deleteMut.mutateAsync(confirmDelete.name);
+            await deleteMut.mutateAsync(confirmDelete.key);
             setConfirmDelete(null);
           }}
           loading={deleteMut.isPending}
@@ -409,19 +448,35 @@ function DiseaseFormDialog({
   );
 }
 
-function RegionFormDialog({
+function DiseaseGroupFormDialog({
+  initial,
+  diseases,
   onClose,
   onSubmit,
 }: {
+  initial: DiseaseGroupItem | null;
+  diseases: DiseaseItem[];
   onClose: () => void;
-  onSubmit: (vals: RegionItem) => Promise<void>;
+  onSubmit: (vals: DiseaseGroupItem) => Promise<void>;
 }) {
-  const [vals, setVals] = useState<RegionItem>({ name: '', province: '', description: '' });
+  const [vals, setVals] = useState<DiseaseGroupItem>(
+    initial ?? { key: '', name: '', icd_codes: [] },
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isEdit = !!initial;
+
+  const toggleCode = (code: string) => {
+    setVals((v) => ({
+      ...v,
+      icd_codes: v.icd_codes.includes(code)
+        ? v.icd_codes.filter((c) => c !== code)
+        : [...v.icd_codes, code],
+    }));
+  };
 
   return (
-    <DialogShell title="Thêm khu vực" onClose={onClose}>
+    <DialogShell title={isEdit ? 'Sửa nhóm bệnh' : 'Thêm nhóm bệnh mới'} onClose={onClose}>
       <form
         onSubmit={async (e) => {
           e.preventDefault();
@@ -438,24 +493,51 @@ function RegionFormDialog({
         }}
         className="space-y-3"
       >
-        <Field label="Tên khu vực" required>
+        <Field label="Mã nhóm (key)" required>
+          <input
+            type="text"
+            required
+            disabled={isEdit}
+            value={vals.key}
+            onChange={(e) => setVals({ ...vals, key: e.target.value })}
+            className={inputClass + (isEdit ? ' bg-neutral-50 text-neutral-500' : '')}
+            placeholder="J00-J06"
+          />
+        </Field>
+        <Field label="Tên nhóm" required>
           <input
             type="text"
             required
             value={vals.name}
             onChange={(e) => setVals({ ...vals, name: e.target.value })}
             className={inputClass}
-            placeholder="Quận 1"
+            placeholder="Nhiễm khuẩn cấp đường hô hấp trên"
           />
         </Field>
-        <Field label="Tỉnh / Thành phố">
-          <input
-            type="text"
-            value={vals.province ?? ''}
-            onChange={(e) => setVals({ ...vals, province: e.target.value })}
-            className={inputClass}
-            placeholder="TP. Hồ Chí Minh"
-          />
+        <Field label={`Bệnh thuộc nhóm (${vals.icd_codes.length} đã chọn)`}>
+          <div className="max-h-48 overflow-y-auto border border-neutral-200 rounded-lg divide-y divide-neutral-100">
+            {diseases.length === 0 ? (
+              <p className="px-3 py-3 text-xs text-neutral-400">
+                Chưa có bệnh nào trong Danh mục bệnh — thêm bệnh trước.
+              </p>
+            ) : (
+              diseases.map((d) => (
+                <label
+                  key={d.key}
+                  className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-neutral-50 cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={vals.icd_codes.includes(d.key)}
+                    onChange={() => toggleCode(d.key)}
+                    className="rounded border-neutral-300"
+                  />
+                  <span className="text-neutral-700">{d.label}</span>
+                  <span className="text-neutral-400 text-xs ml-auto shrink-0">{d.key}</span>
+                </label>
+              ))
+            )}
+          </div>
         </Field>
         {error && (
           <div className="text-sm text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
@@ -464,7 +546,7 @@ function RegionFormDialog({
         )}
         <DialogFooter
           submitting={submitting}
-          submitLabel="Thêm khu vực"
+          submitLabel={isEdit ? 'Lưu thay đổi' : 'Thêm nhóm bệnh'}
           onCancel={onClose}
         />
       </form>

@@ -6,6 +6,13 @@ export interface DiseaseItem {
   description?: string | null;
 }
 
+export interface DiseaseGroupItem {
+  key: string;
+  name: string;
+  /** Danh sách mã bệnh (key trong Danh mục bệnh) thuộc nhóm này. */
+  icd_codes: string[];
+}
+
 export interface RegionItem {
   name: string;
   province?: string | null;
@@ -28,6 +35,23 @@ export const adminCatalogService = {
   },
   async deleteDisease(key: string): Promise<void> {
     await api.delete(`/admin/diseases/${encodeURIComponent(key)}`);
+  },
+
+  // ── Disease groups ────────────────────────────────────────────────────
+  async listDiseaseGroups(): Promise<DiseaseGroupItem[]> {
+    const res = await api.get<DiseaseGroupItem[]>('/admin/disease-groups');
+    return res.data;
+  },
+  async createDiseaseGroup(payload: DiseaseGroupItem): Promise<DiseaseGroupItem> {
+    const res = await api.post<DiseaseGroupItem>('/admin/disease-groups', payload);
+    return res.data;
+  },
+  async updateDiseaseGroup(key: string, payload: DiseaseGroupItem): Promise<DiseaseGroupItem> {
+    const res = await api.put<DiseaseGroupItem>(`/admin/disease-groups/${encodeURIComponent(key)}`, payload);
+    return res.data;
+  },
+  async deleteDiseaseGroup(key: string): Promise<void> {
+    await api.delete(`/admin/disease-groups/${encodeURIComponent(key)}`);
   },
 
   // ── Regions ───────────────────────────────────────────────────────────

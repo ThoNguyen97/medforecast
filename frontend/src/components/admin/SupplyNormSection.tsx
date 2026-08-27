@@ -8,11 +8,13 @@ import {
   type NormMatrix,
 } from '../../services/adminSeverityService';
 
+// Định mức thuốc/vật tư được lưu theo NHÓM bệnh (khớp với severity_rates /
+// disease_supply_norms trên DB), không theo mã ICD lẻ — xem
+// backend/app/utils/icd_groups.py::NHOM_ICD (nguồn danh mục duy nhất).
 const DISEASES = [
-  { code: 'J20', name: 'Viêm phế quản cấp' },
-  { code: 'J06', name: 'Nhiễm trùng đường hô hấp trên cấp' },
-  { code: 'J02', name: 'Viêm họng cấp' },
-  { code: 'J01', name: 'Viêm xoang cấp' },
+  { code: 'J00-J06', name: 'Nhiễm khuẩn cấp đường hô hấp trên' },
+  { code: 'J09-J18', name: 'Cúm và viêm phổi' },
+  { code: 'J20-J22', name: 'Nhiễm khuẩn cấp đường hô hấp dưới khác' },
 ];
 
 /**
@@ -22,7 +24,7 @@ const DISEASES = [
  */
 export default function SupplyNormSection() {
   const queryClient = useQueryClient();
-  const [selectedDisease, setSelectedDisease] = useState<string>('J20');
+  const [selectedDisease, setSelectedDisease] = useState<string>('J00-J06');
   const [draft, setDraft] = useState<Record<number, { mild: number; moderate: number; severe: number }>>(
     {},
   );

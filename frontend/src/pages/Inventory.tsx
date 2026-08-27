@@ -13,16 +13,9 @@ import InventoryTable, {
 } from '../components/inventory/InventoryTable';
 import { classifyStatus } from '../components/inventory/InventoryStatusBadge';
 import { adminSeverityService, type SupplyNormCell } from '../services/adminSeverityService';
+import { useDiseaseOptions } from '../hooks/useForecastAnalysis';
 
 const PAGE_SIZE = 10;
-
-const DISEASES = [
-  { value: '', label: 'Tất cả' },
-  { value: 'J20', label: 'J20 - Viêm phế quản cấp' },
-  { value: 'J06', label: 'J06 - Viêm đường hô hấp cấp khác' },
-  { value: 'J02', label: 'J02 - Viêm họng cấp' },
-  { value: 'J01', label: 'J01 - Viêm xoang cấp' },
-];
 
 /** Module 6 — Quản lý Vật tư Y tế & Kho vận */
 export default function Inventory() {
@@ -71,6 +64,18 @@ function InventoryContent() {
   } | null>(null);
 
   const { data: inventory = [], isLoading, refetch } = useInventory({ limit: 2000 });
+
+  // Bệnh dùng để tra định mức = NHÓM ICD (khớp icd_code đã lưu ở
+  // severity_rates/disease_supply_norms — 2 bảng này đã chuyển sang cấp
+  // nhóm từ trước, không còn theo 4 mã lẻ J20/J06/J02/J01 nữa).
+  const { data: diseaseGroups = [] } = useDiseaseOptions();
+  const diseases = useMemo(
+    () => [
+      { value: '', label: 'Tất cả' },
+      ...diseaseGroups.map((g) => ({ value: g.key, label: `${g.label} (${g.key})` })),
+    ],
+    [diseaseGroups],
+  );
 
   // Fetch norm matrix khi đổi bệnh
   useEffect(() => {
@@ -377,7 +382,7 @@ function InventoryContent() {
           filters={filters}
           onChange={setFilters}
           categories={categoryOptions}
-          diseases={DISEASES}
+          diseases={diseases}
         />
         <InventoryTable
           rows={paged}
