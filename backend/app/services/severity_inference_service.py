@@ -24,6 +24,7 @@ from app.models.case_supply_usage import CaseSupplyUsage
 from app.models.disease_case import DiseaseCase
 from app.models.medical_supply import MedicalSupply
 from app.models.severity_rate import SeverityRate
+from app.utils.icd_groups import DEFAULT_SEVERITY_RATES, NHOM_ICD
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +191,52 @@ class SeverityInferenceService:
             "severe_cases": severe,
         }
 
+    def ensure_default_severity_rates(
+        self,
+        updated_by: Optional[str] = None,
+    ) -> int:
+        """"Insert bù" các dòng severity_rate của nhóm ICD (NHOM_ICD) còn
+        thiếu trong DB, dùng giá trị mặc định đã duyệt (icd_groups.
+        DEFAULT_SEVERITY_RATES).
+
+        Cần cho máy mới `git clone` về: file DB bị .gitignore nên bảng
+        severity_rates rỗng — nếu không insert bù thì
+        update_severity_rates_from_history() không có dòng nào để lặp/tính
+        lại (xem docstring bên dưới), nút "Phân loại lại toàn bộ" bấm mãi
+        không ra gì.
+
+        KHÔNG đụng tới dòng đã tồn tại — kể cả dòng đã được admin sửa tay,
+        hay dòng với icd_code lạ (mã lẻ cũ, hoặc nhóm đã bị đổi tên).
+
+        Returns:
+            Số dòng mới được tạo (0 nếu đã đủ 3 nhóm).
+        """
+        existing_codes = {
+            row[0] for row in self.db.query(SeverityRate.icd_code).all()
+        }
+        created = 0
+        for icd_code, disease_name in NHOM_ICD.items():
+            if icd_code in existing_codes:
+                continue
+            seed = DEFAULT_SEVERITY_RATES.get(icd_code)
+            if not seed:
+                continue
+            self.db.add(SeverityRate(
+                icd_code=icd_code,
+                disease_name=disease_name,
+                mild_rate=seed["mild_rate"],
+                moderate_rate=seed["moderate_rate"],
+                severe_rate=seed["severe_rate"],
+                note=seed["note"],
+                updated_by=updated_by or "auto_seed",
+            ))
+            created += 1
+
+        if created:
+            self.db.commit()
+            logger.info("Insert bù %d dòng severity_rate mặc định (nhóm còn thiếu).", created)
+        return created
+
     def update_severity_rates_from_history(
         self,
         force: bool = False,
@@ -204,6 +251,10 @@ class SeverityInferenceService:
         Returns:
             Danh sách kết quả update cho từng bệnh
         """
+        # Bước 0: insert bù các nhóm ICD chưa có dòng severity_rate (máy mới
+        # clone repo về, DB rỗng) — để bước tính bên dưới có dòng mà lặp.
+        self.ensure_default_severity_rates(updated_by=updated_by)
+
         # Bước 1: phân loại ca
         if force:
             self.classify_all_cases(force=True)

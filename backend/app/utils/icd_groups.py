@@ -20,6 +20,36 @@ NHOM_ICD: dict[str, str] = {
     "J20-J22": "Nhiễm khuẩn cấp đường hô hấp dưới khác",
 }
 
+# Giá trị mặc định cho severity_rates khi nhóm CHƯA có dòng nào trong DB (ví
+# dụ máy mới clone repo — file DB bị .gitignore nên bảng này rỗng). Dùng để
+# tự "insert bù" (xem SeverityInferenceService.ensure_default_severity_rates)
+# trước khi tính lại từ dữ liệu lịch sử, và cũng là seed cho
+# scripts/seed_severity_rates.py. Không ghi đè dòng đã tồn tại — kể cả dòng
+# đã được admin sửa tay.
+DEFAULT_SEVERITY_RATES: dict[str, dict] = {
+    "J00-J06": {
+        "mild_rate": 71.49,
+        "moderate_rate": 23.51,
+        "severe_rate": 5,
+        "note": "Gộp có trọng số từ J06, J02, J01 theo số ca thực tế 2019–2026.",
+    },
+    "J09-J18": {
+        "mild_rate": 30,
+        "moderate_rate": 45,
+        "severe_rate": 25,
+        "note": (
+            "NHÁP — nhóm chưa có dữ liệu phân độ; Khoa Dược hiệu chỉnh tại "
+            "Quản trị → Tỷ lệ Nhẹ/TB/Nặng trước khi dùng chính thức."
+        ),
+    },
+    "J20-J22": {
+        "mild_rate": 60,
+        "moderate_rate": 30,
+        "severe_rate": 10,
+        "note": "Gộp có trọng số từ J20 theo số ca thực tế 2019–2026.",
+    },
+}
+
 
 def ma_thuoc_nhom(nhom: str) -> List[str]:
     """'J09-J18' → ['J09', 'J10', ..., 'J18']."""
