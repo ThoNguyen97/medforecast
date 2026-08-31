@@ -1,10 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Download, Loader2, AlertCircle, History, LineChart } from 'lucide-react';
+import {
+  Download,
+  Loader2,
+  AlertCircle,
+  History,
+  LineChart,
+  Save,
+  CheckCircle2,
+} from 'lucide-react';
 import { useUIStore } from '../store/uiStore';
 import {
   useAnalyzeForecast,
   useDiseaseOptions,
   useForecastHistory,
+  useLoadSavedForecast,
 } from '../hooks/useForecastAnalysis';
 import api from '../services/api';
 import type { AnalyzeResponse } from '../services/forecastAnalysisService';
@@ -42,11 +51,10 @@ export default function Forecasting() {
   }, []);
 
   // Lưu filters vào localStorage để persist khi navigate. Kết quả phân tích
-  // KHÔNG persist qua localStorage nữa (từng gây lệch — hiển thị kết quả cũ
-  // không khớp bộ lọc đang chọn). Thay vào đó: effect auto-load bên dưới tự
-  // gọi /forecast/analyze với force_refresh=false mỗi khi chọn đúng bộ lọc
-  // (bệnh, khu vực, tháng) — backend trả lại kết quả đã lưu cho đúng 3 tiêu
-  // chí này nếu có, hoặc tính mới nếu chưa từng phân tích.
+  // KHÔNG persist qua localStorage (từng gây lệch — hiển thị kết quả cũ không
+  // khớp bộ lọc đang chọn). Thay vào đó: effect bên dưới gọi /forecast/saved
+  // để nạp lại bản ĐÃ GHI NHẬN theo đúng khóa (nhóm bệnh, tỉnh/thành, tháng);
+  // chưa ghi nhận thì để trống, chờ người dùng bấm "Phân tích".
   const [filters, setFilters] = useState<ForecastFilters>(() => {
     try {
       const saved = localStorage.getItem('forecast_filters');
@@ -109,32 +117,62 @@ export default function Forecasting() {
   }, []);
 
   const analyze = useAnalyzeForecast();
+  const loadSaved = useLoadSavedForecast();
 
-  const runAnalyze = (forceRefresh: boolean) => {
-    if (!filters.disease || !filters.month) {
-      console.warn('[Forecasting] missing disease or month', filters);
-      return;
-    }
+  // Hộp hỏi ghi đè khi kỳ này đã có dự báo được ghi nhận trước đó.
+  const [xacNhanGhiDe, setXacNhanGhiDe] = useState<string | null>(null);
+
+  /** Payload theo đúng bộ lọc hiện tại; null nếu bộ lọc chưa đủ. */
+  const buildPayload = () => {
+    if (!filters.disease || !filters.month) return null;
     const [yStr, mStr] = filters.month.split('-');
-    // Sử dụng tỉnh hoặc null (toàn quốc)
-    const regionValue = filters.province !== 'all' ? filters.province : null;
-    const payload = {
+    return {
       disease_type: filters.disease,
-      region: regionValue,
+      region: filters.province !== 'all' ? filters.province : null,
       target_month: Number(mStr),
       target_year: Number(yStr),
-      force_refresh: forceRefresh,
     };
-    console.log('[Forecasting] analyze payload', payload);
-    analyze.mutate(payload, {
-      onSuccess: (data) => {
-        console.log('[Forecasting] analyze ok', data.forecast);
-        setResult(data);
+  };
+
+  /** Bấm "Phân tích": chạy mô hình để XEM, không ghi gì vào DB. */
+  const runAnalyze = () => {
+    const payload = buildPayload();
+    if (!payload) return;
+    analyze.mutate(
+      { ...payload, save: false },
+      {
+        onSuccess: (data) => setResult(data),
+        onError: (err) => console.error('[Forecasting] analyze failed', err),
       },
-      onError: (err) => {
-        console.error('[Forecasting] analyze failed', err);
+    );
+  };
+
+  /** Bấm "Ghi nhận dự báo": lưu kết quả. Kỳ đã có bản ghi nhận → hỏi ghi đè. */
+  const ghiNhan = (overwrite: boolean) => {
+    const payload = buildPayload();
+    if (!payload) return;
+    setXacNhanGhiDe(null);
+    analyze.mutate(
+      { ...payload, save: true, overwrite },
+      {
+        onSuccess: (data) => setResult(data),
+        onError: (err: any) => {
+          const detail = err?.response?.data?.detail;
+          if (err?.response?.status === 409) {
+            setXacNhanGhiDe(
+              detail?.message ??
+                'Kỳ này đã có dự báo được ghi nhận trước đó. Ghi đè bản cũ?',
+            );
+            return;
+          }
+          console.error('[Forecasting] ghi nhan failed', err);
+          alert(
+            'Không ghi nhận được: ' +
+              (typeof detail === 'string' ? detail : err?.message ?? ''),
+          );
+        },
       },
-    });
+    );
   };
 
   // Auto-pick disease nếu list có dữ liệu mà filters đang trống
@@ -144,17 +182,26 @@ export default function Forecasting() {
     }
   }, [diseases, filters.disease]);
 
-  // ── Auto-load: mỗi khi bộ lọc (bệnh, khu vực, tháng) hợp lệ thay đổi, tự
-  // gọi /forecast/analyze với force_refresh=false — người dùng không cần bấm
-  // nút khi chỉ xem lại phân tích đã làm trước đó cho đúng bộ lọc này; nút
-  // "Phân tích lại" (force_refresh=true) dùng khi muốn ép tính lại từ đầu.
+  // ── Mở trang / đổi bộ lọc: CHỈ nạp lại bản đã ghi nhận theo khóa
+  // (Nhóm bệnh, Tỉnh/Thành, Tháng dự báo). Tuyệt đối không tự chạy mô hình —
+  // muốn phân tích thì phải bấm nút "Phân tích".
   const lastAutoKey = useRef<string | null>(null);
   useEffect(() => {
     if (!filters.disease || !filters.month) return;
     const key = `${filters.disease}|${filters.province}|${filters.month}`;
     if (lastAutoKey.current === key) return;
     lastAutoKey.current = key;
-    runAnalyze(false);
+
+    const payload = buildPayload();
+    if (!payload) return;
+    setResult(null);
+    setXacNhanGhiDe(null);
+    analyze.reset();
+    loadSaved.mutate(payload, {
+      // null = kỳ này chưa ghi nhận dự báo nào → để trống, chờ bấm Phân tích
+      onSuccess: (data) => setResult(data),
+      onError: (err) => console.error('[Forecasting] load saved failed', err),
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.disease, filters.province, filters.month]);
 
@@ -165,8 +212,10 @@ export default function Forecasting() {
   const targetMonthNum = displayResult?.forecast.target_month ?? Number(filters.month.split('-')[1]);
   const targetYearNum = displayResult?.forecast.target_year ?? Number(filters.month.split('-')[0]);
 
+  const daGhiNhan = !!displayResult?.forecast.is_recorded;
+
   const analyzedAtLabel = useMemo(() => {
-    const iso = displayResult?.forecast.analyzed_at;
+    const iso = displayResult?.forecast.recorded_at;
     if (!iso) return null;
     try {
       return new Date(iso).toLocaleString('vi-VN', {
@@ -176,7 +225,7 @@ export default function Forecasting() {
     } catch {
       return null;
     }
-  }, [displayResult?.forecast.analyzed_at]);
+  }, [displayResult?.forecast.recorded_at]);
 
   const history = useForecastHistory({ limit: 200 }, { enabled: tab === 'lich-su' });
 
@@ -195,7 +244,12 @@ export default function Forecasting() {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            disabled={!result || exporting}
+            disabled={!result?.forecast?.id || exporting}
+            title={
+              result && !result.forecast.id
+                ? 'Cần ghi nhận dự báo trước khi xuất báo cáo'
+                : undefined
+            }
             onClick={async () => {
               if (!result?.forecast?.id) return;
               try {
@@ -250,7 +304,6 @@ export default function Forecasting() {
         <ForecastHistoryTable
           rows={history.data ?? []}
           isLoading={history.isLoading}
-          onUpdated={() => history.refetch()}
         />
       ) : (
         <>
@@ -258,27 +311,48 @@ export default function Forecasting() {
           <ForecastFilterBar
             filters={filters}
             onChange={setFilters}
-            onAnalyze={() => runAnalyze(true)}
+            onAnalyze={runAnalyze}
             diseases={diseases}
             regionDistricts={regionDistricts}
-            isLoading={analyze.isPending}
-            buttonLabel={result ? 'Phân tích lại' : 'Phân tích'}
+            isLoading={analyze.isPending || loadSaved.isPending}
+            buttonLabel={daGhiNhan ? 'Phân tích lại' : 'Phân tích'}
           />
 
-          {/* Badge: đã phân tích lúc ... / dùng lại kết quả đã lưu */}
+          {/* Trạng thái ghi nhận + nút Ghi nhận dự báo */}
           {displayResult && !analyze.isPending && (
-            <div className="flex items-center gap-2 text-xs text-neutral-500">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-500">
               <span
                 className={cn(
                   'inline-flex items-center gap-1 px-2 py-1 rounded-full font-medium',
-                  displayResult.forecast.from_cache
-                    ? 'bg-neutral-100 text-neutral-600'
-                    : 'bg-emerald-50 text-emerald-700',
+                  daGhiNhan
+                    ? 'bg-emerald-50 text-emerald-700'
+                    : 'bg-amber-50 text-amber-700',
                 )}
               >
-                {displayResult.forecast.from_cache ? 'Kết quả đã lưu' : 'Vừa phân tích'}
+                {daGhiNhan ? 'Đã ghi nhận' : 'Chưa ghi nhận'}
               </span>
-              {analyzedAtLabel && <span>Đã phân tích lúc {analyzedAtLabel}</span>}
+              {daGhiNhan && analyzedAtLabel && (
+                <span>Ghi nhận lúc {analyzedAtLabel}</span>
+              )}
+
+              <button
+                type="button"
+                onClick={() => ghiNhan(false)}
+                disabled={analyze.isPending}
+                className={cn(
+                  'ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition disabled:opacity-60',
+                  daGhiNhan
+                    ? 'text-neutral-700 bg-white border border-neutral-200 hover:bg-neutral-50'
+                    : 'text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm',
+                )}
+              >
+                {daGhiNhan ? (
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                ) : (
+                  <Save className="w-3.5 h-3.5" />
+                )}
+                {daGhiNhan ? 'Ghi nhận lại' : 'Ghi nhận dự báo'}
+              </button>
             </div>
           )}
 
@@ -293,25 +367,30 @@ export default function Forecasting() {
             </div>
           )}
 
-          {/* Empty state khi chưa phân tích */}
-          {!result && !analyze.isPending && !analyze.isError && (
+          {/* Chưa ghi nhận dự báo nào cho khóa đang chọn */}
+          {!result && !analyze.isPending && !loadSaved.isPending && !analyze.isError && (
             <div className="rounded-2xl border border-dashed border-neutral-200 bg-white p-10 text-center">
               <p className="text-sm text-neutral-500">
-                Chọn bệnh, khu vực và tháng cần dự báo — kết quả sẽ tự hiển thị.
+                Chưa có dự báo được ghi nhận cho nhóm bệnh, tỉnh/thành và tháng
+                đang chọn.
+              </p>
+              <p className="text-sm text-neutral-500 mt-1">
+                Bấm <span className="font-semibold text-blue-600">Phân tích</span>{' '}
+                để chạy dự báo.
               </p>
             </div>
           )}
 
           {/* Loading skeleton */}
-          {analyze.isPending && (
+          {(analyze.isPending || loadSaved.isPending) && (
             <div className="rounded-2xl border border-neutral-200 bg-white p-10 flex items-center justify-center text-neutral-500 text-sm gap-2">
               <Loader2 className="w-5 h-5 animate-spin" />
-              Đang phân tích dữ liệu...
+              {loadSaved.isPending ? 'Đang nạp dự báo đã ghi nhận...' : 'Đang phân tích dữ liệu...'}
             </div>
           )}
 
           {/* Result */}
-          {displayResult && !analyze.isPending && (
+          {displayResult && !analyze.isPending && !loadSaved.isPending && (
             <>
               {/* Row 1: Forecast card + Main chart */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -365,7 +444,8 @@ export default function Forecasting() {
 
               {/* Row 4: Dữ liệu ca bệnh gần đây */}
               <RecentMonthDataTable
-                key={displayResult.forecast.id} // Force reload khi có forecast mới
+                // id null khi chưa ghi nhận → dùng khóa bộ lọc để vẫn nạp lại đúng
+                key={displayResult.forecast.id ?? `${filters.disease}|${filters.province}|${filters.month}`}
                 currentMonth={targetMonthNum}
                 currentYear={targetYearNum}
                 diseaseLabel={displayResult.forecast.disease_label}
@@ -374,6 +454,48 @@ export default function Forecasting() {
             </>
           )}
         </>
+      )}
+
+      {/* Kỳ này đã có dự báo ghi nhận trước đó — hỏi trước khi ghi đè */}
+      {xacNhanGhiDe && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+            <div className="flex items-start gap-3 px-5 py-4 border-b border-neutral-100">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <h3 className="text-base font-semibold text-neutral-900 mt-1.5">
+                Đã có dự báo cho kỳ này
+              </h3>
+            </div>
+
+            <div className="px-5 py-4">
+              <p className="text-sm text-neutral-700">{xacNhanGhiDe}</p>
+              <p className="text-xs text-neutral-500 mt-2">
+                Ghi đè sẽ thay bản đã ghi nhận trước đó bằng kết quả vừa phân
+                tích. Thao tác không hoàn tác được.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-neutral-100">
+              <button
+                type="button"
+                onClick={() => setXacNhanGhiDe(null)}
+                className="px-4 py-2 text-sm font-medium text-neutral-700 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50"
+              >
+                Huỷ
+              </button>
+              <button
+                type="button"
+                onClick={() => ghiNhan(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-amber-600 rounded-lg hover:bg-amber-700"
+              >
+                <Save className="w-4 h-4" />
+                Ghi đè dự báo cũ
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

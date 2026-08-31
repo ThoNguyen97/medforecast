@@ -10,13 +10,18 @@ export interface AnalyzeRequest {
   region?: string | null;
   target_month: number;
   target_year: number;
-  /** true = tính lại từ đầu, bỏ qua kết quả đã lưu (nút "Phân tích lại"). */
-  force_refresh?: boolean;
+  /** true = GHI NHẬN kết quả vào DB (nút "Ghi nhận dự báo"). */
+  save?: boolean;
+  /** Chỉ dùng khi save=true: cho phép ghi đè bản đã ghi nhận của cùng khóa. */
+  overwrite?: boolean;
 }
 
 export interface AnalyzeResponse {
+  /** false = chưa ghi nhận dự báo nào cho khóa này (chỉ có ở POST /forecast/saved). */
+  found?: boolean;
   forecast: {
-    id: number;
+    /** null khi mới phân tích mà chưa bấm "Ghi nhận dự báo". */
+    id: number | null;
     predicted_cases: number;
     baseline: number;
     increase_pct: number;
@@ -29,10 +34,10 @@ export interface AnalyzeResponse {
     region: string;
     target_month: number;
     target_year: number;
-    /** true = kết quả tái dùng từ lần phân tích đã lưu trước đó (không tính lại). */
-    from_cache?: boolean;
-    /** Thời điểm bản ghi được phân tích/lưu (ISO), dùng để hiển thị "Đã phân tích lúc...". */
-    analyzed_at?: string | null;
+    /** Kết quả này đã được ghi nhận vào DB hay mới chỉ là bản xem trước. */
+    is_recorded?: boolean;
+    /** Thời điểm ghi nhận (ISO) — null khi chưa ghi nhận. */
+    recorded_at?: string | null;
   };
   explanation_bullets: string[];
   accuracy?: {
@@ -149,6 +154,15 @@ export const forecastAnalysisService = {
   async analyze(payload: AnalyzeRequest): Promise<AnalyzeResponse> {
     const res = await api.post<AnalyzeResponse>('/forecast/analyze', payload);
     return res.data;
+  },
+
+  /**
+   * Nạp lại bản dự báo ĐÃ GHI NHẬN theo khóa (nhóm bệnh, khu vực, tháng).
+   * Chỉ đọc — không chạy mô hình, không ghi DB. Trả null nếu kỳ đó chưa ghi nhận.
+   */
+  async loadSaved(payload: AnalyzeRequest): Promise<AnalyzeResponse | null> {
+    const res = await api.post<AnalyzeResponse>('/forecast/saved', payload);
+    return res.data?.found === false ? null : res.data;
   },
 
   async trainModels(region?: string | null): Promise<TrainResponse> {

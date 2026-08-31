@@ -38,6 +38,13 @@ export function useAnalyzeForecast() {
   });
 }
 
+/** Nạp bản dự báo đã ghi nhận (chỉ đọc) — dùng khi mở trang / đổi bộ lọc. */
+export function useLoadSavedForecast() {
+  return useMutation<AnalyzeResponse | null, Error, AnalyzeRequest>({
+    mutationFn: (payload) => forecastAnalysisService.loadSaved(payload),
+  });
+}
+
 export function useTrainModels() {
   return useMutation<TrainResponse, Error, string | null | undefined>({
     mutationFn: (region) => forecastAnalysisService.trainModels(region),

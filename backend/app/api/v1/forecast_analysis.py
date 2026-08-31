@@ -38,12 +38,25 @@ class AnalyzeRequest(BaseModel):
     region: Optional[str] = Field(None, description="Khu vực, None = toàn thành phố")
     target_month: int = Field(..., ge=1, le=12)
     target_year: int = Field(..., ge=2020, le=2100)
-    force_refresh: bool = Field(
+    save: bool = Field(
         False,
         description=(
-            "True = tính lại từ đầu (bỏ qua kết quả đã lưu); "
-            "False = tái dùng kết quả đã lưu nếu đã phân tích đúng "
-            "(bệnh, khu vực, tháng) này trước đó."
+            "True = GHI NHẬN kết quả vào DB (nút \"Ghi nhận dự báo\"). "
+            "False = chỉ tính và trả về để xem, KHÔNG ghi gì."
+        ),
+    )
+    overwrite: bool = Field(
+        False,
+        description=(
+            "Chỉ có tác dụng khi save=True: cho phép ghi đè bản đã ghi nhận "
+            "trước đó của cùng khóa (nhóm bệnh, khu vực, tháng)."
+        ),
+    )
+    chi_tai_ban_da_luu: bool = Field(
+        False,
+        description=(
+            "Nội bộ (dùng cho POST /forecast/saved): chỉ nạp lại bản đã ghi "
+            "nhận, không chạy mô hình. Chưa có thì trả found=False."
         ),
     )
 
@@ -481,29 +494,56 @@ async def analyze_forecast(
     disease = _norm_disease(payload.disease_type)
     region = payload.region.strip() if payload.region and payload.region != "all" else None
 
-    force_refresh = payload.force_refresh
+    chi_tai = payload.chi_tai_ban_da_luu
+    # Chế độ chỉ-nạp không bao giờ ghi DB (bảo vệ luôn cả trường hợp gọi API
+    # trực tiếp với cả hai cờ — khối ghi DB cần dữ liệu chỉ có khi đã tính).
+    luu_lai = payload.save and not chi_tai
     forecast_date = date(payload.target_year, payload.target_month, 1)
     disease_name_label = _disease_label(disease)
 
-    # ── Tái dùng kết quả đã lưu nếu đã phân tích đúng bộ lọc này trước đó ──
-    # (bệnh, khu vực, tháng) — tránh tính lại toàn bộ mô hình + xoá/tạo lại
-    # DiseaseForecast (và cascade supply_requirements/alerts) mỗi lần user
-    # chỉ xem lại kết quả cũ. force_refresh=True (nút "Phân tích lại") bỏ
-    # qua cache này và tính lại từ đầu.
-    cached: Optional[DiseaseForecast] = None
-    if not force_refresh:
-        cached = (
-            db.query(DiseaseForecast)
-            .filter(
-                DiseaseForecast.icd_code == disease,
-                DiseaseForecast.forecast_month == forecast_date,
-                DiseaseForecast.location == region,
-            )
-            .order_by(DiseaseForecast.created_at.desc())
-            .first()
+    # ── Bản ĐÃ GHI NHẬN của đúng khóa (nhóm bệnh, khu vực, tháng) ──────────
+    # Ba tiêu chí này gộp thành MỘT khóa: mỗi khóa chỉ giữ tối đa 1 bản dự báo
+    # đã ghi nhận.
+    cached = (
+        db.query(DiseaseForecast)
+        .filter(
+            DiseaseForecast.icd_code == disease,
+            DiseaseForecast.forecast_month == forecast_date,
+            DiseaseForecast.location == region,
+        )
+        .order_by(DiseaseForecast.created_at.desc())
+        .first()
+    )
+
+    # Chế độ CHỈ NẠP (mở trang / đổi bộ lọc): lấy lại bản đã ghi nhận, tuyệt
+    # đối KHÔNG chạy mô hình. Chưa ghi nhận thì báo found=False để giao diện
+    # để trống, chờ người dùng bấm "Phân tích".
+    if chi_tai and cached is None:
+        return {"found": False, "forecast": None}
+
+    # Ghi nhận nhưng kỳ này đã có bản trước đó → trả 409 để giao diện hỏi
+    # "đã có dự báo trước đó, ghi đè không?" thay vì lặng lẽ ghi chồng.
+    if luu_lai and cached is not None and not payload.overwrite:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "da_ghi_nhan",
+                "message": (
+                    f"Kỳ này đã có dự báo được ghi nhận lúc "
+                    f"{cached.created_at.strftime('%d/%m/%Y %H:%M') if cached.created_at else '—'}"
+                    f" ({cached.predicted_cases} ca). Ghi đè bản cũ?"
+                ),
+                "forecast_id": cached.id,
+                "predicted_cases": cached.predicted_cases,
+                "recorded_at": cached.created_at.isoformat() if cached.created_at else None,
+            },
         )
 
-    if cached is None:
+    # Chỉ dùng lại số liệu đã lưu khi đang ở chế độ chỉ-nạp. Bấm "Phân tích"
+    # là luôn chạy lại mô hình, kể cả khi kỳ đó đã ghi nhận.
+    dung_ban_da_luu = chi_tai and cached is not None
+
+    if not dung_ban_da_luu:
         # ── Tính số ca dự báo ────────────────────────────────────────────────
         # Khi chọn 1 khu vực cụ thể → tính trực tiếp.
         # Khi "Toàn quốc" (region=None) → forecast RIÊNG từng tỉnh rồi CỘNG lại,
@@ -762,8 +802,9 @@ async def analyze_forecast(
 
     explanation_text = " | ".join(explanation_bullets)[:1000]
 
-    if cached is None:
-        # 7. Lưu lịch sử dự báo
+    if luu_lai:
+        # 7. GHI NHẬN dự báo — chỉ chạy khi người dùng bấm "Ghi nhận dự báo".
+        #    Bấm "Phân tích" chỉ tính để xem, không đụng gì tới DB.
         forecast_date = date(payload.target_year, payload.target_month, 1)
         disease_name_label = _disease_label(disease)
 
@@ -969,13 +1010,14 @@ async def analyze_forecast(
         except Exception as exc:
             logger.debug("Dashboard cache invalidate skipped: %s", exc)
     else:
-        # Đã có forecast lưu sẵn cho đúng bộ lọc — không ghi lại DB, không
-        # sinh lại supply_requirements/alerts (giữ nguyên bản đã sinh trước).
-        saved = cached
+        # Không ghi nhận lần này: chế độ chỉ-nạp thì trả lại chính bản đã ghi
+        # nhận; còn vừa bấm "Phân tích" thì chưa có bản nào (saved = None).
+        saved = cached if dung_ban_da_luu else None
 
     return {
+        "found": True,
         "forecast": {
-            "id": saved.id,
+            "id": saved.id if saved is not None else None,
             "predicted_cases": predicted,
             "baseline": int(baseline),
             "increase_pct": round(increase_pct, 1),
@@ -989,8 +1031,13 @@ async def analyze_forecast(
             "target_month": payload.target_month,
             "target_year": payload.target_year,
             "model_used": model_used,
-            "from_cache": cached is not None,
-            "analyzed_at": saved.created_at.isoformat() if saved.created_at else None,
+            # Kết quả này đã được ghi nhận vào DB hay mới chỉ là bản xem trước.
+            "is_recorded": saved is not None,
+            "recorded_at": (
+                saved.created_at.isoformat()
+                if saved is not None and saved.created_at
+                else None
+            ),
         },
         "accuracy": ml_accuracy,
         "explanation_bullets": explanation_bullets,
@@ -1007,6 +1054,24 @@ async def analyze_forecast(
             "years": years_to_show,
         },
     }
+
+
+@router.post("/saved")
+async def load_saved_forecast(
+    payload: AnalyzeRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Nạp lại bản dự báo ĐÃ GHI NHẬN theo khóa (nhóm bệnh, khu vực, tháng).
+
+    Dùng khi mở trang Phân tích & Dự báo hoặc khi đổi bộ lọc: chỉ đọc, KHÔNG
+    chạy mô hình và KHÔNG ghi gì vào DB. Chưa ghi nhận thì trả
+    ``{"found": false}`` để giao diện để trống, chờ bấm "Phân tích".
+    """
+    payload.chi_tai_ban_da_luu = True
+    payload.save = False
+    payload.overwrite = False
+    return await analyze_forecast(payload, db, current_user)
 
 
 @router.get("/history")
