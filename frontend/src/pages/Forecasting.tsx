@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Download,
   Loader2,
@@ -13,7 +14,7 @@ import {
   useAnalyzeForecast,
   useDiseaseOptions,
   useForecastHistory,
-  useLoadSavedForecast,
+  useSavedForecast,
 } from '../hooks/useForecastAnalysis';
 import api from '../services/api';
 import type { AnalyzeResponse } from '../services/forecastAnalysisService';
@@ -76,7 +77,9 @@ export default function Forecasting() {
     localStorage.setItem('forecast_filters', JSON.stringify(filters));
   }, [filters]);
 
-  const [result, setResult] = useState<AnalyzeResponse | null>(null);
+  // Kết quả VỪA PHÂN TÍCH (chưa ghi nhận). Được ưu tiên hiển thị; tự xoá khi
+  // đổi bộ lọc. Bản ĐÃ GHI NHẬN do savedQuery bên dưới nạp về.
+  const [phanTichMoi, setPhanTichMoi] = useState<AnalyzeResponse | null>(null);
   const [exporting, setExporting] = useState(false);
 
   const { data: diseases = [] } = useDiseaseOptions();
@@ -117,12 +120,10 @@ export default function Forecasting() {
   }, []);
 
   const analyze = useAnalyzeForecast();
-  const loadSaved = useLoadSavedForecast();
+  const queryClient = useQueryClient();
 
   // Hộp hỏi ghi đè khi kỳ này đã có dự báo được ghi nhận trước đó.
   const [xacNhanGhiDe, setXacNhanGhiDe] = useState<string | null>(null);
-  // Lỗi khi nạp bản đã ghi nhận — phải hiện ra, tránh quay vòng im lặng.
-  const [loiNap, setLoiNap] = useState<string | null>(null);
 
   /** Payload theo đúng bộ lọc hiện tại; null nếu bộ lọc chưa đủ. */
   const buildPayload = () => {
@@ -143,7 +144,7 @@ export default function Forecasting() {
     analyze.mutate(
       { ...payload, save: false },
       {
-        onSuccess: (data) => setResult(data),
+        onSuccess: (data) => setPhanTichMoi(data),
         onError: (err) => console.error('[Forecasting] analyze failed', err),
       },
     );
@@ -167,7 +168,10 @@ export default function Forecasting() {
             );
             return;
           }
-          setResult(data);
+          setPhanTichMoi(data);
+          // Bản ghi nhận vừa tạo → làm mới cache đọc + lịch sử
+          queryClient.invalidateQueries({ queryKey: ['forecast', 'saved'] });
+          queryClient.invalidateQueries({ queryKey: ['forecast', 'history'] });
         },
         onError: (err: any) => {
           console.error('[Forecasting] ghi nhan failed', err);
@@ -184,36 +188,29 @@ export default function Forecasting() {
     }
   }, [diseases, filters.disease]);
 
-  // ── Mở trang / đổi bộ lọc: CHỈ nạp lại bản đã ghi nhận theo khóa
-  // (Nhóm bệnh, Tỉnh/Thành, Tháng dự báo). Tuyệt đối không tự chạy mô hình —
+  // ── Mở trang / đổi bộ lọc: CHỈ nạp bản đã ghi nhận theo khóa
+  // (Nhóm bệnh, Tỉnh/Thành, Tháng dự báo). Không bao giờ tự chạy mô hình —
   // muốn phân tích thì phải bấm nút "Phân tích".
-  const lastAutoKey = useRef<string | null>(null);
-  useEffect(() => {
-    if (!filters.disease || !filters.month) return;
-    const key = `${filters.disease}|${filters.province}|${filters.month}`;
-    if (lastAutoKey.current === key) return;
-    lastAutoKey.current = key;
+  const savedKey = useMemo(
+    () => (filters.disease && filters.month ? buildPayload() : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filters.disease, filters.province, filters.month],
+  );
+  const savedQuery = useSavedForecast(savedKey);
 
-    const payload = buildPayload();
-    if (!payload) return;
-    setResult(null);
+  // Đổi bộ lọc → bỏ kết quả phân tích tạm của bộ lọc cũ.
+  useEffect(() => {
+    setPhanTichMoi(null);
     setXacNhanGhiDe(null);
-    setLoiNap(null);
     analyze.reset();
-    loadSaved.mutate(payload, {
-      // null = kỳ này chưa ghi nhận dự báo nào → để trống, chờ bấm Phân tích
-      onSuccess: (data) => setResult(data),
-      onError: (err: any) => {
-        console.error('[Forecasting] load saved failed', err);
-        setLoiNap(err?.message || 'Không rõ nguyên nhân.');
-      },
-    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.disease, filters.province, filters.month]);
 
-  // Kết quả hiển thị lấy thẳng từ /analyze (backend đã dùng mô hình AI tính
-  // số ca + mức nguy cơ và lưu DB), nên card, biểu đồ, bảng đều nhất quán.
-  const displayResult = result;
+  // Ưu tiên bản vừa phân tích (chưa ghi nhận), nếu không có thì lấy bản đã ghi nhận.
+  const displayResult = phanTichMoi ?? savedQuery.data ?? null;
+  // isLoading (không phải isFetching): chỉ hiện spinner khi thật sự chưa có dữ
+  // liệu cho khóa đang chọn, tránh chớp màn hình khi làm mới ngầm sau khi ghi nhận.
+  const dangNap = savedQuery.isLoading || analyze.isPending;
 
   const targetMonthNum = displayResult?.forecast.target_month ?? Number(filters.month.split('-')[1]);
   const targetYearNum = displayResult?.forecast.target_year ?? Number(filters.month.split('-')[0]);
@@ -250,23 +247,23 @@ export default function Forecasting() {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            disabled={!result?.forecast?.id || exporting}
+            disabled={!displayResult?.forecast?.id || exporting}
             title={
-              result && !result.forecast.id
+              displayResult && !displayResult.forecast.id
                 ? 'Cần ghi nhận dự báo trước khi xuất báo cáo'
                 : undefined
             }
             onClick={async () => {
-              if (!result?.forecast?.id) return;
+              if (!displayResult?.forecast?.id) return;
               try {
                 setExporting(true);
                 const blob = await forecastAnalysisService.exportForecastPdf(
-                  result.forecast.id,
+                  displayResult.forecast.id,
                 );
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `forecast_${result.forecast.id}.pdf`;
+                a.download = `forecast_${displayResult.forecast.id}.pdf`;
                 document.body.appendChild(a);
                 a.click();
                 a.remove();
@@ -320,12 +317,12 @@ export default function Forecasting() {
             onAnalyze={runAnalyze}
             diseases={diseases}
             regionDistricts={regionDistricts}
-            isLoading={analyze.isPending || loadSaved.isPending}
+            isLoading={dangNap}
             buttonLabel={daGhiNhan ? 'Phân tích lại' : 'Phân tích'}
           />
 
           {/* Trạng thái ghi nhận + nút Ghi nhận dự báo */}
-          {displayResult && !analyze.isPending && (
+          {displayResult && !dangNap && (
             <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-500">
               <span
                 className={cn(
@@ -363,11 +360,12 @@ export default function Forecasting() {
           )}
 
           {/* Lỗi khi nạp bản đã ghi nhận */}
-          {loiNap && !loadSaved.isPending && (
+          {savedQuery.isError && !savedQuery.isFetching && (
             <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
               <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
               <span>
-                Không nạp được dự báo đã ghi nhận: {loiNap}
+                Không nạp được dự báo đã ghi nhận:{' '}
+                {(savedQuery.error as Error)?.message || 'Không rõ nguyên nhân.'}
                 <br />
                 <span className="text-red-600/80">
                   Nếu vừa cập nhật mã nguồn, hãy khởi động lại backend để có
@@ -389,7 +387,7 @@ export default function Forecasting() {
           )}
 
           {/* Chưa ghi nhận dự báo nào cho khóa đang chọn */}
-          {!result && !analyze.isPending && !loadSaved.isPending && !analyze.isError && !loiNap && (
+          {!displayResult && !dangNap && !analyze.isError && !savedQuery.isError && (
             <div className="rounded-2xl border border-dashed border-neutral-200 bg-white p-10 text-center">
               <p className="text-sm text-neutral-500">
                 Chưa có dự báo được ghi nhận cho nhóm bệnh, tỉnh/thành và tháng
@@ -403,15 +401,17 @@ export default function Forecasting() {
           )}
 
           {/* Loading skeleton */}
-          {(analyze.isPending || loadSaved.isPending) && (
+          {dangNap && (
             <div className="rounded-2xl border border-neutral-200 bg-white p-10 flex items-center justify-center text-neutral-500 text-sm gap-2">
               <Loader2 className="w-5 h-5 animate-spin" />
-              {loadSaved.isPending ? 'Đang nạp dự báo đã ghi nhận...' : 'Đang phân tích dữ liệu...'}
+              {analyze.isPending
+                ? 'Đang phân tích dữ liệu...'
+                : 'Đang nạp dự báo đã ghi nhận...'}
             </div>
           )}
 
           {/* Result */}
-          {displayResult && !analyze.isPending && !loadSaved.isPending && (
+          {displayResult && !dangNap && (
             <>
               {/* Row 1: Forecast card + Main chart */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">

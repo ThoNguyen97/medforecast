@@ -38,10 +38,41 @@ export function useAnalyzeForecast() {
   });
 }
 
-/** Nạp bản dự báo đã ghi nhận (chỉ đọc) — dùng khi mở trang / đổi bộ lọc. */
-export function useLoadSavedForecast() {
-  return useMutation<AnalyzeResponse | null, Error, AnalyzeRequest>({
-    mutationFn: (payload) => forecastAnalysisService.loadSaved(payload),
+/**
+ * Nạp bản dự báo ĐÃ GHI NHẬN theo khóa (nhóm bệnh, khu vực, tháng).
+ *
+ * Cố ý dùng useQuery chứ không phải useMutation: đây là thao tác ĐỌC, chạy tự
+ * động theo bộ lọc. Dùng mutation trong useEffect lúc mount sẽ hỏng dưới
+ * <StrictMode> — React chạy effect, huỷ, rồi chạy lại; React Query gỡ observer
+ * khỏi mutation đang bay nên kết quả không bao giờ về tới component và
+ * isPending kẹt true vĩnh viễn.
+ *
+ * queryKey tách thành từng giá trị nguyên thuỷ (không truyền cả object) để
+ * key không đổi sau mỗi lần render.
+ */
+export function useSavedForecast(
+  p: {
+    disease_type: string;
+    region: string | null;
+    target_month: number;
+    target_year: number;
+  } | null,
+) {
+  const { isAuthenticated } = useAuthStore();
+  return useQuery({
+    queryKey: [
+      'forecast',
+      'saved',
+      p?.disease_type,
+      p?.region,
+      p?.target_month,
+      p?.target_year,
+    ],
+    queryFn: () => forecastAnalysisService.loadSaved(p!),
+    enabled: isAuthenticated && !!p,
+    staleTime: 0,
+    retry: false,
+    refetchOnWindowFocus: false,
   });
 }
 
