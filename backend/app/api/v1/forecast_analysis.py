@@ -521,23 +521,29 @@ async def analyze_forecast(
     if chi_tai and cached is None:
         return {"found": False, "forecast": None}
 
-    # Ghi nhận nhưng kỳ này đã có bản trước đó → trả 409 để giao diện hỏi
+    # Ghi nhận nhưng kỳ này đã có bản trước đó → BÁO XUNG ĐỘT để giao diện hỏi
     # "đã có dự báo trước đó, ghi đè không?" thay vì lặng lẽ ghi chồng.
+    # Cố ý trả 200 kèm cờ conflict (không dùng 409): interceptor axios phía
+    # frontend gộp mọi lỗi HTTP thành Error(message) và bỏ mất error.response,
+    # nên nhánh lỗi không đọc được status lẫn chi tiết.
+    # Trả về SỚM, trước khi chạy mô hình — không tốn công tính rồi mới hỏi.
     if luu_lai and cached is not None and not payload.overwrite:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "da_ghi_nhan",
-                "message": (
-                    f"Kỳ này đã có dự báo được ghi nhận lúc "
-                    f"{cached.created_at.strftime('%d/%m/%Y %H:%M') if cached.created_at else '—'}"
-                    f" ({cached.predicted_cases} ca). Ghi đè bản cũ?"
-                ),
+        return {
+            "found": True,
+            "conflict": True,
+            "message": (
+                f"Kỳ này đã có dự báo được ghi nhận lúc "
+                f"{cached.created_at.strftime('%d/%m/%Y %H:%M') if cached.created_at else '—'}"
+                f" ({cached.predicted_cases} ca). Ghi đè bản cũ?"
+            ),
+            "existing": {
                 "forecast_id": cached.id,
                 "predicted_cases": cached.predicted_cases,
                 "recorded_at": cached.created_at.isoformat() if cached.created_at else None,
+                "created_by": cached.created_by,
             },
-        )
+            "forecast": None,
+        }
 
     # Chỉ dùng lại số liệu đã lưu khi đang ở chế độ chỉ-nạp. Bấm "Phân tích"
     # là luôn chạy lại mô hình, kể cả khi kỳ đó đã ghi nhận.
@@ -1117,6 +1123,7 @@ async def get_forecast_history(
                 "deviation_pct": deviation,
                 "risk_level": r.risk_level,
                 "created_at": r.created_at.isoformat() if r.created_at else None,
+                "created_by": r.created_by,
             }
         )
     return out

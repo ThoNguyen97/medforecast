@@ -121,6 +121,8 @@ export default function Forecasting() {
 
   // Hộp hỏi ghi đè khi kỳ này đã có dự báo được ghi nhận trước đó.
   const [xacNhanGhiDe, setXacNhanGhiDe] = useState<string | null>(null);
+  // Lỗi khi nạp bản đã ghi nhận — phải hiện ra, tránh quay vòng im lặng.
+  const [loiNap, setLoiNap] = useState<string | null>(null);
 
   /** Payload theo đúng bộ lọc hiện tại; null nếu bộ lọc chưa đủ. */
   const buildPayload = () => {
@@ -155,21 +157,21 @@ export default function Forecasting() {
     analyze.mutate(
       { ...payload, save: true, overwrite },
       {
-        onSuccess: (data) => setResult(data),
-        onError: (err: any) => {
-          const detail = err?.response?.data?.detail;
-          if (err?.response?.status === 409) {
+        onSuccess: (data) => {
+          // Backend báo kỳ này đã có bản ghi nhận → hỏi ghi đè, giữ nguyên
+          // kết quả đang hiển thị trên màn hình.
+          if (data?.conflict) {
             setXacNhanGhiDe(
-              detail?.message ??
+              data.message ??
                 'Kỳ này đã có dự báo được ghi nhận trước đó. Ghi đè bản cũ?',
             );
             return;
           }
+          setResult(data);
+        },
+        onError: (err: any) => {
           console.error('[Forecasting] ghi nhan failed', err);
-          alert(
-            'Không ghi nhận được: ' +
-              (typeof detail === 'string' ? detail : err?.message ?? ''),
-          );
+          alert('Không ghi nhận được: ' + (err?.message ?? ''));
         },
       },
     );
@@ -196,11 +198,15 @@ export default function Forecasting() {
     if (!payload) return;
     setResult(null);
     setXacNhanGhiDe(null);
+    setLoiNap(null);
     analyze.reset();
     loadSaved.mutate(payload, {
       // null = kỳ này chưa ghi nhận dự báo nào → để trống, chờ bấm Phân tích
       onSuccess: (data) => setResult(data),
-      onError: (err) => console.error('[Forecasting] load saved failed', err),
+      onError: (err: any) => {
+        console.error('[Forecasting] load saved failed', err);
+        setLoiNap(err?.message || 'Không rõ nguyên nhân.');
+      },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.disease, filters.province, filters.month]);
@@ -356,6 +362,21 @@ export default function Forecasting() {
             </div>
           )}
 
+          {/* Lỗi khi nạp bản đã ghi nhận */}
+          {loiNap && !loadSaved.isPending && (
+            <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+              <span>
+                Không nạp được dự báo đã ghi nhận: {loiNap}
+                <br />
+                <span className="text-red-600/80">
+                  Nếu vừa cập nhật mã nguồn, hãy khởi động lại backend để có
+                  endpoint mới rồi tải lại trang.
+                </span>
+              </span>
+            </div>
+          )}
+
           {/* Error */}
           {analyze.isError && (
             <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
@@ -368,7 +389,7 @@ export default function Forecasting() {
           )}
 
           {/* Chưa ghi nhận dự báo nào cho khóa đang chọn */}
-          {!result && !analyze.isPending && !loadSaved.isPending && !analyze.isError && (
+          {!result && !analyze.isPending && !loadSaved.isPending && !analyze.isError && !loiNap && (
             <div className="rounded-2xl border border-dashed border-neutral-200 bg-white p-10 text-center">
               <p className="text-sm text-neutral-500">
                 Chưa có dự báo được ghi nhận cho nhóm bệnh, tỉnh/thành và tháng

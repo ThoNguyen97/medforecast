@@ -19,6 +19,15 @@ export interface AnalyzeRequest {
 export interface AnalyzeResponse {
   /** false = chưa ghi nhận dự báo nào cho khóa này (chỉ có ở POST /forecast/saved). */
   found?: boolean;
+  /** true = kỳ này đã có bản ghi nhận, cần người dùng xác nhận ghi đè. */
+  conflict?: boolean;
+  message?: string;
+  existing?: {
+    forecast_id: number;
+    predicted_cases: number;
+    recorded_at: string | null;
+    created_by: string | null;
+  };
   forecast: {
     /** null khi mới phân tích mà chưa bấm "Ghi nhận dự báo". */
     id: number | null;
@@ -87,6 +96,8 @@ export interface ForecastHistoryItem {
   deviation_pct: number | null;
   risk_level: string | null;
   created_at: string | null;
+  /** Tài khoản đã ghi nhận dự báo này. */
+  created_by: string | null;
 }
 
 export interface ModelAccuracy {
@@ -161,7 +172,11 @@ export const forecastAnalysisService = {
    * Chỉ đọc — không chạy mô hình, không ghi DB. Trả null nếu kỳ đó chưa ghi nhận.
    */
   async loadSaved(payload: AnalyzeRequest): Promise<AnalyzeResponse | null> {
-    const res = await api.post<AnalyzeResponse>('/forecast/saved', payload);
+    // Đây chỉ là truy vấn đọc, phải nhanh. Đặt timeout ngắn hơn mặc định 60s
+    // để nếu backend chưa chạy/chưa restart thì báo lỗi sớm, không quay mãi.
+    const res = await api.post<AnalyzeResponse>('/forecast/saved', payload, {
+      timeout: 20000,
+    });
     return res.data?.found === false ? null : res.data;
   },
 

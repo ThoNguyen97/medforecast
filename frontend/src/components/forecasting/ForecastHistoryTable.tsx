@@ -110,12 +110,14 @@ export default function ForecastHistoryTable({ rows, isLoading }: Props) {
               <th className="text-left px-5 py-3 font-medium whitespace-nowrap">Số ca dự báo</th>
               <th className="text-left px-5 py-3 font-medium whitespace-nowrap">Số ca thực tế</th>
               <th className="text-left px-5 py-3 font-medium whitespace-nowrap">Độ lệch</th>
+              <th className="text-left px-5 py-3 font-medium whitespace-nowrap">Ghi nhận lúc</th>
+              <th className="text-left px-5 py-3 font-medium whitespace-nowrap">Người ghi nhận</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={6} className="py-8">
+                <td colSpan={8} className="py-8">
                   <div className="flex items-center justify-center gap-2 text-neutral-500 text-sm">
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Đang tải lịch sử...
@@ -124,13 +126,13 @@ export default function ForecastHistoryTable({ rows, isLoading }: Props) {
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={6} className="py-10 text-center text-sm text-neutral-400">
+                <td colSpan={8} className="py-10 text-center text-sm text-neutral-400">
                   Chưa có lịch sử dự báo
                 </td>
               </tr>
             ) : filteredRows.length === 0 ? (
               <tr>
-                <td colSpan={6} className="py-10 text-center text-sm text-neutral-400">
+                <td colSpan={8} className="py-10 text-center text-sm text-neutral-400">
                   Không tìm thấy kết quả phù hợp với bộ lọc
                 </td>
               </tr>
@@ -153,6 +155,12 @@ export default function ForecastHistoryTable({ rows, isLoading }: Props) {
                   <td className="px-5 py-3.5">
                     <DeviationPill value={r.deviation_pct} />
                   </td>
+                  <td className="px-5 py-3.5 text-neutral-600 whitespace-nowrap">
+                    {formatThoiGian(r.created_at)}
+                  </td>
+                  <td className="px-5 py-3.5 text-neutral-600 whitespace-nowrap">
+                    {r.created_by || '—'}
+                  </td>
                 </tr>
               ))
             )}
@@ -161,6 +169,19 @@ export default function ForecastHistoryTable({ rows, isLoading }: Props) {
       </div>
     </div>
   );
+}
+
+/** ISO → "dd/mm/yyyy hh:mm" theo giờ địa phương; '—' nếu không có. */
+function formatThoiGian(iso: string | null): string {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleString('vi-VN', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    });
+  } catch {
+    return '—';
+  }
 }
 
 function DeviationPill({ value }: { value: number | null }) {
