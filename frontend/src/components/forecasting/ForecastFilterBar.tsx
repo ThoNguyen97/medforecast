@@ -22,6 +22,8 @@ interface Props {
   regionDistricts?: Record<string, string[]>;
   isLoading?: boolean;
   disabled?: boolean;
+  /** Nhãn nút phân tích — đổi thành "Phân tích lại" khi đã có kết quả. */
+  buttonLabel?: string;
 }
 
 export default function ForecastFilterBar({
@@ -32,6 +34,7 @@ export default function ForecastFilterBar({
   regionDistricts = {},
   isLoading = false,
   disabled = false,
+  buttonLabel = 'Phân tích',
 }: Props) {
   const update = (patch: Partial<ForecastFilters>) =>
     onChange({ ...filters, ...patch });
@@ -89,7 +92,7 @@ export default function ForecastFilterBar({
           )}
         >
           {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-          Phân tích
+          {buttonLabel}
         </button>
       </div>
     </div>

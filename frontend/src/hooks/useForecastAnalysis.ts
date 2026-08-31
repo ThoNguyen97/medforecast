@@ -50,18 +50,21 @@ export function useMLAnalyzeForecast() {
   });
 }
 
-export function useForecastHistory(params?: {
-  limit?: number;
-  disease_type?: string;
-  region?: string;
-  start_date?: string;
-  end_date?: string;
-}) {
+export function useForecastHistory(
+  params?: {
+    limit?: number;
+    disease_type?: string;
+    region?: string;
+    start_date?: string;
+    end_date?: string;
+  },
+  options?: { enabled?: boolean },
+) {
   const { isAuthenticated } = useAuthStore();
   return useQuery({
     queryKey: ['forecast', 'history', params],
     queryFn: () => forecastAnalysisService.getHistory(params),
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && (options?.enabled ?? true),
     retry: false,
     refetchOnWindowFocus: false,
   });

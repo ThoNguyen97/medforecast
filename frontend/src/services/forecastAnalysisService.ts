@@ -10,6 +10,8 @@ export interface AnalyzeRequest {
   region?: string | null;
   target_month: number;
   target_year: number;
+  /** true = tính lại từ đầu, bỏ qua kết quả đã lưu (nút "Phân tích lại"). */
+  force_refresh?: boolean;
 }
 
 export interface AnalyzeResponse {
@@ -27,6 +29,10 @@ export interface AnalyzeResponse {
     region: string;
     target_month: number;
     target_year: number;
+    /** true = kết quả tái dùng từ lần phân tích đã lưu trước đó (không tính lại). */
+    from_cache?: boolean;
+    /** Thời điểm bản ghi được phân tích/lưu (ISO), dùng để hiển thị "Đã phân tích lúc...". */
+    analyzed_at?: string | null;
   };
   explanation_bullets: string[];
   accuracy?: {

@@ -38,6 +38,14 @@ class AnalyzeRequest(BaseModel):
     region: Optional[str] = Field(None, description="Khu vực, None = toàn thành phố")
     target_month: int = Field(..., ge=1, le=12)
     target_year: int = Field(..., ge=2020, le=2100)
+    force_refresh: bool = Field(
+        False,
+        description=(
+            "True = tính lại từ đầu (bỏ qua kết quả đã lưu); "
+            "False = tái dùng kết quả đã lưu nếu đã phân tích đúng "
+            "(bệnh, khu vực, tháng) này trước đó."
+        ),
+    )
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -473,136 +481,196 @@ async def analyze_forecast(
     disease = _norm_disease(payload.disease_type)
     region = payload.region.strip() if payload.region and payload.region != "all" else None
 
-    # ── Tính số ca dự báo ────────────────────────────────────────────────
-    # Khi chọn 1 khu vực cụ thể → tính trực tiếp.
-    # Khi "Toàn quốc" (region=None) → forecast RIÊNG từng tỉnh rồi CỘNG lại,
-    # để tổng toàn quốc luôn ≥ từng tỉnh (tránh nghịch lý weather pha loãng).
-    def _compute_one_region(reg: Optional[str]):
-        """Trả về (predicted, baseline, weather_factor, trend_factor,
-        forecast_w, history_w_avg, weather_bullets, trend_bullet, baseline_years)."""
-        b_years: list[int] = []
-        b_counts: list[int] = []
-        for back in range(1, 6):
-            yy = payload.target_year - back
-            cc = _query_cases(db, disease, reg, yy, payload.target_month)
-            if cc > 0:
-                b_years.append(yy)
-                b_counts.append(cc)
-        base = mean(b_counts) if b_counts else 0.0
+    force_refresh = payload.force_refresh
+    forecast_date = date(payload.target_year, payload.target_month, 1)
+    disease_name_label = _disease_label(disease)
 
-        fw = _query_weather(db, reg, payload.target_year, payload.target_month)
-        hw_list = [_query_weather(db, reg, yy, payload.target_month) for yy in b_years]
+    # ── Tái dùng kết quả đã lưu nếu đã phân tích đúng bộ lọc này trước đó ──
+    # (bệnh, khu vực, tháng) — tránh tính lại toàn bộ mô hình + xoá/tạo lại
+    # DiseaseForecast (và cascade supply_requirements/alerts) mỗi lần user
+    # chỉ xem lại kết quả cũ. force_refresh=True (nút "Phân tích lại") bỏ
+    # qua cache này và tính lại từ đầu.
+    cached: Optional[DiseaseForecast] = None
+    if not force_refresh:
+        cached = (
+            db.query(DiseaseForecast)
+            .filter(
+                DiseaseForecast.icd_code == disease,
+                DiseaseForecast.forecast_month == forecast_date,
+                DiseaseForecast.location == region,
+            )
+            .order_by(DiseaseForecast.created_at.desc())
+            .first()
+        )
 
-        def _avg(field: str) -> Optional[float]:
-            vals = [w[field] for w in hw_list if w[field] is not None]
+    if cached is None:
+        # ── Tính số ca dự báo ────────────────────────────────────────────────
+        # Khi chọn 1 khu vực cụ thể → tính trực tiếp.
+        # Khi "Toàn quốc" (region=None) → forecast RIÊNG từng tỉnh rồi CỘNG lại,
+        # để tổng toàn quốc luôn ≥ từng tỉnh (tránh nghịch lý weather pha loãng).
+        def _compute_one_region(reg: Optional[str]):
+            """Trả về (predicted, baseline, weather_factor, trend_factor,
+            forecast_w, history_w_avg, weather_bullets, trend_bullet, baseline_years)."""
+            b_years: list[int] = []
+            b_counts: list[int] = []
+            for back in range(1, 6):
+                yy = payload.target_year - back
+                cc = _query_cases(db, disease, reg, yy, payload.target_month)
+                if cc > 0:
+                    b_years.append(yy)
+                    b_counts.append(cc)
+            base = mean(b_counts) if b_counts else 0.0
+
+            fw = _query_weather(db, reg, payload.target_year, payload.target_month)
+            hw_list = [_query_weather(db, reg, yy, payload.target_month) for yy in b_years]
+
+            def _avg(field: str) -> Optional[float]:
+                vals = [w[field] for w in hw_list if w[field] is not None]
+                return mean(vals) if vals else None
+
+            hw_avg = {f: _avg(f) for f in ("temp", "humidity", "rainfall", "aqi", "pm25")}
+            wf, wb = _weather_factor(fw, hw_avg)
+            tf, tb = _trend_factor(db, disease, reg, payload.target_year, payload.target_month)
+            pred = int(round(base * wf * tf)) if base else 0
+            return pred, base, wf, tf, fw, hw_avg, wb, tb, b_years
+
+        if region is None:
+            # Toàn quốc = Σ forecast từng tỉnh có data
+            provinces = [
+                r[0] for r in db.query(DiseaseCase.location)
+                .filter(dieu_kien_benh(DiseaseCase, disease))
+                .distinct().all()
+                if r[0]
+            ]
+            predicted = 0
+            baseline = 0.0
+            baseline_years_set: set[int] = set()
+            # Lưu dự báo từng tỉnh để hiển thị bảng "Dữ liệu ca bệnh gần đây"
+            per_province: list[dict] = []
+            # Dùng weather/trend của tỉnh có nhiều ca nhất để hiển thị giải thích
+            rep = None
+            rep_cases = -1
+            for prov in provinces:
+                (p, b, wf, tf, fw, hw, wb, tb, byrs) = _compute_one_region(prov)
+                predicted += p
+                baseline += b
+                baseline_years_set.update(byrs)
+                per_province.append({
+                    "location": prov,
+                    "predicted": p,
+                    "baseline": b,
+                    "weather_factor": wf,
+                    "trend_factor": tf,
+                })
+                if b > rep_cases:
+                    rep_cases = b
+                    rep = (wf, tf, fw, hw, wb, tb)
+            baseline_years = sorted(baseline_years_set)
+            if rep:
+                weather_factor, trend_factor, forecast_w, history_w_avg, weather_bullets, trend_bullet = rep
+            else:
+                weather_factor, trend_factor = 1.0, 1.0
+                forecast_w = _query_weather(db, None, payload.target_year, payload.target_month)
+                history_w_avg = {f: None for f in ("temp", "humidity", "rainfall", "aqi", "pm25")}
+                weather_bullets, trend_bullet = [], None
+        else:
+            (predicted, baseline, weather_factor, trend_factor, forecast_w,
+             history_w_avg, weather_bullets, trend_bullet, baseline_years) = _compute_one_region(region)
+            per_province = []
+
+        # predicted đã được tính ở trên (theo từng khu vực hoặc cộng dồn toàn quốc)
+        # ── Ghi đè bằng mô hình ML (MonthlyForecaster) ────────────────────────
+        # Tự huấn luyện trên dữ liệu mới nhất + dự báo. Nếu thất bại (thiếu data)
+        # thì giữ nguyên số heuristic ở trên làm fallback.
+        model_used = "multivariate_v1"
+        ml_accuracy: Dict[str, Any] | None = None
+        try:
+            from app.ai_engine.db_forecasting_service import DBForecastingService
+
+            ml_result = DBForecastingService(db).analyze(
+                icd_code=disease,
+                target_month=payload.target_month,
+                target_year=payload.target_year,
+                region=region,
+            )
+            predicted = int(ml_result["predicted_cases"])
+            fd = ml_result.get("formula_details", {}) or {}
+            # Ưu tiên baseline/hệ số từ mô hình để hiển thị nhất quán
+            baseline = float(fd.get("baseline", baseline) or baseline)
+            weather_factor = float(fd.get("weather_factor", weather_factor) or weather_factor)
+            trend_factor = float(fd.get("trend_factor", trend_factor) or trend_factor)
+            model_used = "monthly_forecaster_ml"
+            m = ml_result.get("model_metrics", {}) or {}
+            ml_accuracy = {
+                "mae": round(m.get("mae", 0), 2),
+                "rmse": round(m.get("rmse", 0), 2),
+                "mape": round(m.get("mape", 0), 2),
+                "r2": round(m.get("r2", 0), 3),
+                "n_samples": m.get("n_samples", 0),
+            }
+        except Exception as exc:
+            logger.warning("ML forecast unavailable, fallback heuristic: %s", exc)
+
+        # ── Engine CHÍNH: ensemble NHÓM đã kiểm chứng walk-forward (09/08/2026) ──
+        # Heuristic cùng-kỳ và MonthlyForecaster phía trên chỉ còn là fallback: cả
+        # hai tựa vào trung bình nhiều năm nên bị dịch chuyển mức nền kéo tụt
+        # (đo thật trên T6/2026: dự báo 65 ca cho tháng thực tế ~110 — hụt ~40%).
+        # Ensemble học xu hướng + mùa vụ + thời tiết trên toàn chuỗi, CÙNG engine
+        # với trang Kế hoạch nhập kho — hai màn hình thống nhất một con số.
+        try:
+            from app.services.group_ensemble_service import du_bao_nhom
+            kq_ens = du_bao_nhom(db, disease, region,
+                                 payload.target_year, payload.target_month)
+            if kq_ens is not None:
+                predicted = kq_ens["predicted"]
+                model_used = kq_ens["model_used"]
+                if kq_ens.get("accuracy"):
+                    a = kq_ens["accuracy"]
+                    ml_accuracy = {
+                        "mae": a["mae"], "rmse": a["mae"],  # rmse không đo ở bản nhanh
+                        "mape": a["wape"], "r2": 0,
+                        "n_samples": a["n_steps"],
+                        "accuracy_pct": a["accuracy_pct"],
+                    }
+        except Exception:
+            logger.exception("Ensemble nhóm lỗi — dùng dự báo fallback")
+    else:
+        # Dùng lại kết quả mô hình đã lưu — không tính toán lại.
+        predicted = cached.predicted_cases
+        baseline = float(cached.baseline_cases or 0)
+        weather_factor = float(cached.weather_factor or 1.0)
+        trend_factor = float(cached.trend_factor or 1.0)
+        model_used = cached.model_used or "cached"
+        ml_accuracy = None
+        if cached.model_accuracy_mae is not None:
+            ml_accuracy = {
+                "mae": cached.model_accuracy_mae,
+                "rmse": cached.model_accuracy_rmse,
+                "mape": cached.model_accuracy_mape,
+                "r2": 0,
+                "n_samples": 0,
+            }
+        baseline_years = [
+            y for y in range(payload.target_year - 5, payload.target_year)
+            if _query_cases(db, disease, region, y, payload.target_month) > 0
+        ]
+        forecast_w = _query_weather(
+            db, region, payload.target_year, payload.target_month
+        )
+        _hw_list = [
+            _query_weather(db, region, y, payload.target_month)
+            for y in baseline_years
+        ]
+
+        def _cached_avg(field: str) -> Optional[float]:
+            vals = [w[field] for w in _hw_list if w[field] is not None]
             return mean(vals) if vals else None
 
-        hw_avg = {f: _avg(f) for f in ("temp", "humidity", "rainfall", "aqi", "pm25")}
-        wf, wb = _weather_factor(fw, hw_avg)
-        tf, tb = _trend_factor(db, disease, reg, payload.target_year, payload.target_month)
-        pred = int(round(base * wf * tf)) if base else 0
-        return pred, base, wf, tf, fw, hw_avg, wb, tb, b_years
-
-    if region is None:
-        # Toàn quốc = Σ forecast từng tỉnh có data
-        provinces = [
-            r[0] for r in db.query(DiseaseCase.location)
-            .filter(dieu_kien_benh(DiseaseCase, disease))
-            .distinct().all()
-            if r[0]
-        ]
-        predicted = 0
-        baseline = 0.0
-        baseline_years_set: set[int] = set()
-        # Lưu dự báo từng tỉnh để hiển thị bảng "Dữ liệu ca bệnh gần đây"
-        per_province: list[dict] = []
-        # Dùng weather/trend của tỉnh có nhiều ca nhất để hiển thị giải thích
-        rep = None
-        rep_cases = -1
-        for prov in provinces:
-            (p, b, wf, tf, fw, hw, wb, tb, byrs) = _compute_one_region(prov)
-            predicted += p
-            baseline += b
-            baseline_years_set.update(byrs)
-            per_province.append({
-                "location": prov,
-                "predicted": p,
-                "baseline": b,
-                "weather_factor": wf,
-                "trend_factor": tf,
-            })
-            if b > rep_cases:
-                rep_cases = b
-                rep = (wf, tf, fw, hw, wb, tb)
-        baseline_years = sorted(baseline_years_set)
-        if rep:
-            weather_factor, trend_factor, forecast_w, history_w_avg, weather_bullets, trend_bullet = rep
-        else:
-            weather_factor, trend_factor = 1.0, 1.0
-            forecast_w = _query_weather(db, None, payload.target_year, payload.target_month)
-            history_w_avg = {f: None for f in ("temp", "humidity", "rainfall", "aqi", "pm25")}
-            weather_bullets, trend_bullet = [], None
-    else:
-        (predicted, baseline, weather_factor, trend_factor, forecast_w,
-         history_w_avg, weather_bullets, trend_bullet, baseline_years) = _compute_one_region(region)
-        per_province = []
-
-    # predicted đã được tính ở trên (theo từng khu vực hoặc cộng dồn toàn quốc)
-    # ── Ghi đè bằng mô hình ML (MonthlyForecaster) ────────────────────────
-    # Tự huấn luyện trên dữ liệu mới nhất + dự báo. Nếu thất bại (thiếu data)
-    # thì giữ nguyên số heuristic ở trên làm fallback.
-    model_used = "multivariate_v1"
-    ml_accuracy: Dict[str, Any] | None = None
-    try:
-        from app.ai_engine.db_forecasting_service import DBForecastingService
-
-        ml_result = DBForecastingService(db).analyze(
-            icd_code=disease,
-            target_month=payload.target_month,
-            target_year=payload.target_year,
-            region=region,
-        )
-        predicted = int(ml_result["predicted_cases"])
-        fd = ml_result.get("formula_details", {}) or {}
-        # Ưu tiên baseline/hệ số từ mô hình để hiển thị nhất quán
-        baseline = float(fd.get("baseline", baseline) or baseline)
-        weather_factor = float(fd.get("weather_factor", weather_factor) or weather_factor)
-        trend_factor = float(fd.get("trend_factor", trend_factor) or trend_factor)
-        model_used = "monthly_forecaster_ml"
-        m = ml_result.get("model_metrics", {}) or {}
-        ml_accuracy = {
-            "mae": round(m.get("mae", 0), 2),
-            "rmse": round(m.get("rmse", 0), 2),
-            "mape": round(m.get("mape", 0), 2),
-            "r2": round(m.get("r2", 0), 3),
-            "n_samples": m.get("n_samples", 0),
+        history_w_avg = {
+            f: _cached_avg(f) for f in ("temp", "humidity", "rainfall", "aqi", "pm25")
         }
-    except Exception as exc:
-        logger.warning("ML forecast unavailable, fallback heuristic: %s", exc)
-
-    # ── Engine CHÍNH: ensemble NHÓM đã kiểm chứng walk-forward (09/08/2026) ──
-    # Heuristic cùng-kỳ và MonthlyForecaster phía trên chỉ còn là fallback: cả
-    # hai tựa vào trung bình nhiều năm nên bị dịch chuyển mức nền kéo tụt
-    # (đo thật trên T6/2026: dự báo 65 ca cho tháng thực tế ~110 — hụt ~40%).
-    # Ensemble học xu hướng + mùa vụ + thời tiết trên toàn chuỗi, CÙNG engine
-    # với trang Kế hoạch nhập kho — hai màn hình thống nhất một con số.
-    try:
-        from app.services.group_ensemble_service import du_bao_nhom
-        kq_ens = du_bao_nhom(db, disease, region,
-                             payload.target_year, payload.target_month)
-        if kq_ens is not None:
-            predicted = kq_ens["predicted"]
-            model_used = kq_ens["model_used"]
-            if kq_ens.get("accuracy"):
-                a = kq_ens["accuracy"]
-                ml_accuracy = {
-                    "mae": a["mae"], "rmse": a["mae"],  # rmse không đo ở bản nhanh
-                    "mape": a["wape"], "r2": 0,
-                    "n_samples": a["n_steps"],
-                    "accuracy_pct": a["accuracy_pct"],
-                }
-    except Exception:
-        logger.exception("Ensemble nhóm lỗi — dùng dự báo fallback")
+        weather_bullets = [cached.explanation] if cached.explanation else []
+        trend_bullet = None
 
     risk_level, increase_pct = _classify_risk(predicted, baseline)
 
@@ -694,211 +762,216 @@ async def analyze_forecast(
 
     explanation_text = " | ".join(explanation_bullets)[:1000]
 
-    # 7. Lưu lịch sử dự báo
-    forecast_date = date(payload.target_year, payload.target_month, 1)
-    disease_name_label = _disease_label(disease)
+    if cached is None:
+        # 7. Lưu lịch sử dự báo
+        forecast_date = date(payload.target_year, payload.target_month, 1)
+        disease_name_label = _disease_label(disease)
 
-    # Xóa các forecast cũ cho cùng (bệnh, tháng, khu vực) để tránh cộng dồn
-    # khi user bấm "Phân tích" nhiều lần — mỗi tháng × bệnh × khu vực chỉ giữ
-    # 1 forecast mới nhất.
-    old_forecasts = (
-        db.query(DiseaseForecast)
-        .filter(
-            DiseaseForecast.icd_code == disease,
-            DiseaseForecast.forecast_month == forecast_date,
-            DiseaseForecast.location == region,
-        )
-        .all()
-    )
-    if old_forecasts:
-        # Xoá supply_requirements liên kết để không leak FK
-        from app.models.supply_requirement import SupplyRequirement
-        old_ids = [f.id for f in old_forecasts]
-        db.query(SupplyRequirement).filter(
-            SupplyRequirement.forecast_id.in_(old_ids)
-        ).delete(synchronize_session=False)
-        for fc in old_forecasts:
-            db.delete(fc)
-        db.flush()
-        logger.info(
-            "Deleted %d stale forecast(s) for %s/%s/%s before re-saving",
-            len(old_forecasts), disease, forecast_date, region,
-        )
-
-    saved = DiseaseForecast(
-        forecast_month=forecast_date,
-        forecast_date=forecast_date,
-        icd_code=disease,
-        disease_name=disease_name_label,
-        disease_type="respiratory",
-        location=region,
-        predicted_cases=predicted,
-        confidence_lower=int(predicted * 0.85),
-        confidence_upper=int(predicted * 1.15),
-        model_used=model_used,
-        baseline_cases=int(baseline),
-        weather_factor=weather_factor,
-        trend_factor=trend_factor,
-        risk_level=risk_level,
-        explanation=explanation_text,
-        forecast_period_days=30,
-        created_by=current_user.username,
-    )
-    if ml_accuracy:
-        saved.model_accuracy_mae = ml_accuracy["mae"]
-        saved.model_accuracy_rmse = ml_accuracy["rmse"]
-        saved.model_accuracy_mape = ml_accuracy["mape"]
-    db.add(saved)
-    db.commit()
-    db.refresh(saved)
-
-    # Khi phân tích TOÀN QUỐC: lưu thêm dự báo của TỪNG TỈNH để bảng "Dữ liệu
-    # ca bệnh gần đây" hiển thị dự báo theo khu vực (không chỉ con số tổng).
-    if region is None and per_province:
-        for pp in per_province:
-            loc = pp["location"]
-            pred_p = pp["predicted"]
-            base_p = pp["baseline"]
-            rl_p, _ = _classify_risk(pred_p, base_p)
-            # Xoá forecast cũ của tỉnh này cho cùng tháng/bệnh
-            old_p = (
-                db.query(DiseaseForecast)
-                .filter(
-                    DiseaseForecast.icd_code == disease,
-                    DiseaseForecast.forecast_month == forecast_date,
-                    DiseaseForecast.location == loc,
-                )
-                .all()
+        # Xóa các forecast cũ cho cùng (bệnh, tháng, khu vực) để tránh cộng dồn
+        # khi user bấm "Phân tích" nhiều lần — mỗi tháng × bệnh × khu vực chỉ giữ
+        # 1 forecast mới nhất.
+        old_forecasts = (
+            db.query(DiseaseForecast)
+            .filter(
+                DiseaseForecast.icd_code == disease,
+                DiseaseForecast.forecast_month == forecast_date,
+                DiseaseForecast.location == region,
             )
-            for fc in old_p:
-                db.delete(fc)
-            db.add(DiseaseForecast(
-                forecast_month=forecast_date,
-                forecast_date=forecast_date,
-                icd_code=disease,
-                disease_name=disease_name_label,
-                disease_type="respiratory",
-                location=loc,
-                predicted_cases=pred_p,
-                confidence_lower=int(pred_p * 0.85),
-                confidence_upper=int(pred_p * 1.15),
-                model_used=model_used,
-                baseline_cases=int(base_p),
-                weather_factor=pp["weather_factor"],
-                trend_factor=pp["trend_factor"],
-                risk_level=rl_p,
-                forecast_period_days=30,
-                created_by=current_user.username,
-            ))
-        db.commit()
-
-    # Khi phân tích TOÀN QUỐC: lưu thêm dự báo cho TỪNG TỈNH để bảng
-    # "Dữ liệu ca bệnh gần đây" hiển thị số dự báo riêng từng khu vực.
-    if region is None:
-        try:
-            from app.ai_engine.db_forecasting_service import DBForecastingService
+            .all()
+        )
+        if old_forecasts:
+            # Xoá supply_requirements liên kết để không leak FK
             from app.models.supply_requirement import SupplyRequirement
+            old_ids = [f.id for f in old_forecasts]
+            db.query(SupplyRequirement).filter(
+                SupplyRequirement.forecast_id.in_(old_ids)
+            ).delete(synchronize_session=False)
+            for fc in old_forecasts:
+                db.delete(fc)
+            db.flush()
+            logger.info(
+                "Deleted %d stale forecast(s) for %s/%s/%s before re-saving",
+                len(old_forecasts), disease, forecast_date, region,
+            )
 
-            svc = DBForecastingService(db)
-            provinces_to_forecast = [
-                r[0] for r in db.query(DiseaseCase.location)
-                .filter(dieu_kien_benh(DiseaseCase, disease))
-                .distinct().all()
-                if r[0]
-            ]
-            for prov in provinces_to_forecast:
-                try:
-                    pr = svc.analyze(
-                        icd_code=disease,
-                        target_month=payload.target_month,
-                        target_year=payload.target_year,
-                        region=prov,
-                    )
-                    p_pred = int(pr["predicted_cases"])
-                    p_fd = pr.get("formula_details", {}) or {}
-                    p_base = float(p_fd.get("baseline", 0) or 0)
-                    p_risk, _ = _classify_risk(p_pred, p_base)
-                    p_m = pr.get("model_metrics", {}) or {}
-                except Exception:
-                    continue
+        saved = DiseaseForecast(
+            forecast_month=forecast_date,
+            forecast_date=forecast_date,
+            icd_code=disease,
+            disease_name=disease_name_label,
+            disease_type="respiratory",
+            location=region,
+            predicted_cases=predicted,
+            confidence_lower=int(predicted * 0.85),
+            confidence_upper=int(predicted * 1.15),
+            model_used=model_used,
+            baseline_cases=int(baseline),
+            weather_factor=weather_factor,
+            trend_factor=trend_factor,
+            risk_level=risk_level,
+            explanation=explanation_text,
+            forecast_period_days=30,
+            created_by=current_user.username,
+        )
+        if ml_accuracy:
+            saved.model_accuracy_mae = ml_accuracy["mae"]
+            saved.model_accuracy_rmse = ml_accuracy["rmse"]
+            saved.model_accuracy_mape = ml_accuracy["mape"]
+        db.add(saved)
+        db.commit()
+        db.refresh(saved)
 
-                # Xoá forecast cũ của tỉnh này (cùng bệnh, tháng)
-                old_prov = (
+        # Khi phân tích TOÀN QUỐC: lưu thêm dự báo của TỪNG TỈNH để bảng "Dữ liệu
+        # ca bệnh gần đây" hiển thị dự báo theo khu vực (không chỉ con số tổng).
+        if region is None and per_province:
+            for pp in per_province:
+                loc = pp["location"]
+                pred_p = pp["predicted"]
+                base_p = pp["baseline"]
+                rl_p, _ = _classify_risk(pred_p, base_p)
+                # Xoá forecast cũ của tỉnh này cho cùng tháng/bệnh
+                old_p = (
                     db.query(DiseaseForecast)
                     .filter(
                         DiseaseForecast.icd_code == disease,
                         DiseaseForecast.forecast_month == forecast_date,
-                        DiseaseForecast.location == prov,
+                        DiseaseForecast.location == loc,
                     )
                     .all()
                 )
-                if old_prov:
-                    old_ids = [f.id for f in old_prov]
-                    db.query(SupplyRequirement).filter(
-                        SupplyRequirement.forecast_id.in_(old_ids)
-                    ).delete(synchronize_session=False)
-                    for fc in old_prov:
-                        db.delete(fc)
-                    db.flush()
-
+                for fc in old_p:
+                    db.delete(fc)
                 db.add(DiseaseForecast(
                     forecast_month=forecast_date,
                     forecast_date=forecast_date,
                     icd_code=disease,
                     disease_name=disease_name_label,
                     disease_type="respiratory",
-                    location=prov,
-                    predicted_cases=p_pred,
-                    confidence_lower=int(p_pred * 0.85),
-                    confidence_upper=int(p_pred * 1.15),
+                    location=loc,
+                    predicted_cases=pred_p,
+                    confidence_lower=int(pred_p * 0.85),
+                    confidence_upper=int(pred_p * 1.15),
                     model_used=model_used,
-                    baseline_cases=int(p_base),
-                    risk_level=p_risk,
+                    baseline_cases=int(base_p),
+                    weather_factor=pp["weather_factor"],
+                    trend_factor=pp["trend_factor"],
+                    risk_level=rl_p,
                     forecast_period_days=30,
                     created_by=current_user.username,
-                    model_accuracy_mape=round(p_m.get("mape", 0), 2) if p_m else None,
                 ))
             db.commit()
+
+        # Khi phân tích TOÀN QUỐC: lưu thêm dự báo cho TỪNG TỈNH để bảng
+        # "Dữ liệu ca bệnh gần đây" hiển thị số dự báo riêng từng khu vực.
+        if region is None:
+            try:
+                from app.ai_engine.db_forecasting_service import DBForecastingService
+                from app.models.supply_requirement import SupplyRequirement
+
+                svc = DBForecastingService(db)
+                provinces_to_forecast = [
+                    r[0] for r in db.query(DiseaseCase.location)
+                    .filter(dieu_kien_benh(DiseaseCase, disease))
+                    .distinct().all()
+                    if r[0]
+                ]
+                for prov in provinces_to_forecast:
+                    try:
+                        pr = svc.analyze(
+                            icd_code=disease,
+                            target_month=payload.target_month,
+                            target_year=payload.target_year,
+                            region=prov,
+                        )
+                        p_pred = int(pr["predicted_cases"])
+                        p_fd = pr.get("formula_details", {}) or {}
+                        p_base = float(p_fd.get("baseline", 0) or 0)
+                        p_risk, _ = _classify_risk(p_pred, p_base)
+                        p_m = pr.get("model_metrics", {}) or {}
+                    except Exception:
+                        continue
+
+                    # Xoá forecast cũ của tỉnh này (cùng bệnh, tháng)
+                    old_prov = (
+                        db.query(DiseaseForecast)
+                        .filter(
+                            DiseaseForecast.icd_code == disease,
+                            DiseaseForecast.forecast_month == forecast_date,
+                            DiseaseForecast.location == prov,
+                        )
+                        .all()
+                    )
+                    if old_prov:
+                        old_ids = [f.id for f in old_prov]
+                        db.query(SupplyRequirement).filter(
+                            SupplyRequirement.forecast_id.in_(old_ids)
+                        ).delete(synchronize_session=False)
+                        for fc in old_prov:
+                            db.delete(fc)
+                        db.flush()
+
+                    db.add(DiseaseForecast(
+                        forecast_month=forecast_date,
+                        forecast_date=forecast_date,
+                        icd_code=disease,
+                        disease_name=disease_name_label,
+                        disease_type="respiratory",
+                        location=prov,
+                        predicted_cases=p_pred,
+                        confidence_lower=int(p_pred * 0.85),
+                        confidence_upper=int(p_pred * 1.15),
+                        model_used=model_used,
+                        baseline_cases=int(p_base),
+                        risk_level=p_risk,
+                        forecast_period_days=30,
+                        created_by=current_user.username,
+                        model_accuracy_mape=round(p_m.get("mape", 0), 2) if p_m else None,
+                    ))
+                db.commit()
+            except Exception as exc:
+                logger.warning("Per-province forecast save failed: %s", exc)
+                db.rollback()
+
+        # Spec 5 → Bước 5: tự sinh supply_requirements để Module 7 (/alerts) có data
+        try:
+            from app.services.supply_requirement_service import SupplyRequirementService
+
+            SupplyRequirementService(db).generate_requirements_for_forecast(saved.id)
         except Exception as exc:
-            logger.warning("Per-province forecast save failed: %s", exc)
-            db.rollback()
+            # Không block kết quả forecast nếu việc sinh requirement gặp lỗi
+            logger.warning(
+                "Failed to auto-generate supply requirements for forecast %s: %s",
+                saved.id,
+                exc,
+            )
 
-    # Spec 5 → Bước 5: tự sinh supply_requirements để Module 7 (/alerts) có data
-    try:
-        from app.services.supply_requirement_service import SupplyRequirementService
+        # Spec 5 → Bước 6: tự sinh alerts từ shortage hiện tại để Dashboard có cảnh báo
+        try:
+            from datetime import timedelta as _timedelta
+            from app.services.alert_service import AlertModule
 
-        SupplyRequirementService(db).generate_requirements_for_forecast(saved.id)
-    except Exception as exc:
-        # Không block kết quả forecast nếu việc sinh requirement gặp lỗi
-        logger.warning(
-            "Failed to auto-generate supply requirements for forecast %s: %s",
-            saved.id,
-            exc,
-        )
+            AlertModule(db).check_and_generate_alerts(
+                start_date=date.today(),
+                end_date=date.today() + _timedelta(days=60),
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to auto-generate alerts for forecast %s: %s",
+                saved.id,
+                exc,
+            )
 
-    # Spec 5 → Bước 6: tự sinh alerts từ shortage hiện tại để Dashboard có cảnh báo
-    try:
-        from datetime import timedelta as _timedelta
-        from app.services.alert_service import AlertModule
+        # Invalidate dashboard cache → dashboard cập nhật ngay (không chờ TTL 5')
+        try:
+            from app.api.v1.dashboard import invalidate_dashboard_cache
 
-        AlertModule(db).check_and_generate_alerts(
-            start_date=date.today(),
-            end_date=date.today() + _timedelta(days=60),
-        )
-    except Exception as exc:
-        logger.warning(
-            "Failed to auto-generate alerts for forecast %s: %s",
-            saved.id,
-            exc,
-        )
-
-    # Invalidate dashboard cache → dashboard cập nhật ngay (không chờ TTL 5')
-    try:
-        from app.api.v1.dashboard import invalidate_dashboard_cache
-
-        invalidate_dashboard_cache()
-    except Exception as exc:
-        logger.debug("Dashboard cache invalidate skipped: %s", exc)
+            invalidate_dashboard_cache()
+        except Exception as exc:
+            logger.debug("Dashboard cache invalidate skipped: %s", exc)
+    else:
+        # Đã có forecast lưu sẵn cho đúng bộ lọc — không ghi lại DB, không
+        # sinh lại supply_requirements/alerts (giữ nguyên bản đã sinh trước).
+        saved = cached
 
     return {
         "forecast": {
@@ -916,6 +989,8 @@ async def analyze_forecast(
             "target_month": payload.target_month,
             "target_year": payload.target_year,
             "model_used": model_used,
+            "from_cache": cached is not None,
+            "analyzed_at": saved.created_at.isoformat() if saved.created_at else None,
         },
         "accuracy": ml_accuracy,
         "explanation_bullets": explanation_bullets,
