@@ -307,6 +307,11 @@ export default function Forecasting() {
         <ForecastHistoryTable
           rows={history.data ?? []}
           isLoading={history.isLoading}
+          onChanged={() => {
+            history.refetch();
+            // Bản vừa xoá có thể chính là bản đang hiển thị ở tab Phân tích
+            queryClient.invalidateQueries({ queryKey: ['forecast', 'saved'] });
+          }}
         />
       ) : (
         <>

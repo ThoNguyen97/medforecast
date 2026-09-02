@@ -1,13 +1,60 @@
 import { useState } from 'react';
-import { Filter, Loader2 } from 'lucide-react';
-import type { ForecastHistoryItem } from '../../services/forecastAnalysisService';
+import { useMutation } from '@tanstack/react-query';
+import { AlertTriangle, Filter, Loader2, Trash2 } from 'lucide-react';
+import {
+  forecastAnalysisService,
+  type ForecastHistoryItem,
+} from '../../services/forecastAnalysisService';
+import { useAuthStore } from '../../store/authStore';
 
 interface Props {
   rows: ForecastHistoryItem[];
   isLoading?: boolean;
+  /** Gọi sau khi xoá để nạp lại danh sách. */
+  onChanged?: () => void;
 }
 
-export default function ForecastHistoryTable({ rows, isLoading }: Props) {
+/** Yêu cầu xác nhận đang chờ: xoá 1 dòng hay xoá sạch. */
+type YeuCauXoa =
+  | { kieu: 'mot'; row: ForecastHistoryItem }
+  | { kieu: 'tatca' };
+
+export default function ForecastHistoryTable({
+  rows,
+  isLoading,
+  onChanged,
+}: Props) {
+  const { user } = useAuthStore();
+  const laQuanTri = user?.role === 'Administrator';
+
+  /** Xoá được khi là người đã ghi nhận bản đó, hoặc là Quản trị viên.
+   *  (Backend kiểm tra lại y hệt — đây chỉ là phần hiển thị.) */
+  const duocXoa = (r: ForecastHistoryItem) =>
+    laQuanTri || (!!r.created_by && r.created_by === user?.username);
+
+  const [xacNhanXoa, setXacNhanXoa] = useState<YeuCauXoa | null>(null);
+  const [loiXoa, setLoiXoa] = useState<string | null>(null);
+
+  const xoaMot = useMutation({
+    mutationFn: (id: number) => forecastAnalysisService.deleteForecast(id),
+    onSuccess: () => {
+      setXacNhanXoa(null);
+      onChanged?.();
+    },
+    onError: (err: any) => setLoiXoa(err?.message || 'Không xoá được.'),
+  });
+
+  const xoaTatCa = useMutation({
+    mutationFn: () => forecastAnalysisService.deleteAllForecasts(),
+    onSuccess: () => {
+      setXacNhanXoa(null);
+      onChanged?.();
+    },
+    onError: (err: any) => setLoiXoa(err?.message || 'Không xoá được.'),
+  });
+
+  const dangXoa = xoaMot.isPending || xoaTatCa.isPending;
+
   const [showFilter, setShowFilter] = useState(false);
   const [filterMonth, setFilterMonth] = useState<string>('all'); // 'all' hoặc 'MM/YYYY'
   const [filterDisease, setFilterDisease] = useState<string>('all');
@@ -31,16 +78,32 @@ export default function ForecastHistoryTable({ rows, isLoading }: Props) {
         <h3 className="text-sm font-semibold text-neutral-900">
           Lịch sử dự báo gần đây
         </h3>
-        <button
-          type="button"
-          onClick={() => setShowFilter(!showFilter)}
-          className={`w-9 h-9 inline-flex items-center justify-center rounded-lg text-neutral-500 hover:text-neutral-700 hover:bg-neutral-50 ${
-            showFilter ? 'bg-blue-50 text-blue-600' : ''
-          }`}
-          aria-label="Lọc lịch sử"
-        >
-          <Filter className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          {laQuanTri && rows.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setLoiXoa(null);
+                setXacNhanXoa({ kieu: 'tatca' });
+              }}
+              disabled={dangXoa}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-red-700 bg-red-50 border border-red-200 hover:bg-red-100 disabled:opacity-50"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Xoá toàn bộ
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setShowFilter(!showFilter)}
+            className={`w-9 h-9 inline-flex items-center justify-center rounded-lg text-neutral-500 hover:text-neutral-700 hover:bg-neutral-50 ${
+              showFilter ? 'bg-blue-50 text-blue-600' : ''
+            }`}
+            aria-label="Lọc lịch sử"
+          >
+            <Filter className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Filter panel */}
@@ -112,12 +175,13 @@ export default function ForecastHistoryTable({ rows, isLoading }: Props) {
               <th className="text-left px-5 py-3 font-medium whitespace-nowrap">Độ lệch</th>
               <th className="text-left px-5 py-3 font-medium whitespace-nowrap">Ghi nhận lúc</th>
               <th className="text-left px-5 py-3 font-medium whitespace-nowrap">Người ghi nhận</th>
+              <th className="text-right px-5 py-3 font-medium w-24">Thao tác</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={8} className="py-8">
+                <td colSpan={9} className="py-8">
                   <div className="flex items-center justify-center gap-2 text-neutral-500 text-sm">
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Đang tải lịch sử...
@@ -126,13 +190,13 @@ export default function ForecastHistoryTable({ rows, isLoading }: Props) {
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={8} className="py-10 text-center text-sm text-neutral-400">
+                <td colSpan={9} className="py-10 text-center text-sm text-neutral-400">
                   Chưa có lịch sử dự báo
                 </td>
               </tr>
             ) : filteredRows.length === 0 ? (
               <tr>
-                <td colSpan={8} className="py-10 text-center text-sm text-neutral-400">
+                <td colSpan={9} className="py-10 text-center text-sm text-neutral-400">
                   Không tìm thấy kết quả phù hợp với bộ lọc
                 </td>
               </tr>
@@ -161,12 +225,112 @@ export default function ForecastHistoryTable({ rows, isLoading }: Props) {
                   <td className="px-5 py-3.5 text-neutral-600 whitespace-nowrap">
                     {r.created_by || '—'}
                   </td>
+                  <td className="px-5 py-3.5 text-right">
+                    <button
+                      type="button"
+                      disabled={!duocXoa(r) || dangXoa}
+                      onClick={() => {
+                        setLoiXoa(null);
+                        setXacNhanXoa({ kieu: 'mot', row: r });
+                      }}
+                      title={
+                        duocXoa(r)
+                          ? 'Xoá lần dự báo này'
+                          : 'Chỉ người đã ghi nhận hoặc Quản trị viên mới xoá được'
+                      }
+                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-red-600 hover:bg-red-50 disabled:text-neutral-300 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </td>
                 </tr>
               ))
             )}
           </tbody>
         </table>
       </div>
+
+      {/* Xác nhận xoá */}
+      {xacNhanXoa && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+            <div className="flex items-start gap-3 px-5 py-4 border-b border-neutral-100">
+              <div className="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <h3 className="text-base font-semibold text-neutral-900 mt-1.5">
+                {xacNhanXoa.kieu === 'tatca'
+                  ? 'Xoá toàn bộ lịch sử dự báo?'
+                  : 'Xoá lần dự báo này?'}
+              </h3>
+            </div>
+
+            <div className="px-5 py-4 space-y-2 text-sm text-neutral-700">
+              {xacNhanXoa.kieu === 'tatca' ? (
+                <>
+                  <p>
+                    Sẽ xoá <span className="font-semibold">{rows.length}</span> bản
+                    ghi dự báo của tất cả nhóm bệnh, tỉnh/thành và tháng.
+                  </p>
+                  <p className="text-neutral-500">
+                    Các nhu cầu vật tư đã sinh từ những dự báo này cũng bị xoá theo.
+                    Thao tác không hoàn tác được.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p>
+                    {xacNhanXoa.row.disease_label} · {xacNhanXoa.row.region} · tháng{' '}
+                    {xacNhanXoa.row.month} —{' '}
+                    <span className="font-semibold">
+                      {xacNhanXoa.row.predicted_cases.toLocaleString('vi-VN')}
+                    </span>{' '}
+                    ca dự báo.
+                  </p>
+                  <p className="text-neutral-500">Thao tác không hoàn tác được.</p>
+                </>
+              )}
+
+              {loiXoa && (
+                <p className="text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                  {loiXoa}
+                </p>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-neutral-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setXacNhanXoa(null);
+                  setLoiXoa(null);
+                }}
+                disabled={dangXoa}
+                className="px-4 py-2 text-sm font-medium text-neutral-700 bg-white border border-neutral-200 rounded-lg hover:bg-neutral-50 disabled:opacity-60"
+              >
+                Huỷ
+              </button>
+              <button
+                type="button"
+                disabled={dangXoa}
+                onClick={() => {
+                  setLoiXoa(null);
+                  if (xacNhanXoa.kieu === 'tatca') xoaTatCa.mutate();
+                  else xoaMot.mutate(xacNhanXoa.row.id);
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 disabled:opacity-60"
+              >
+                {dangXoa ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Trash2 className="w-4 h-4" />
+                )}
+                {xacNhanXoa.kieu === 'tatca' ? 'Xoá toàn bộ' : 'Xoá'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

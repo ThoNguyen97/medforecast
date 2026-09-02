@@ -203,6 +203,18 @@ export const forecastAnalysisService = {
     return res.data;
   },
 
+  /** Xoá MỘT lần dự báo đã ghi nhận (chủ sở hữu hoặc Quản trị viên). */
+  async deleteForecast(forecastId: number): Promise<{ deleted: number; id: number }> {
+    const res = await api.delete(`/forecast/${forecastId}`);
+    return res.data;
+  },
+
+  /** Xoá TOÀN BỘ lịch sử dự báo — chỉ Quản trị viên. */
+  async deleteAllForecasts(): Promise<{ deleted: number }> {
+    const res = await api.delete('/forecast/history');
+    return res.data;
+  },
+
   async updateActual(forecastId: number, actualCases: number) {
     const res = await api.post(`/forecast/${forecastId}/actual`, {
       actual_cases: actualCases,

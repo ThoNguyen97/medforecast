@@ -20,7 +20,7 @@ from sqlalchemy import extract, func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import get_admin_user, get_current_user
 from app.models.disease_case import DiseaseCase
 from app.utils.icd_groups import NHOM_ICD, dieu_kien_benh
 from app.models.disease_forecast import DiseaseForecast
@@ -1131,6 +1131,76 @@ async def get_forecast_history(
 
 class ActualUpdateRequest(BaseModel):
     actual_cases: int = Field(..., ge=0)
+
+
+def _xoa_requirements_lien_ket(db: Session, forecast_ids) -> None:
+    """Xoá supply_requirements trỏ tới các forecast sắp bị xoá (tránh treo FK)."""
+    from app.models.supply_requirement import SupplyRequirement
+
+    db.query(SupplyRequirement).filter(
+        SupplyRequirement.forecast_id.in_(forecast_ids)
+    ).delete(synchronize_session=False)
+
+
+@router.delete("/history")
+async def xoa_toan_bo_lich_su(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_admin_user),
+) -> Dict[str, Any]:
+    """Xoá TOÀN BỘ lịch sử dự báo — chỉ Quản trị viên.
+
+    get_admin_user chặn ngay ở tầng phụ thuộc: tài khoản không phải
+    Administrator sẽ nhận 403 trước khi vào thân hàm.
+    """
+    _xoa_requirements_lien_ket(db, db.query(DiseaseForecast.id))
+    so_dong = db.query(DiseaseForecast).delete(synchronize_session=False)
+    db.commit()
+    logger.warning(
+        "User=%s đã XOÁ TOÀN BỘ %d bản ghi lịch sử dự báo.",
+        current_user.username, so_dong,
+    )
+    return {"deleted": int(so_dong)}
+
+
+@router.delete("/{forecast_id}")
+async def xoa_mot_du_bao(
+    forecast_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Xoá MỘT lần dự báo đã ghi nhận.
+
+    Quyền: người đã ghi nhận bản đó (created_by), hoặc Quản trị viên.
+    """
+    fc = (
+        db.query(DiseaseForecast)
+        .filter(DiseaseForecast.id == forecast_id)
+        .first()
+    )
+    if fc is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Không tìm thấy dự báo {forecast_id}.",
+        )
+
+    la_quan_tri = current_user.role == "Administrator"
+    if not la_quan_tri and (fc.created_by or "") != current_user.username:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Chỉ người đã ghi nhận dự báo này hoặc Quản trị viên mới được xoá."
+            ),
+        )
+
+    _xoa_requirements_lien_ket(db, [fc.id])
+    db.delete(fc)
+    db.commit()
+    logger.info(
+        "User=%s đã xoá dự báo id=%s (%s / %s / %s).",
+        current_user.username, forecast_id, fc.icd_code,
+        fc.location or "Toàn quốc", fc.forecast_month,
+    )
+    return {"deleted": 1, "id": forecast_id}
 
 
 @router.post("/{forecast_id}/actual")
