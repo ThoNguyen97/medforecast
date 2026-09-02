@@ -32,6 +32,9 @@ import RecentMonthDataTable from '../components/forecasting/RecentMonthDataTable
 import ForecastHistoryTable from '../components/forecasting/ForecastHistoryTable';
 import { cn } from '../utils/cn';
 
+/** Khoá sessionStorage giữ bản phân tích chưa ghi nhận (kèm khoá bộ lọc). */
+const KHOA_PHAN_TICH_TAM = 'forecast_phan_tich_tam';
+
 /**
  * Module 5 — Phân tích & Dự báo số ca bệnh
  * Theo design của Smart Medical System.
@@ -77,9 +80,12 @@ export default function Forecasting() {
     localStorage.setItem('forecast_filters', JSON.stringify(filters));
   }, [filters]);
 
-  // Kết quả VỪA PHÂN TÍCH (chưa ghi nhận). Được ưu tiên hiển thị; tự xoá khi
-  // đổi bộ lọc. Bản ĐÃ GHI NHẬN do savedQuery bên dưới nạp về.
+  // Kết quả VỪA PHÂN TÍCH (chưa ghi nhận). Được ưu tiên hiển thị. Ngoài state,
+  // nó còn được gửi tạm vào sessionStorage kèm khoá bộ lọc: rời sang menu khác
+  // rồi quay lại là component bị huỷ, không lưu thì mất trắng công phân tích.
   const [phanTichMoi, setPhanTichMoi] = useState<AnalyzeResponse | null>(null);
+  /** Thời điểm chạy phân tích tạm (ms) — để hiện "Phân tích lúc ...". */
+  const [phanTichLuc, setPhanTichLuc] = useState<number | null>(null);
   const [exporting, setExporting] = useState(false);
 
   const { data: diseases = [] } = useDiseaseOptions();
@@ -125,6 +131,28 @@ export default function Forecasting() {
   // Hộp hỏi ghi đè khi kỳ này đã có dự báo được ghi nhận trước đó.
   const [xacNhanGhiDe, setXacNhanGhiDe] = useState<string | null>(null);
 
+  /** Khoá nhận dạng bộ lọc hiện tại — dùng cho bộ nhớ tạm. */
+  const khoaLoc = `${filters.disease}|${filters.province}|${filters.month}`;
+
+  const luuTam = (data: AnalyzeResponse, luc: number) => {
+    try {
+      sessionStorage.setItem(
+        KHOA_PHAN_TICH_TAM,
+        JSON.stringify({ khoa: khoaLoc, luc, ketQua: data }),
+      );
+    } catch {
+      // Hết chỗ lưu thì thôi — chỉ mất tiện ích, không ảnh hưởng kết quả.
+    }
+  };
+
+  const xoaTam = () => {
+    try {
+      sessionStorage.removeItem(KHOA_PHAN_TICH_TAM);
+    } catch {
+      /* bỏ qua */
+    }
+  };
+
   /** Payload theo đúng bộ lọc hiện tại; null nếu bộ lọc chưa đủ. */
   const buildPayload = () => {
     if (!filters.disease || !filters.month) return null;
@@ -144,7 +172,12 @@ export default function Forecasting() {
     analyze.mutate(
       { ...payload, save: false },
       {
-        onSuccess: (data) => setPhanTichMoi(data),
+        onSuccess: (data) => {
+          const luc = Date.now();
+          setPhanTichMoi(data);
+          setPhanTichLuc(luc);
+          luuTam(data, luc);
+        },
         onError: (err) => console.error('[Forecasting] analyze failed', err),
       },
     );
@@ -169,6 +202,8 @@ export default function Forecasting() {
             return;
           }
           setPhanTichMoi(data);
+          setPhanTichLuc(null);
+          xoaTam(); // đã nằm trong DB, không cần bản tạm nữa
           // Bản ghi nhận vừa tạo → làm mới cache đọc + lịch sử
           queryClient.invalidateQueries({ queryKey: ['forecast', 'saved'] });
           queryClient.invalidateQueries({ queryKey: ['forecast', 'history'] });
@@ -198,13 +233,26 @@ export default function Forecasting() {
   );
   const savedQuery = useSavedForecast(savedKey);
 
-  // Đổi bộ lọc → bỏ kết quả phân tích tạm của bộ lọc cũ.
+  // Mở trang / đổi bộ lọc: khôi phục bản phân tích tạm NẾU đúng bộ lọc này,
+  // ngược lại bỏ đi (tránh hiện kết quả của bộ lọc khác).
   useEffect(() => {
-    setPhanTichMoi(null);
     setXacNhanGhiDe(null);
     analyze.reset();
+    try {
+      const raw = sessionStorage.getItem(KHOA_PHAN_TICH_TAM);
+      const luu = raw ? JSON.parse(raw) : null;
+      if (luu && luu.khoa === khoaLoc && luu.ketQua) {
+        setPhanTichMoi(luu.ketQua as AnalyzeResponse);
+        setPhanTichLuc(typeof luu.luc === 'number' ? luu.luc : null);
+        return;
+      }
+    } catch {
+      /* dữ liệu tạm hỏng → coi như chưa có */
+    }
+    setPhanTichMoi(null);
+    setPhanTichLuc(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.disease, filters.province, filters.month]);
+  }, [khoaLoc]);
 
   // Ưu tiên bản vừa phân tích (chưa ghi nhận), nếu không có thì lấy bản đã ghi nhận.
   const displayResult = phanTichMoi ?? savedQuery.data ?? null;
@@ -341,6 +389,15 @@ export default function Forecasting() {
               </span>
               {daGhiNhan && analyzedAtLabel && (
                 <span>Ghi nhận lúc {analyzedAtLabel}</span>
+              )}
+              {!daGhiNhan && phanTichLuc && (
+                <span>
+                  Phân tích lúc{' '}
+                  {new Date(phanTichLuc).toLocaleString('vi-VN', {
+                    dateStyle: 'short',
+                    timeStyle: 'short',
+                  })}
+                </span>
               )}
 
               <button

@@ -115,6 +115,20 @@ def _risk_label(level: str) -> str:
     }.get(level, "—")
 
 
+def _dieu_kien_khu_vuc(region: Optional[str]):
+    """Điều kiện lọc DiseaseForecast theo khu vực, nhận mọi biến thể tên.
+
+    So bằng (==) sẽ trượt những bản ghi lưu dưới tên khác ("Thành phố Hồ Chí
+    Minh" vs "TP. Hồ Chí Minh"), khiến trang Phân tích báo "chưa ghi nhận"
+    trong khi dữ liệu vẫn nằm đó — và lần ghi nhận sau sẽ đẻ thêm một dòng
+    thứ hai cho cùng một nơi.
+    """
+    if region is None:
+        return DiseaseForecast.location.is_(None)
+    from app.utils.province_alias import province_aliases
+    return DiseaseForecast.location.in_(province_aliases(region))
+
+
 def _query_cases(
     db: Session,
     disease: str,
@@ -481,6 +495,71 @@ async def ml_analyze_forecast(
     }
 
 
+def _cap_nhat_dong_toan_quoc(
+    db: Session,
+    disease: str,
+    forecast_date: date,
+    disease_name_label: str,
+    created_by: str,
+) -> int:
+    """Đặt lại dòng TOÀN QUỐC (location=NULL) = TỔNG các dòng theo tỉnh.
+
+    Toàn quốc được định nghĩa là tổng các tỉnh, nên mỗi khi một tỉnh được ghi
+    nhận lẻ thì dòng tổng phải chạy theo — nếu không, hai con số của cùng một
+    kỳ sẽ mâu thuẫn ngay trong bảng lịch sử.
+    """
+    tong, tong_nen = (
+        db.query(
+            func.coalesce(func.sum(DiseaseForecast.predicted_cases), 0),
+            func.coalesce(func.sum(DiseaseForecast.baseline_cases), 0),
+        )
+        .filter(
+            DiseaseForecast.icd_code == disease,
+            DiseaseForecast.forecast_month == forecast_date,
+            DiseaseForecast.location.isnot(None),
+        )
+        .first()
+    )
+    tong, tong_nen = int(tong or 0), float(tong_nen or 0)
+    muc_rui_ro, _ = _classify_risk(tong, tong_nen)
+
+    dong = (
+        db.query(DiseaseForecast)
+        .filter(
+            DiseaseForecast.icd_code == disease,
+            DiseaseForecast.forecast_month == forecast_date,
+            DiseaseForecast.location.is_(None),
+        )
+        .order_by(DiseaseForecast.created_at.desc())
+        .first()
+    )
+    if dong is None:
+        dong = DiseaseForecast(
+            forecast_month=forecast_date,
+            forecast_date=forecast_date,
+            icd_code=disease,
+            disease_name=disease_name_label,
+            disease_type="respiratory",
+            location=None,
+            forecast_period_days=30,
+            created_by=created_by,
+        )
+        db.add(dong)
+
+    dong.predicted_cases = tong
+    dong.baseline_cases = int(tong_nen)
+    dong.confidence_lower = int(tong * 0.85)
+    dong.confidence_upper = int(tong * 1.15)
+    dong.risk_level = muc_rui_ro
+    dong.model_used = "tong_hop_tinh_v1"
+    db.commit()
+    logger.info(
+        "Cập nhật dòng toàn quốc %s/%s = %d ca (tổng các tỉnh).",
+        disease, forecast_date, tong,
+    )
+    return tong
+
+
 @router.post("/analyze")
 async def analyze_forecast(
     payload: AnalyzeRequest,
@@ -493,6 +572,11 @@ async def analyze_forecast(
     """
     disease = _norm_disease(payload.disease_type)
     region = payload.region.strip() if payload.region and payload.region != "all" else None
+    if region:
+        # Chuẩn hoá ngay tại cửa vào: mọi thứ ghi xuống DB và mọi phép tra cứu
+        # đều dùng một tên duy nhất cho mỗi tỉnh.
+        from app.utils.province_alias import ten_chuan
+        region = ten_chuan(region)
 
     chi_tai = payload.chi_tai_ban_da_luu
     # Chế độ chỉ-nạp không bao giờ ghi DB (bảo vệ luôn cả trường hợp gọi API
@@ -509,7 +593,7 @@ async def analyze_forecast(
         .filter(
             DiseaseForecast.icd_code == disease,
             DiseaseForecast.forecast_month == forecast_date,
-            DiseaseForecast.location == region,
+            _dieu_kien_khu_vuc(region),
         )
         .order_by(DiseaseForecast.created_at.desc())
         .first()
@@ -582,12 +666,17 @@ async def analyze_forecast(
 
         if region is None:
             # Toàn quốc = Σ forecast từng tỉnh có data
-            provinces = [
-                r[0] for r in db.query(DiseaseCase.location)
+            # Chuẩn hoá + khử trùng: disease_cases có thể chứa nhiều cách
+            # viết của cùng một tỉnh. Không gộp thì mỗi biến thể thành một
+            # "tỉnh" riêng và bị CỘNG HAI LẦN vào tổng toàn quốc (mọi truy vấn
+            # đều dùng alias nên hai biến thể trả về cùng một con số).
+            from app.utils.province_alias import ten_chuan
+            provinces = sorted({
+                ten_chuan(r[0]) for r in db.query(DiseaseCase.location)
                 .filter(dieu_kien_benh(DiseaseCase, disease))
                 .distinct().all()
                 if r[0]
-            ]
+            })
             predicted = 0
             baseline = 0.0
             baseline_years_set: set[int] = set()
@@ -663,21 +752,54 @@ async def analyze_forecast(
         # (đo thật trên T6/2026: dự báo 65 ca cho tháng thực tế ~110 — hụt ~40%).
         # Ensemble học xu hướng + mùa vụ + thời tiết trên toàn chuỗi, CÙNG engine
         # với trang Kế hoạch nhập kho — hai màn hình thống nhất một con số.
+        def _accuracy_tu_ensemble(a):
+            return {
+                "mae": a["mae"], "rmse": a["mae"],  # rmse không đo ở bản nhanh
+                "mape": a["wape"], "r2": 0,
+                "n_samples": a["n_steps"],
+                "accuracy_pct": a["accuracy_pct"],
+            }
+
         try:
             from app.services.group_ensemble_service import du_bao_nhom
-            kq_ens = du_bao_nhom(db, disease, region,
-                                 payload.target_year, payload.target_month)
-            if kq_ens is not None:
-                predicted = kq_ens["predicted"]
-                model_used = kq_ens["model_used"]
-                if kq_ens.get("accuracy"):
-                    a = kq_ens["accuracy"]
-                    ml_accuracy = {
-                        "mae": a["mae"], "rmse": a["mae"],  # rmse không đo ở bản nhanh
-                        "mape": a["wape"], "r2": 0,
-                        "n_samples": a["n_steps"],
-                        "accuracy_pct": a["accuracy_pct"],
-                    }
+
+            if region is None:
+                # ── TOÀN QUỐC = TỔNG dự báo của từng tỉnh (bottom-up) ──────
+                # Trước đây toàn quốc được mô hình hoá độc lập trên chuỗi đã
+                # gộp, còn các dòng theo tỉnh lại do MonthlyForecaster ghi —
+                # ba con số của cùng một kỳ không khớp nhau (đo thật: toàn
+                # quốc 213, dòng TP.HCM 122, phân tích riêng TP.HCM 168).
+                # Nay chỉ còn MỘT cách tính: mỗi tỉnh chạy đúng engine như khi
+                # phân tích riêng tỉnh đó, rồi cộng lại.
+                tong = 0
+                acc_dai_dien, ca_lon_nhat = None, -1
+                for pp in per_province:
+                    kq_t = du_bao_nhom(db, disease, pp["location"],
+                                       payload.target_year, payload.target_month)
+                    if kq_t is not None:
+                        pp["predicted"] = kq_t["predicted"]
+                        if kq_t.get("accuracy") and kq_t["predicted"] > ca_lon_nhat:
+                            ca_lon_nhat = kq_t["predicted"]
+                            acc_dai_dien = kq_t["accuracy"]
+                    # kq_t is None: tỉnh chưa đủ 18 tháng lịch sử → giữ số
+                    # heuristic đã tính ở trên làm ước lượng thay thế.
+                    tong += pp["predicted"]
+
+                if per_province:
+                    predicted = tong
+                    model_used = "tong_hop_tinh_v1"
+                    # Độ chính xác lấy theo tỉnh đóng góp nhiều ca nhất — đại
+                    # diện sát nhất cho tổng, vì tổng do tỉnh đó chi phối.
+                    if acc_dai_dien:
+                        ml_accuracy = _accuracy_tu_ensemble(acc_dai_dien)
+            else:
+                kq_ens = du_bao_nhom(db, disease, region,
+                                     payload.target_year, payload.target_month)
+                if kq_ens is not None:
+                    predicted = kq_ens["predicted"]
+                    model_used = kq_ens["model_used"]
+                    if kq_ens.get("accuracy"):
+                        ml_accuracy = _accuracy_tu_ensemble(kq_ens["accuracy"])
         except Exception:
             logger.exception("Ensemble nhóm lỗi — dùng dự báo fallback")
     else:
@@ -822,7 +944,7 @@ async def analyze_forecast(
             .filter(
                 DiseaseForecast.icd_code == disease,
                 DiseaseForecast.forecast_month == forecast_date,
-                DiseaseForecast.location == region,
+                _dieu_kien_khu_vuc(region),
             )
             .all()
         )
@@ -908,75 +1030,18 @@ async def analyze_forecast(
                 ))
             db.commit()
 
-        # Khi phân tích TOÀN QUỐC: lưu thêm dự báo cho TỪNG TỈNH để bảng
-        # "Dữ liệu ca bệnh gần đây" hiển thị số dự báo riêng từng khu vực.
-        if region is None:
+
+        # Ghi nhận LẺ một tỉnh → dòng toàn quốc phải chạy theo (toàn quốc =
+        # tổng các tỉnh). Khi ghi nhận Toàn quốc thì `saved` đã chính là tổng
+        # nên không cần tính lại.
+        if region is not None:
             try:
-                from app.ai_engine.db_forecasting_service import DBForecastingService
-                from app.models.supply_requirement import SupplyRequirement
-
-                svc = DBForecastingService(db)
-                provinces_to_forecast = [
-                    r[0] for r in db.query(DiseaseCase.location)
-                    .filter(dieu_kien_benh(DiseaseCase, disease))
-                    .distinct().all()
-                    if r[0]
-                ]
-                for prov in provinces_to_forecast:
-                    try:
-                        pr = svc.analyze(
-                            icd_code=disease,
-                            target_month=payload.target_month,
-                            target_year=payload.target_year,
-                            region=prov,
-                        )
-                        p_pred = int(pr["predicted_cases"])
-                        p_fd = pr.get("formula_details", {}) or {}
-                        p_base = float(p_fd.get("baseline", 0) or 0)
-                        p_risk, _ = _classify_risk(p_pred, p_base)
-                        p_m = pr.get("model_metrics", {}) or {}
-                    except Exception:
-                        continue
-
-                    # Xoá forecast cũ của tỉnh này (cùng bệnh, tháng)
-                    old_prov = (
-                        db.query(DiseaseForecast)
-                        .filter(
-                            DiseaseForecast.icd_code == disease,
-                            DiseaseForecast.forecast_month == forecast_date,
-                            DiseaseForecast.location == prov,
-                        )
-                        .all()
-                    )
-                    if old_prov:
-                        old_ids = [f.id for f in old_prov]
-                        db.query(SupplyRequirement).filter(
-                            SupplyRequirement.forecast_id.in_(old_ids)
-                        ).delete(synchronize_session=False)
-                        for fc in old_prov:
-                            db.delete(fc)
-                        db.flush()
-
-                    db.add(DiseaseForecast(
-                        forecast_month=forecast_date,
-                        forecast_date=forecast_date,
-                        icd_code=disease,
-                        disease_name=disease_name_label,
-                        disease_type="respiratory",
-                        location=prov,
-                        predicted_cases=p_pred,
-                        confidence_lower=int(p_pred * 0.85),
-                        confidence_upper=int(p_pred * 1.15),
-                        model_used=model_used,
-                        baseline_cases=int(p_base),
-                        risk_level=p_risk,
-                        forecast_period_days=30,
-                        created_by=current_user.username,
-                        model_accuracy_mape=round(p_m.get("mape", 0), 2) if p_m else None,
-                    ))
-                db.commit()
+                _cap_nhat_dong_toan_quoc(
+                    db, disease, forecast_date,
+                    disease_name_label, current_user.username,
+                )
             except Exception as exc:
-                logger.warning("Per-province forecast save failed: %s", exc)
+                logger.warning("Không cập nhật được dòng toàn quốc: %s", exc)
                 db.rollback()
 
         # Spec 5 → Bước 5: tự sinh supply_requirements để Module 7 (/alerts) có data
@@ -1118,6 +1183,9 @@ async def get_forecast_history(
                 "icd_code": r.icd_code,
                 "disease_label": r.disease_name or _disease_label(r.icd_code),
                 "region": r.location or "Toàn thành phố",
+                # Dòng TỔNG (location=NULL) — bảng lịch sử phải loại ra, nếu
+                # không sẽ cộng hai lần vì nó đã là tổng của các tỉnh.
+                "is_nationwide": r.location is None,
                 "predicted_cases": r.predicted_cases,
                 "actual_cases": actual,
                 "deviation_pct": deviation,

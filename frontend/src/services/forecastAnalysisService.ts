@@ -98,6 +98,9 @@ export interface ForecastHistoryItem {
   created_at: string | null;
   /** Tài khoản đã ghi nhận dự báo này. */
   created_by: string | null;
+  /** true = dòng TỔNG toàn quốc (location=NULL); bảng lịch sử loại ra để
+   *  không cộng hai lần, vì nó đã là tổng của các tỉnh. */
+  is_nationwide?: boolean;
 }
 
 export interface ModelAccuracy {

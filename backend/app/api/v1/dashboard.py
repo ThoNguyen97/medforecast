@@ -700,15 +700,17 @@ async def get_dashboard_summary(
         else 0.0
     )
 
-    # 2. Số ca dự báo - Lấy từ DiseaseForecast (tháng hiện tại, location=NULL)
-    # Lấy dự báo toàn quốc (location=NULL) của tháng hiện tại
+    # 2. Số ca dự báo — CỘNG các dòng THEO TỈNH của tháng đó.
+    #    Không cộng dòng location=NULL: dòng đó chính là tổng các tỉnh, gộp
+    #    vào sẽ đếm gấp đôi. Trước đây thẻ này chỉ đọc dòng location=NULL nên
+    #    đứng yên ở 0 khi người dùng chỉ ghi nhận dự báo theo tỉnh.
     def _sum_forecast(y: int, m: int) -> int:
         return (
             db.query(func.coalesce(func.sum(DiseaseForecast.predicted_cases), 0))
             .filter(
                 extract('year', DiseaseForecast.forecast_date) == y,
                 extract('month', DiseaseForecast.forecast_date) == m,
-                DiseaseForecast.location.is_(None),  # Chỉ lấy toàn quốc
+                DiseaseForecast.location.isnot(None),
             )
             .scalar()
             or 0
@@ -724,7 +726,7 @@ async def get_dashboard_summary(
         # Fallback: chưa có dự báo cho tháng kế tiếp → dùng tháng dự báo mới nhất đã lưu
         _latest_fc = (
             db.query(func.max(DiseaseForecast.forecast_date))
-            .filter(DiseaseForecast.location.is_(None))
+            .filter(DiseaseForecast.location.isnot(None))
             .scalar()
         )
         if _latest_fc is not None:

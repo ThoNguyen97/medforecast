@@ -1,6 +1,13 @@
-import { useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { AlertTriangle, Filter, Loader2, Trash2 } from 'lucide-react';
+import {
+  AlertTriangle,
+  ChevronDown,
+  ChevronRight,
+  Filter,
+  Loader2,
+  Trash2,
+} from 'lucide-react';
 import {
   forecastAnalysisService,
   type ForecastHistoryItem,
@@ -14,10 +21,39 @@ interface Props {
   onChanged?: () => void;
 }
 
-/** Yêu cầu xác nhận đang chờ: xoá 1 dòng hay xoá sạch. */
 type YeuCauXoa =
   | { kieu: 'mot'; row: ForecastHistoryItem }
   | { kieu: 'tatca' };
+
+/** Số liệu cộng dồn dùng chung cho mọi cấp của cây. */
+interface TongHop {
+  duBao: number;
+  thucTe: number | null;
+  /** Thời điểm ghi nhận gần nhất trong nhánh. */
+  ghiNhanLuc: string | null;
+}
+
+/** Độ lệch tính lại từ TỔNG, không phải trung bình các phần trăm con. */
+function doLech(t: TongHop): number | null {
+  if (t.thucTe === null || t.thucTe <= 0) return null;
+  return ((t.duBao - t.thucTe) / t.thucTe) * 100;
+}
+
+function cong(ds: ForecastHistoryItem[]): TongHop {
+  let duBao = 0;
+  let thucTe: number | null = null;
+  let ghiNhanLuc: string | null = null;
+  for (const r of ds) {
+    duBao += r.predicted_cases ?? 0;
+    if (r.actual_cases !== null && r.actual_cases !== undefined) {
+      thucTe = (thucTe ?? 0) + r.actual_cases;
+    }
+    if (r.created_at && (!ghiNhanLuc || r.created_at > ghiNhanLuc)) {
+      ghiNhanLuc = r.created_at;
+    }
+  }
+  return { duBao, thucTe, ghiNhanLuc };
+}
 
 export default function ForecastHistoryTable({
   rows,
@@ -34,6 +70,11 @@ export default function ForecastHistoryTable({
 
   const [xacNhanXoa, setXacNhanXoa] = useState<YeuCauXoa | null>(null);
   const [loiXoa, setLoiXoa] = useState<string | null>(null);
+  const [showFilter, setShowFilter] = useState(false);
+  const [filterMonth, setFilterMonth] = useState<string>('all');
+  const [filterDisease, setFilterDisease] = useState<string>('all');
+  /** Nút đang mở, khoá dạng "10/2026" (cấp tháng) và "10/2026|Cúm..." (cấp nhóm). */
+  const [dangMo, setDangMo] = useState<Record<string, boolean>>({});
 
   const xoaMot = useMutation({
     mutationFn: (id: number) => forecastAnalysisService.deleteForecast(id),
@@ -55,22 +96,65 @@ export default function ForecastHistoryTable({
 
   const dangXoa = xoaMot.isPending || xoaTatCa.isPending;
 
-  const [showFilter, setShowFilter] = useState(false);
-  const [filterMonth, setFilterMonth] = useState<string>('all'); // 'all' hoặc 'MM/YYYY'
-  const [filterDisease, setFilterDisease] = useState<string>('all');
+  // Bỏ dòng TỔNG toàn quốc: cấp tháng và cấp nhóm bệnh đã tự cộng từ các tỉnh,
+  // giữ lại sẽ thành đếm hai lần.
+  const rowsChiTiet = useMemo(
+    () => rows.filter((r) => !r.is_nationwide),
+    [rows],
+  );
 
-  // Lấy danh sách unique tháng và bệnh từ rows
-  const uniqueMonths = Array.from(new Set(rows.map((r) => r.month))).sort();
-  const uniqueDiseases = Array.from(
-    new Set(rows.map((r) => r.disease_label))
-  ).sort();
+  const uniqueMonths = useMemo(
+    () => Array.from(new Set(rowsChiTiet.map((r) => r.month))).sort(),
+    [rowsChiTiet],
+  );
+  const uniqueDiseases = useMemo(
+    () => Array.from(new Set(rowsChiTiet.map((r) => r.disease_label))).sort(),
+    [rowsChiTiet],
+  );
 
-  // Lọc rows theo filter
-  const filteredRows = rows.filter((r) => {
-    if (filterMonth !== 'all' && r.month !== filterMonth) return false;
-    if (filterDisease !== 'all' && r.disease_label !== filterDisease) return false;
-    return true;
-  });
+  const filteredRows = useMemo(
+    () =>
+      rowsChiTiet.filter((r) => {
+        if (filterMonth !== 'all' && r.month !== filterMonth) return false;
+        if (filterDisease !== 'all' && r.disease_label !== filterDisease)
+          return false;
+        return true;
+      }),
+    [rowsChiTiet, filterMonth, filterDisease],
+  );
+
+  /** Cây 3 cấp: tháng → nhóm bệnh → từng tỉnh. */
+  const cay = useMemo(() => {
+    const theoThang = new Map<string, Map<string, ForecastHistoryItem[]>>();
+    for (const r of filteredRows) {
+      if (!theoThang.has(r.month)) theoThang.set(r.month, new Map());
+      const nhom = theoThang.get(r.month)!;
+      if (!nhom.has(r.disease_label)) nhom.set(r.disease_label, []);
+      nhom.get(r.disease_label)!.push(r);
+    }
+    return Array.from(theoThang.entries())
+      .sort((a, b) => b[0].localeCompare(a[0])) // tháng mới nhất lên đầu
+      .map(([thang, nhomMap]) => ({
+        thang,
+        tong: cong(Array.from(nhomMap.values()).flat()),
+        nhoms: Array.from(nhomMap.entries())
+          .sort((a, b) => a[0].localeCompare(b[0], 'vi'))
+          .map(([tenNhom, ds]) => ({
+            tenNhom,
+            tong: cong(ds),
+            chiTiet: [...ds].sort(
+              (a, b) => (b.predicted_cases ?? 0) - (a.predicted_cases ?? 0),
+            ),
+          })),
+      }));
+  }, [filteredRows]);
+
+  const bat = (khoa: string) =>
+    setDangMo((m) => ({ ...m, [khoa]: !(m[khoa] ?? false) }));
+  // Mặc định mở hết cả ba cấp — thấy ngay chi tiết từng tỉnh; ai muốn gọn thì
+  // tự thu lại.
+  const moThang = (k: string) => dangMo[k] ?? true;
+  const moNhom = (k: string) => dangMo[k] ?? true;
 
   return (
     <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden">
@@ -79,7 +163,7 @@ export default function ForecastHistoryTable({
           Lịch sử dự báo gần đây
         </h3>
         <div className="flex items-center gap-1">
-          {laQuanTri && rows.length > 0 && (
+          {laQuanTri && rowsChiTiet.length > 0 && (
             <button
               type="button"
               onClick={() => {
@@ -106,7 +190,6 @@ export default function ForecastHistoryTable({
         </div>
       </div>
 
-      {/* Filter panel */}
       {showFilter && (
         <div className="px-5 py-3 bg-neutral-50 border-y border-neutral-100 space-y-3">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -166,85 +249,150 @@ export default function ForecastHistoryTable({
         <table className="w-full text-sm">
           <thead>
             <tr className="text-neutral-500 text-xs border-y border-neutral-100">
-              {/* Ba cột đầu là khóa của một lần dự báo */}
-              <th className="text-left px-5 py-3 font-medium whitespace-nowrap">Tháng dự báo</th>
-              <th className="text-left px-5 py-3 font-medium whitespace-nowrap">Nhóm bệnh</th>
-              <th className="text-left px-5 py-3 font-medium whitespace-nowrap">Tỉnh/Thành phố</th>
-              <th className="text-left px-5 py-3 font-medium whitespace-nowrap">Số ca dự báo</th>
-              <th className="text-left px-5 py-3 font-medium whitespace-nowrap">Số ca thực tế</th>
-              <th className="text-left px-5 py-3 font-medium whitespace-nowrap">Độ lệch</th>
+              <th className="text-left px-5 py-3 font-medium">
+                Tháng / Nhóm bệnh / Tỉnh, thành phố
+              </th>
+              <th className="text-right px-5 py-3 font-medium whitespace-nowrap">Số ca dự báo</th>
+              <th className="text-right px-5 py-3 font-medium whitespace-nowrap">Số ca thực tế</th>
+              <th className="text-right px-5 py-3 font-medium whitespace-nowrap">Độ lệch</th>
               <th className="text-left px-5 py-3 font-medium whitespace-nowrap">Ghi nhận lúc</th>
               <th className="text-left px-5 py-3 font-medium whitespace-nowrap">Người ghi nhận</th>
-              <th className="text-right px-5 py-3 font-medium w-24">Thao tác</th>
+              <th className="text-right px-5 py-3 font-medium w-20">Thao tác</th>
             </tr>
           </thead>
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={9} className="py-8">
+                <td colSpan={7} className="py-8">
                   <div className="flex items-center justify-center gap-2 text-neutral-500 text-sm">
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Đang tải lịch sử...
                   </div>
                 </td>
               </tr>
-            ) : rows.length === 0 ? (
+            ) : rowsChiTiet.length === 0 ? (
               <tr>
-                <td colSpan={9} className="py-10 text-center text-sm text-neutral-400">
+                <td colSpan={7} className="py-10 text-center text-sm text-neutral-400">
                   Chưa có lịch sử dự báo
                 </td>
               </tr>
-            ) : filteredRows.length === 0 ? (
+            ) : cay.length === 0 ? (
               <tr>
-                <td colSpan={9} className="py-10 text-center text-sm text-neutral-400">
+                <td colSpan={7} className="py-10 text-center text-sm text-neutral-400">
                   Không tìm thấy kết quả phù hợp với bộ lọc
                 </td>
               </tr>
             ) : (
-              filteredRows.map((r) => (
-                <tr key={r.id} className="border-t border-neutral-100">
-                  <td className="px-5 py-3.5 text-neutral-700 whitespace-nowrap">
-                    Tháng {r.month}
-                  </td>
-                  <td className="px-5 py-3.5 text-neutral-700">{r.disease_label}</td>
-                  <td className="px-5 py-3.5 text-neutral-700">{r.region}</td>
-                  <td className="px-5 py-3.5 text-neutral-700 tabular-nums">
-                    {r.predicted_cases.toLocaleString('vi-VN')}
-                  </td>
-                  <td className="px-5 py-3.5 text-neutral-700 tabular-nums">
-                    {r.actual_cases !== null
-                      ? r.actual_cases.toLocaleString('vi-VN')
-                      : '—'}
-                  </td>
-                  <td className="px-5 py-3.5">
-                    <DeviationPill value={r.deviation_pct} />
-                  </td>
-                  <td className="px-5 py-3.5 text-neutral-600 whitespace-nowrap">
-                    {formatThoiGian(r.created_at)}
-                  </td>
-                  <td className="px-5 py-3.5 text-neutral-600 whitespace-nowrap">
-                    {r.created_by || '—'}
-                  </td>
-                  <td className="px-5 py-3.5 text-right">
-                    <button
-                      type="button"
-                      disabled={!duocXoa(r) || dangXoa}
-                      onClick={() => {
-                        setLoiXoa(null);
-                        setXacNhanXoa({ kieu: 'mot', row: r });
-                      }}
-                      title={
-                        duocXoa(r)
-                          ? 'Xoá lần dự báo này'
-                          : 'Chỉ người đã ghi nhận hoặc Quản trị viên mới xoá được'
-                      }
-                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-red-600 hover:bg-red-50 disabled:text-neutral-300 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+              cay.map((thangNode) => {
+                const khoaThang = thangNode.thang;
+                const mo = moThang(khoaThang);
+                return (
+                  <Fragment key={khoaThang}>
+                    {/* CẤP 1 — tháng */}
+                    <tr
+                      onClick={() => bat(khoaThang)}
+                      className="border-t border-neutral-100 bg-neutral-50/70 cursor-pointer hover:bg-neutral-100/70"
                     >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))
+                      <td className="px-5 py-3 font-semibold text-neutral-900">
+                        <span className="inline-flex items-center gap-1.5">
+                          {mo ? (
+                            <ChevronDown className="w-4 h-4 text-neutral-500" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4 text-neutral-500" />
+                          )}
+                          Tháng {thangNode.thang}
+                        </span>
+                      </td>
+                      <OTong tong={thangNode.tong} dam />
+                      <td className="px-5 py-3 text-xs text-neutral-500 whitespace-nowrap">
+                        {formatThoiGian(thangNode.tong.ghiNhanLuc)}
+                      </td>
+                      <td />
+                      <td />
+                    </tr>
+
+                    {mo &&
+                      thangNode.nhoms.map((nhomNode) => {
+                        const khoaNhom = `${khoaThang}|${nhomNode.tenNhom}`;
+                        const moN = moNhom(khoaNhom);
+                        return (
+                          <Fragment key={khoaNhom}>
+                            {/* CẤP 2 — nhóm bệnh */}
+                            <tr
+                              onClick={() => bat(khoaNhom)}
+                              className="border-t border-neutral-100 cursor-pointer hover:bg-neutral-50"
+                            >
+                              <td className="px-5 py-2.5 pl-10 font-medium text-neutral-800">
+                                <span className="inline-flex items-center gap-1.5">
+                                  {moN ? (
+                                    <ChevronDown className="w-3.5 h-3.5 text-neutral-400" />
+                                  ) : (
+                                    <ChevronRight className="w-3.5 h-3.5 text-neutral-400" />
+                                  )}
+                                  {nhomNode.tenNhom}
+                                </span>
+                              </td>
+                              <OTong tong={nhomNode.tong} />
+                              <td className="px-5 py-2.5 text-xs text-neutral-500 whitespace-nowrap">
+                                {formatThoiGian(nhomNode.tong.ghiNhanLuc)}
+                              </td>
+                              <td />
+                              <td />
+                            </tr>
+
+                            {/* CẤP 3 — từng tỉnh */}
+                            {moN &&
+                              nhomNode.chiTiet.map((r) => (
+                                <tr
+                                  key={r.id}
+                                  className="border-t border-neutral-100"
+                                >
+                                  <td className="px-5 py-2.5 pl-[4.5rem] text-neutral-600">
+                                    {r.region}
+                                  </td>
+                                  <td className="px-5 py-2.5 text-right tabular-nums text-neutral-700">
+                                    {r.predicted_cases.toLocaleString('vi-VN')}
+                                  </td>
+                                  <td className="px-5 py-2.5 text-right tabular-nums text-neutral-700">
+                                    {r.actual_cases !== null
+                                      ? r.actual_cases.toLocaleString('vi-VN')
+                                      : '—'}
+                                  </td>
+                                  <td className="px-5 py-2.5 text-right">
+                                    <PhanTramLech value={r.deviation_pct} />
+                                  </td>
+                                  <td className="px-5 py-2.5 text-xs text-neutral-500 whitespace-nowrap">
+                                    {formatThoiGian(r.created_at)}
+                                  </td>
+                                  <td className="px-5 py-2.5 text-neutral-600 whitespace-nowrap">
+                                    {r.created_by || '—'}
+                                  </td>
+                                  <td className="px-5 py-2.5 text-right">
+                                    <button
+                                      type="button"
+                                      disabled={!duocXoa(r) || dangXoa}
+                                      onClick={() => {
+                                        setLoiXoa(null);
+                                        setXacNhanXoa({ kieu: 'mot', row: r });
+                                      }}
+                                      title={
+                                        duocXoa(r)
+                                          ? 'Xoá lần dự báo này'
+                                          : 'Chỉ người đã ghi nhận hoặc Quản trị viên mới xoá được'
+                                      }
+                                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-red-600 hover:bg-red-50 disabled:text-neutral-300 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                          </Fragment>
+                        );
+                      })}
+                  </Fragment>
+                );
+              })
             )}
           </tbody>
         </table>
@@ -269,8 +417,8 @@ export default function ForecastHistoryTable({
               {xacNhanXoa.kieu === 'tatca' ? (
                 <>
                   <p>
-                    Sẽ xoá <span className="font-semibold">{rows.length}</span> bản
-                    ghi dự báo của tất cả nhóm bệnh, tỉnh/thành và tháng.
+                    Sẽ xoá toàn bộ dự báo đã ghi nhận của mọi nhóm bệnh, tỉnh/thành
+                    và tháng.
                   </p>
                   <p className="text-neutral-500">
                     Các nhu cầu vật tư đã sinh từ những dự báo này cũng bị xoá theo.
@@ -335,6 +483,25 @@ export default function ForecastHistoryTable({
   );
 }
 
+/** Ba ô số liệu cộng dồn của một cấp gộp. */
+function OTong({ tong, dam = false }: { tong: TongHop; dam?: boolean }) {
+  const lech = doLech(tong);
+  const co = dam ? 'font-semibold text-neutral-900' : 'font-medium text-neutral-800';
+  return (
+    <>
+      <td className={`px-5 py-3 text-right tabular-nums ${co}`}>
+        {tong.duBao.toLocaleString('vi-VN')}
+      </td>
+      <td className={`px-5 py-3 text-right tabular-nums ${co}`}>
+        {tong.thucTe !== null ? tong.thucTe.toLocaleString('vi-VN') : '—'}
+      </td>
+      <td className="px-5 py-3 text-right">
+        <PhanTramLech value={lech} />
+      </td>
+    </>
+  );
+}
+
 /** ISO → "dd/mm/yyyy hh:mm" theo giờ địa phương; '—' nếu không có. */
 function formatThoiGian(iso: string | null): string {
   if (!iso) return '—';
@@ -348,19 +515,18 @@ function formatThoiGian(iso: string | null): string {
   }
 }
 
-function DeviationPill({ value }: { value: number | null }) {
+function PhanTramLech({ value }: { value: number | null }) {
   if (value === null || value === undefined) {
     return <span className="text-neutral-400 text-sm">—</span>;
   }
-  // Quy ước: predicted > actual → over-forecast (số dương) → màu xanh nếu sai số nhỏ, đỏ nếu lớn.
-  const abs = Math.abs(value);
+  // Quy ước: predicted > actual → over-forecast (số dương).
   const sign = value > 0 ? '+' : '';
-  const isAccurate = abs <= 5;
+  const chinhXac = Math.abs(value) <= 5;
   return (
     <span
       className={
         'text-sm font-semibold ' +
-        (isAccurate ? 'text-emerald-600' : 'text-red-600')
+        (chinhXac ? 'text-emerald-600' : 'text-red-600')
       }
     >
       {sign}
