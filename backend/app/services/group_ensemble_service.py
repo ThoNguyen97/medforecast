@@ -84,13 +84,48 @@ def _thoi_tiet_thang(db: Session, region: Optional[str]) -> pd.DataFrame:
     return w[["period", "temp", "humidity", "rainfall"]]
 
 
+def _ky_du_lieu_moi_nhat(db: Session) -> Optional[str]:
+    """Tháng mới nhất có mặt trong disease_cases, dạng "YYYY-MM".
+
+    Tra trên TOÀN BỘ bảng (không lọc bệnh/khu vực) vì mức độ đầy đủ của dữ
+    liệu là tính chất của đợt đồng bộ HIS, không phải của riêng chuỗi nào.
+    Nhờ vậy mọi khu vực đều bị cắt tại cùng một mốc lịch.
+    """
+    moi_nhat = db.query(func.max(DiseaseCase.recorded_at)).scalar()
+    if moi_nhat is None:
+        return None
+    return f"{moi_nhat.year}-{moi_nhat.month:02d}"
+
+
 def du_bao_nhom(db: Session, disease: str, region: Optional[str],
                 target_year: int, target_month: int) -> Optional[Dict[str, Any]]:
     """Dự báo 1 tháng cho nhóm/mã × vùng. None = không đủ dữ liệu (để caller
     rơi về fallback thay vì nhận một con số kém tin cậy)."""
     df = _chuoi_thang(db, disease, region)
     moc = f"{target_year}-{target_month:02d}"
-    hist = df[df["period"] < moc].reset_index(drop=True)     # chống rò rỉ thời gian
+
+    # Tháng mới nhất luôn bị coi là CHƯA CHỐT SỐ và bị loại khỏi chuỗi huấn
+    # luyện. Lý do: đợt đồng bộ HIS gần nhất thường mới nạp một phần tháng đó,
+    # nên nó vào chuỗi như một cú sụt giả và kéo tụt dự báo.
+    #
+    # Đo thật (J00-J06, T10/2026): T9/2026 toàn quốc mới có 1 ca. Giữ lại thì
+    # toàn quốc dự báo 189 ca trong khi riêng TP.HCM 193 ca — phần lớn hơn
+    # toàn thể. Nguyên nhân: TP.HCM tháng đó KHÔNG có dòng nào nên chuỗi của
+    # nó không chứa điểm rác, còn chuỗi toàn quốc thì có. Bỏ tháng cuối:
+    # toàn quốc 244 / TP.HCM 197 — đúng tỷ lệ lịch sử ~78%.
+    #
+    # PHẢI cắt theo mốc lịch CHUNG chứ không phải "bỏ dòng cuối mỗi chuỗi":
+    # chuỗi thiếu hẳn tháng đó sẽ bị cắt nhầm một tháng lành và lệch lại tái
+    # diễn. Với tháng đích nằm trong quá khứ thì `moc` nhỏ hơn, ràng buộc
+    # chống rò rỉ thời gian vẫn giữ nguyên hiệu lực.
+    ky_moi_nhat = _ky_du_lieu_moi_nhat(db)
+    gioi_han = min(moc, ky_moi_nhat) if ky_moi_nhat else moc
+    hist = df[df["period"] < gioi_han].reset_index(drop=True)
+    if ky_moi_nhat and gioi_han == ky_moi_nhat:
+        logger.info(
+            "Bỏ tháng %s (chưa chốt số) khỏi chuỗi huấn luyện %s/%s.",
+            ky_moi_nhat, disease, region or "toàn quốc",
+        )
     if len(hist) < SO_THANG_TOI_THIEU:
         logger.info("Chuỗi %s/%s chỉ có %d tháng trước %s — không dùng ensemble.",
                     disease, region or "toàn quốc", len(hist), moc)
