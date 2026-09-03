@@ -563,6 +563,8 @@ function buildForecastPreview(
           { key: 'disease_label', label: 'Bệnh' },
           { key: 'region', label: 'Khu vực' },
           { key: 'predicted_cases', label: 'Số ca dự báo', align: 'right' },
+          { key: 'actual_cases', label: 'Số ca thực tế', align: 'right' },
+          { key: 'deviation_pct', label: 'Độ lệch', align: 'right' },
           { key: 'risk_level', label: 'Mức nguy cơ' },
         ],
         rows: filtered.map((r) => ({
@@ -570,6 +572,14 @@ function buildForecastPreview(
           disease_label: r.disease_label,
           region: r.region || 'Toàn thành phố',
           predicted_cases: r.predicted_cases.toLocaleString('vi-VN'),
+          actual_cases:
+            r.actual_cases !== null && r.actual_cases !== undefined
+              ? r.actual_cases.toLocaleString('vi-VN')
+              : '—',
+          deviation_pct:
+            r.deviation_pct !== null && r.deviation_pct !== undefined
+              ? `${r.deviation_pct > 0 ? '+' : ''}${r.deviation_pct.toFixed(1)}%`
+              : '—',
           risk_level: vietnameseRisk(r.risk_level),
         })),
       },

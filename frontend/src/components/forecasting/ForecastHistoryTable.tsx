@@ -25,34 +25,24 @@ type YeuCauXoa =
   | { kieu: 'mot'; row: ForecastHistoryItem }
   | { kieu: 'tatca' };
 
-/** Số liệu cộng dồn dùng chung cho mọi cấp của cây. */
+/** Số liệu cộng dồn dùng chung cho mọi cấp của cây.
+ *  Số ca thực tế và độ lệch không hiện ở đây — chúng nằm ở màn hình Báo cáo. */
 interface TongHop {
   duBao: number;
-  thucTe: number | null;
   /** Thời điểm ghi nhận gần nhất trong nhánh. */
   ghiNhanLuc: string | null;
 }
 
-/** Độ lệch tính lại từ TỔNG, không phải trung bình các phần trăm con. */
-function doLech(t: TongHop): number | null {
-  if (t.thucTe === null || t.thucTe <= 0) return null;
-  return ((t.duBao - t.thucTe) / t.thucTe) * 100;
-}
-
 function cong(ds: ForecastHistoryItem[]): TongHop {
   let duBao = 0;
-  let thucTe: number | null = null;
   let ghiNhanLuc: string | null = null;
   for (const r of ds) {
     duBao += r.predicted_cases ?? 0;
-    if (r.actual_cases !== null && r.actual_cases !== undefined) {
-      thucTe = (thucTe ?? 0) + r.actual_cases;
-    }
     if (r.created_at && (!ghiNhanLuc || r.created_at > ghiNhanLuc)) {
       ghiNhanLuc = r.created_at;
     }
   }
-  return { duBao, thucTe, ghiNhanLuc };
+  return { duBao, ghiNhanLuc };
 }
 
 export default function ForecastHistoryTable({
@@ -253,8 +243,6 @@ export default function ForecastHistoryTable({
                 Tháng / Nhóm bệnh / Tỉnh, thành phố
               </th>
               <th className="text-right px-5 py-3 font-medium whitespace-nowrap">Số ca dự báo</th>
-              <th className="text-right px-5 py-3 font-medium whitespace-nowrap">Số ca thực tế</th>
-              <th className="text-right px-5 py-3 font-medium whitespace-nowrap">Độ lệch</th>
               <th className="text-left px-5 py-3 font-medium whitespace-nowrap">Ghi nhận lúc</th>
               <th className="text-left px-5 py-3 font-medium whitespace-nowrap">Người ghi nhận</th>
               <th className="text-right px-5 py-3 font-medium w-20">Thao tác</th>
@@ -263,7 +251,7 @@ export default function ForecastHistoryTable({
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={7} className="py-8">
+                <td colSpan={5} className="py-8">
                   <div className="flex items-center justify-center gap-2 text-neutral-500 text-sm">
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Đang tải lịch sử...
@@ -272,13 +260,13 @@ export default function ForecastHistoryTable({
               </tr>
             ) : rowsChiTiet.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-10 text-center text-sm text-neutral-400">
+                <td colSpan={5} className="py-10 text-center text-sm text-neutral-400">
                   Chưa có lịch sử dự báo
                 </td>
               </tr>
             ) : cay.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-10 text-center text-sm text-neutral-400">
+                <td colSpan={5} className="py-10 text-center text-sm text-neutral-400">
                   Không tìm thấy kết quả phù hợp với bộ lọc
                 </td>
               </tr>
@@ -352,14 +340,6 @@ export default function ForecastHistoryTable({
                                   </td>
                                   <td className="px-5 py-2.5 text-right tabular-nums text-neutral-700">
                                     {r.predicted_cases.toLocaleString('vi-VN')}
-                                  </td>
-                                  <td className="px-5 py-2.5 text-right tabular-nums text-neutral-700">
-                                    {r.actual_cases !== null
-                                      ? r.actual_cases.toLocaleString('vi-VN')
-                                      : '—'}
-                                  </td>
-                                  <td className="px-5 py-2.5 text-right">
-                                    <PhanTramLech value={r.deviation_pct} />
                                   </td>
                                   <td className="px-5 py-2.5 text-xs text-neutral-500 whitespace-nowrap">
                                     {formatThoiGian(r.created_at)}
@@ -483,22 +463,13 @@ export default function ForecastHistoryTable({
   );
 }
 
-/** Ba ô số liệu cộng dồn của một cấp gộp. */
+/** Ô số ca dự báo cộng dồn của một cấp gộp. */
 function OTong({ tong, dam = false }: { tong: TongHop; dam?: boolean }) {
-  const lech = doLech(tong);
   const co = dam ? 'font-semibold text-neutral-900' : 'font-medium text-neutral-800';
   return (
-    <>
-      <td className={`px-5 py-3 text-right tabular-nums ${co}`}>
-        {tong.duBao.toLocaleString('vi-VN')}
-      </td>
-      <td className={`px-5 py-3 text-right tabular-nums ${co}`}>
-        {tong.thucTe !== null ? tong.thucTe.toLocaleString('vi-VN') : '—'}
-      </td>
-      <td className="px-5 py-3 text-right">
-        <PhanTramLech value={lech} />
-      </td>
-    </>
+    <td className={`px-5 py-3 text-right tabular-nums ${co}`}>
+      {tong.duBao.toLocaleString('vi-VN')}
+    </td>
   );
 }
 
@@ -513,24 +484,4 @@ function formatThoiGian(iso: string | null): string {
   } catch {
     return '—';
   }
-}
-
-function PhanTramLech({ value }: { value: number | null }) {
-  if (value === null || value === undefined) {
-    return <span className="text-neutral-400 text-sm">—</span>;
-  }
-  // Quy ước: predicted > actual → over-forecast (số dương).
-  const sign = value > 0 ? '+' : '';
-  const chinhXac = Math.abs(value) <= 5;
-  return (
-    <span
-      className={
-        'text-sm font-semibold ' +
-        (chinhXac ? 'text-emerald-600' : 'text-red-600')
-      }
-    >
-      {sign}
-      {value.toFixed(1)}%
-    </span>
-  );
 }

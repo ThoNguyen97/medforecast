@@ -1462,6 +1462,20 @@ async def _build_forecast_data(
             "disease_label": _vi_disease(r.disease_type),
             "location": r.location or "Toàn thành phố",
             "predicted_cases": r.predicted_cases or 0,
+            "actual_cases": r.actual_cases,
+            # Ưu tiên độ lệch đã lưu; chưa có thì tính từ số thực tế.
+            "deviation_pct": (
+                r.deviation_pct
+                if r.deviation_pct is not None
+                else (
+                    round(
+                        ((r.predicted_cases or 0) - r.actual_cases) / r.actual_cases * 100,
+                        1,
+                    )
+                    if r.actual_cases
+                    else None
+                )
+            ),
             "baseline_cases": r.baseline_cases or 0,
             "risk_level": r.risk_level or "",
             "risk_label": risk_label.get(r.risk_level or "", "—"),
@@ -1801,6 +1815,8 @@ def _render_forecast_pdf(data: Dict, start: date, end: date) -> Response:
             it["disease_label"],
             it["location"],
             f"{it['predicted_cases']:,}",
+            f"{it['actual_cases']:,}" if it["actual_cases"] is not None else "—",
+            f"{it['deviation_pct']:+.1f}%" if it["deviation_pct"] is not None else "—",
             it["risk_label"],
             it["explanation"][:200],
         ]
@@ -1809,9 +1825,12 @@ def _render_forecast_pdf(data: Dict, start: date, end: date) -> Response:
     return _generic_pdf(
         title="Báo cáo Dự báo Ca bệnh",
         period_label=f"{start.strftime('%d/%m/%Y')} - {end.strftime('%d/%m/%Y')}",
-        headers=["Tháng", "Bệnh", "Khu vực", "Dự báo", "Mức nguy cơ", "Lý do"],
+        headers=[
+            "Tháng", "Bệnh", "Khu vực", "Dự báo", "Thực tế", "Độ lệch",
+            "Mức nguy cơ", "Lý do",
+        ],
         rows=rows,
-        col_widths_cm=[2.5, 4, 4.5, 2.5, 2.5, 9],
+        col_widths_cm=[2.2, 3.8, 4.0, 2.2, 2.2, 2.2, 2.4, 6.0],
     )
 
 
@@ -1994,6 +2013,8 @@ def _render_forecast_excel(data: Dict, start: date, end: date) -> Response:
             it["disease_label"],
             it["location"],
             it["predicted_cases"],
+            it["actual_cases"] if it["actual_cases"] is not None else "—",
+            f"{it['deviation_pct']:+.1f}%" if it["deviation_pct"] is not None else "—",
             it["baseline_cases"],
             it["risk_label"],
             it["explanation"],
@@ -2002,9 +2023,12 @@ def _render_forecast_excel(data: Dict, start: date, end: date) -> Response:
     ]
     return _generic_excel(
         sheet_title="Dự báo ca bệnh",
-        headers=["Tháng", "Bệnh", "Khu vực", "Số ca dự báo", "Ca nền", "Mức nguy cơ", "Lý do dự báo"],
+        headers=[
+            "Tháng", "Bệnh", "Khu vực", "Số ca dự báo", "Số ca thực tế",
+            "Độ lệch", "Ca nền", "Mức nguy cơ", "Lý do dự báo",
+        ],
         rows=rows,
-        column_widths=[10, 22, 24, 14, 12, 14, 60],
+        column_widths=[10, 22, 24, 14, 14, 10, 12, 14, 60],
         filename_prefix="bao_cao_du_bao",
         title_line=f"Báo cáo Dự báo Ca bệnh — {start.strftime('%d/%m/%Y')} đến {end.strftime('%d/%m/%Y')}",
     )
