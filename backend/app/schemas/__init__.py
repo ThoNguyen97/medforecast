@@ -41,13 +41,6 @@ from app.schemas.base import (
     SupplyRequirementResponse,
     # Alerts
     AlertResponse,
-    # Procurement
-    ProcurementPlanBase,
-    ProcurementPlanCreate,
-    ProcurementPlanUpdate,
-    ProcurementPlanResponse,
-    ProcurementGenerateRequest,
-    ProcurementGenerateResponse,
     # Dashboard
     DashboardOverview,
     SupplyDemandPoint,
@@ -85,12 +78,6 @@ __all__ = [
     "DiseaseForecastResponse",
     "SupplyRequirementResponse",
     "AlertResponse",
-    "ProcurementPlanBase",
-    "ProcurementPlanCreate",
-    "ProcurementPlanUpdate",
-    "ProcurementPlanResponse",
-    "ProcurementGenerateRequest",
-    "ProcurementGenerateResponse",
     "DashboardOverview",
     "SupplyDemandPoint",
     "SupplyDemandForecast",

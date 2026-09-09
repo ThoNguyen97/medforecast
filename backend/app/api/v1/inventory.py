@@ -209,13 +209,18 @@ async def sync_safety_stock_from_forecast(
             skipped += 1
             continue
 
-        # LUÔN cập nhật (ghi đè) - không bỏ qua giá trị cũ
-        calculated_safety = round(need_before_buffer * (1 + buffer_rate / 100))
-        if need_before_buffer > 0 and calculated_safety < 1:
-            calculated_safety = 1
-
-        inv.safety_stock = calculated_safety
-        updated += 1
+        # ── G0 · DSS — ĐÃ CẮT VÒNG LẶP TỰ THAM CHIẾU ───────────────
+        # Trước đây:  safety_stock = nhu cầu × (1 + 15%)  rồi ghi
+        # ngược vào inventory, và lần chạy sau lại đọc chính nó ra
+        # làm đầu vào. Mỗi lần bấm "phân tích" nhân thêm 1,15 lần.
+        #
+        # Phạm vi DSS không dùng safety_stock. Cảnh báo tính bằng
+        #     DOI = tồn hữu dụng (FEFO) / nhu cầu trung bình ngày
+        # và được sinh ở tầng cảnh báo (xem G4 trong lộ trình).
+        #
+        # KHÔNG khôi phục dòng ghi ngược ở đây.
+        skipped += 1
+        continue
 
     try:
         db.commit()

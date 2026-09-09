@@ -5,7 +5,7 @@ import {
   CloudSun,
   TrendingUp,
   Boxes,
-  ShoppingCart,
+  ShieldAlert,
   FileBarChart,
   Settings,
   HelpCircle,
@@ -29,7 +29,7 @@ const navItems: NavItem[] = [
   { label: 'Dữ liệu thời tiết', path: ROUTES.WEATHER, icon: CloudSun },
   { label: 'Phân tích & Dự báo', path: ROUTES.FORECASTING, icon: TrendingUp },
   { label: 'Vật tư y tế', path: ROUTES.INVENTORY, icon: Boxes },
-  { label: 'Đề xuất nhập kho', path: ROUTES.ALERTS, icon: ShoppingCart },
+  { label: 'Cảnh báo tồn kho', path: ROUTES.ALERTS, icon: ShieldAlert },
   { label: 'Báo cáo', path: ROUTES.REPORTS, icon: FileBarChart },
   { label: 'Quản trị', path: ROUTES.SETTINGS, icon: Settings, adminOnly: true },
 ];

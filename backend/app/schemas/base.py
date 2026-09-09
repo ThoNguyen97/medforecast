@@ -330,52 +330,6 @@ class AlertResponse(ORMBase):
     created_at: datetime
 
 
-# ── Procurement Plan schemas ──────────────────────────────────────────────────
-
-class ProcurementPlanBase(BaseModel):
-    supply_id: int
-    order_quantity: int = Field(..., gt=0)
-    order_date: date
-    expected_delivery_date: Optional[date] = None
-    estimated_cost: Optional[float] = None
-    priority: Optional[str] = None
-    notes: Optional[str] = None
-
-
-class ProcurementPlanCreate(ProcurementPlanBase):
-    pass
-
-
-class ProcurementPlanUpdate(BaseModel):
-    order_quantity: Optional[int] = Field(None, gt=0)
-    order_date: Optional[date] = None
-    expected_delivery_date: Optional[date] = None
-    estimated_cost: Optional[float] = None
-    priority: Optional[str] = None
-    notes: Optional[str] = None
-    status: Optional[str] = None
-
-
-class ProcurementPlanResponse(ORMBase, ProcurementPlanBase):
-    id: int
-    supply_name: Optional[str] = None
-    status: str
-    created_at: datetime
-
-
-class ProcurementGenerateRequest(BaseModel):
-    forecast_days: int = Field(30, ge=7, le=90, description="Days ahead to plan for")
-
-
-class ProcurementGenerateResponse(BaseModel):
-    message: str
-    plans_generated: int
-    critical_plans: int
-    high_plans: int
-    normal_plans: int
-    plans: List["ProcurementPlanResponse"]
-
-
 # ── Dashboard schemas ─────────────────────────────────────────────────────────
 
 class DashboardOverview(BaseModel):

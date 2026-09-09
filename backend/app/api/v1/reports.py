@@ -505,7 +505,8 @@ async def export_report(
         "forecast",
         "inventory",
         "shortage",
-        "procurement",
+        # "procurement" — gỡ ở G0 (phạm vi DSS). Khung trình bày
+        # PDF/Excel bên dưới giữ lại làm nền cho báo cáo DOI ở G5.
         "forecast-accuracy",
         # Legacy types
         "consumption",
@@ -1456,26 +1457,29 @@ async def _build_forecast_data(
         "very_high": "Rất cao",
     }
 
+    from app.services.actual_case_service import do_lech_pct, so_ca_thuc_te
+
+    def _thuc_te(r) -> Optional[int]:
+        # Ưu tiên số nhập tay (nếu có), còn lại lấy từ disease_cases.
+        if r.actual_cases is not None:
+            return int(r.actual_cases)
+        if r.forecast_date is None:
+            return None
+        return so_ca_thuc_te(db, r.icd_code, r.forecast_date, r.location)
+
+    def _do_lech(r) -> Optional[float]:
+        if r.deviation_pct is not None:
+            return float(r.deviation_pct)
+        return do_lech_pct(r.predicted_cases, _thuc_te(r))
+
     items = [
         {
             "month": r.forecast_date.strftime("%m/%Y") if r.forecast_date else "—",
             "disease_label": _vi_disease(r.disease_type),
             "location": r.location or "Toàn thành phố",
             "predicted_cases": r.predicted_cases or 0,
-            "actual_cases": r.actual_cases,
-            # Ưu tiên độ lệch đã lưu; chưa có thì tính từ số thực tế.
-            "deviation_pct": (
-                r.deviation_pct
-                if r.deviation_pct is not None
-                else (
-                    round(
-                        ((r.predicted_cases or 0) - r.actual_cases) / r.actual_cases * 100,
-                        1,
-                    )
-                    if r.actual_cases
-                    else None
-                )
-            ),
+            "actual_cases": _thuc_te(r),
+            "deviation_pct": _do_lech(r),
             "baseline_cases": r.baseline_cases or 0,
             "risk_level": r.risk_level or "",
             "risk_label": risk_label.get(r.risk_level or "", "—"),

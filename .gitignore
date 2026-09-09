@@ -126,3 +126,7 @@ LICH_SU_GIT_CU.txt
 git_lam_lai.sh
 commit_medforecast.sh
 env_stagging.txt
+
+# Mọi biến thể .env (kể cả bản sao lưu) — chỉ .env.example được theo dõi
+.env*
+!.env.example

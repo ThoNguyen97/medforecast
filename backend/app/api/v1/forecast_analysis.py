@@ -1169,12 +1169,20 @@ async def get_forecast_history(
         q = q.filter(DiseaseForecast.forecast_month <= end_date)
     rows = q.limit(limit).all()
 
+    from app.services.actual_case_service import do_lech_pct, so_ca_thuc_te
+
     out = []
     for r in rows:
+        # Ưu tiên số nhập tay; chưa nhập thì suy ra từ disease_cases để bảng
+        # Báo cáo có số thực tế thay vì luôn hiện "—".
         actual = r.actual_cases
-        deviation = None
-        if actual is not None and actual > 0:
-            deviation = round((r.predicted_cases - actual) / actual * 100, 1)
+        if actual is None and r.forecast_date is not None:
+            actual = so_ca_thuc_te(db, r.icd_code, r.forecast_date, r.location)
+        deviation = (
+            round((r.predicted_cases - r.actual_cases) / r.actual_cases * 100, 1)
+            if r.actual_cases
+            else do_lech_pct(r.predicted_cases, actual)
+        )
         out.append(
             {
                 "id": r.id,
