@@ -227,10 +227,18 @@ class SqlServerConnector(SourceConnector):
         # Thứ tự ưu tiên: tham số truyền vào > file chỉ định qua biến môi trường
         # > file mặc định trong sql/. Nhờ vậy đổi SQL cho khớp schema HIS (hoặc
         # đổi dialect khi đọc bản sao STA) chỉ là đổi cấu hình.
+        #
+        # 09/09/2026 — mặc định đổi từ case_mssql.sql / inventory_mssql.sql
+        # sang bản đọc STA. Hai file cũ truy vấn các bảng KhamBenh, ChanDoan,
+        # BenhNhan, SuDungVatTu, VatTu, TonKho — schema GIẢ ĐỊNH thời chưa nối
+        # HIS thật, KHÔNG tồn tại trong eHospital (schema thật là TT_TIEPNHAN,
+        # TT_NGOAITRU_KHAMBENH, TM_ICD, TT_DUOC_TONKHO). Chọn mặc định cũ là
+        # chắc chắn nổ 'Invalid object name'. Hai file đã chuyển sang
+        # _archive/sql_schema_cu/.
         self.case_sql = case_sql or _sql_from_env(
-            "PIPELINE_CASE_SQL_FILE", "case_mssql.sql")
+            "PIPELINE_CASE_SQL_FILE", "case_sta.sql")
         self.inventory_sql = inventory_sql or _sql_from_env(
-            "PIPELINE_INVENTORY_SQL_FILE", "inventory_mssql.sql")
+            "PIPELINE_INVENTORY_SQL_FILE", "inventory_sta.sql")
         # Luồng số ca theo nhóm: chỉ có khi đọc từ STA (do thủ tục PROD tính sẵn).
         # Không đặt biến môi trường thì bỏ trống — pipeline tự quay về cộng dồn.
         self.case_group_sql = case_group_sql if case_group_sql is not None else (

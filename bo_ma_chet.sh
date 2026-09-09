@@ -57,7 +57,8 @@ echo "[1/6] ai_engine_cu — nhánh AI cũ chưa từng chạy trong sản phẩ
 for f in forecasting_pipeline ensemble_forecaster xgboost_forecaster \
          prophet_forecaster model_evaluation feature_engineering \
          forecasting_service csv_data_processor supply_demand_calculator \
-         weather_forecast correlation_analyzer; do
+         weather_forecast correlation_analyzer \
+         monthly_forecaster db_forecasting_service; do
   chuyen "backend/app/ai_engine/${f}.py" ai_engine_cu
 done
 for f in test_conversion_module test_ensemble_forecaster test_ensemble_integration \

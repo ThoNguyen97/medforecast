@@ -42,10 +42,10 @@ SQL_PROFILES = {
     # DB trung chuyển MEDFORECAST_DW bên STAGING (khuyến nghị, mặc định)
     "sta": {"case": "case_sta.sql", "inventory": "inventory_sta.sql",
             "case_group": "case_group_sta.sql"},
-    # Đọc thẳng schema eHospital (chỉ dành cho môi trường thử — app KHÔNG
-    # bao giờ nên nối thẳng PROD thật)
-    "mssql": {"case": "case_mssql.sql", "inventory": "inventory_mssql.sql",
-              "case_group": ""},
+    # 09/09/2026 — đã bỏ profile "mssql". Nó trỏ vào case_mssql.sql /
+    # inventory_mssql.sql, hai file truy vấn schema GIẢ ĐỊNH không tồn tại
+    # trong HIS thật; chọn nó từ giao diện là chắc chắn lỗi
+    # "Invalid object name 'KhamBenh'". Xem _archive/sql_schema_cu/.
 }
 
 MAC_DINH = {
