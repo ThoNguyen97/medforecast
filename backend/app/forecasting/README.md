@@ -45,5 +45,22 @@ Hiệu quả thời tiết (walk-forward group-level, dữ liệu Gia An):
 | J00-J06 | 0.780 | **0.715** | −8.4% |
 | J20-J22 | 0.756 | **0.695** | −8.1% |
 
-→ Thời tiết giảm ~8% sai số. `build_default_ensemble(use_weather=True)` tự thêm
+> ⚠ **SỐ LIỆU MÂU THUẪN — CHƯA DÙNG ĐƯỢC CHO BÁO CÁO (ghi 09/09/2026)**
+>
+> Bảng trên ghi −8,4% / −8,1% MAE. `KetQua_Backtest_ChonCauHinh.md` ghi
+> **−32,9% / −28,5%** cho cùng một phép đo ("walk-forward group-level").
+> Hai kết quả không thể cùng đúng — nhiều khả năng chạy trên hai cửa sổ
+> lịch sử hoặc hai cấu hình khác nhau nhưng không ghi lại.
+>
+> Thêm nữa, cả hai đều đo `HarmonicPoissonForecaster` ĐỨNG MỘT MÌNH ở mức
+> nhóm, **không phải ensemble**. Trong khi đó `evaluate.py:38` gọi
+> `build_default_ensemble()` không tham số (`use_weather=False`) và
+> `data_access.group_series()` không SELECT cột thời tiết nào — nên bảng
+> MASE ~0,60 công bố được đo trên ensemble **hoàn toàn không có thời tiết**.
+>
+> Việc phải làm (M1–M2, Tuần 4): chốt một `PRODUCTION_CONFIG` duy nhất, chạy
+> lại `walk_forward_block` CÓ thời tiết, giữ đúng một bảng kết quả kèm ngày
+> chạy và cấu hình. Đến lúc đó, đừng trích con số nào ở đây.
+
+→ Thời tiết giảm ~8% sai số (**số cũ, chờ đo lại — xem cảnh báo trên**). `build_default_ensemble(use_weather=True)` tự thêm
 mô hình này; service dùng cho dự báo TỔNG nhóm.

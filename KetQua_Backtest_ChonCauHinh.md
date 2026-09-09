@@ -96,6 +96,8 @@ khác chi phối (tuổi, bệnh nền, quy mô tiếp nhận). Đây cũng là 
 
 Loạt cảnh báo `ConvergenceWarning` / `Too few observations` khi chạy là
 SARIMAX báo không hội tụ trên chuỗi mã thưa — vô hại với kết quả cuối
-(ensemble tự hạ trọng số mô hình tồi) nhưng chính là "triệu chứng" của hiện
+(ensemble lấy TRUNG BÌNH ĐỀU các thành viên — xem `models.py` lớp
+`Ensemble` — nên một thành viên tồi bị làm loãng chứ KHÔNG bị hạ trọng
+số; hiện chưa có cơ chế trọng số thích ứng) nhưng chính là "triệu chứng" của hiện
 tượng bottom-up nổ tung nói trên. Không tắt bằng suppress toàn cục trong app;
 chỉ lọc khi chạy backtest cho dễ đọc output.

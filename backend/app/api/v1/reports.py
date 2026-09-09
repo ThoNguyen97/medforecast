@@ -50,6 +50,16 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["reports"])
 
+# ── Ngưỡng phân loại tồn kho (09/09/2026) ────────────────────────────────────
+# Dùng SỐ NGÀY TỒN PHỦ NHU CẦU (DOI), cùng ngưỡng với tầng cảnh báo DSS
+# (app/services/dss_alerts.py: THRESHOLDS_DEFAULT).
+#
+# KHÔNG dùng Inventory.safety_stock để phân loại: cột này đã bị vô hiệu hoá
+# trong phạm vi DSS — 5.007/5.041 dòng có giá trị 0 — nên mọi so sánh với nó
+# đều xếp vật tư vào "an toàn" và báo cáo thiếu hụt luôn rỗng MÀ KHÔNG BÁO LỖI.
+DOI_DO_NGAY = 18       # ≤ 18 ngày: nguy cơ thiếu hụt
+DOI_VANG_NGAY = 36     # ≤ 36 ngày: cần theo dõi sát
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -403,9 +413,18 @@ async def get_inventory_turnover_report(
             daily_demand = total_required / period_days
             days_of_supply = round(current_stock / daily_demand, 1)
 
-        stock_status = "out_of_stock" if current_stock <= 0 else (
-            "critical" if current_stock < safety_stock else "safe"
-        )
+        if current_stock <= 0:
+            stock_status = "out_of_stock"
+        elif days_of_supply is None:
+            # Chưa có nhu cầu dự báo để quy đổi ra số ngày phủ → nói rõ là
+            # CHƯA XÁC ĐỊNH, không được mặc định coi là an toàn.
+            stock_status = "unknown"
+        elif days_of_supply <= DOI_DO_NGAY:
+            stock_status = "critical"
+        elif days_of_supply <= DOI_VANG_NGAY:
+            stock_status = "low"
+        else:
+            stock_status = "safe"
 
         items.append({
             "supply_id": sid,
@@ -1111,17 +1130,18 @@ async def _build_dashboard_summary_data(db: Session) -> Dict:
         if total_current > 0 else 0.0
     )
 
-    # KPI: số vật tư thiếu hụt (đồng bộ với logic "Cần nhập gấp" ở UI Inventory):
-    #   chỉ tính vật tư đã có ngưỡng AT > 0 và tồn quá thấp.
+    # KPI: số vật tư ĐANG HẾT HÀNG.
+    #
+    # Trước 09/09/2026 điều kiện là `safety_stock > 0 AND current_stock <
+    # safety_stock * 0.3`. Vì safety_stock đã bị vô hiệu hoá (5.007/5.041 dòng
+    # = 0), vế đầu luôn sai → shortage_count LUÔN BẰNG 0, và "mức nguy cơ chung"
+    # bên dưới luôn được đánh giá thấp hơn thực tế mà không có dấu hiệu nào.
+    #
+    # Nay đếm điều kiện không cần ngưỡng và không thể sai: tồn <= 0.
+    # Cảnh báo đầy đủ theo DOI + FEFO thuộc tầng dss_alerts.
     shortage_count = (
         db.query(func.count(Inventory.id))
-        .filter(
-            Inventory.safety_stock > 0,
-            or_(
-                Inventory.current_stock <= 0,
-                Inventory.current_stock < Inventory.safety_stock * 0.3,
-            ),
-        )
+        .filter(Inventory.current_stock <= 0)
         .scalar()
         or 0
     )
@@ -1519,7 +1539,14 @@ async def _build_inventory_data(
     for r in rows:
         cur = r.current_stock or 0
         saf = r.safety_stock or 0
-        if cur <= 0 or (saf > 0 and cur < saf * 0.3):
+        # saf = 0 với gần như toàn bộ danh mục (xem chú thích DOI_DO_NGAY),
+        # nên nhánh "Bình thường" cũ là một khẳng định vô căn cứ. Khi không có
+        # ngưỡng thì nói rõ là chưa xác định.
+        if cur <= 0:
+            status_text = "Hết hàng"
+        elif saf <= 0:
+            status_text = "Chưa xác định ngưỡng"
+        elif cur < saf * 0.3:
             status_text = "Cần nhập gấp"
         elif cur <= saf:
             status_text = "Dưới ngưỡng"

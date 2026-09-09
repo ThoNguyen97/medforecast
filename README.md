@@ -10,7 +10,10 @@ Hệ thống AI/ML dự báo nhu cầu vật tư y tế dựa trên dữ liệu 
 - **ORM**: SQLAlchemy 2.0
 - **Authentication**: JWT (python-jose)
 - **Background Tasks**: FastAPI BackgroundTasks (built-in)
-- **ML/AI**: XGBoost, LSTM (TensorFlow), Prophet
+- **Dự báo**: ensemble thống kê thuần numpy/pandas — SeasonalTrend +
+  PoissonTrend + Harmonic-Poisson (thời tiết có độ trễ) + SARIMAX
+  (statsmodels, tùy chọn). KHÔNG dùng deep learning: chuỗi chỉ 92 điểm
+  tháng/mã, không đủ dữ liệu cho LSTM.
 
 ### Frontend
 - **Framework**: React 18+ with TypeScript
@@ -25,11 +28,14 @@ Hệ thống AI/ML dự báo nhu cầu vật tư y tế dựa trên dữ liệu 
 
 ## Features
 
-- 🤖 **AI-Powered Forecasting**: Ensemble model (XGBoost + LSTM + Prophet)
+- 🤖 **Dự báo nhu cầu**: ensemble 4 mô hình thống kê + dự báo phân cấp
+  top-down động (EWMA), đánh giá bằng walk-forward mở rộng cửa sổ
+  (MASE mức mã ~0,60 — thắng seasonal-naive ~40%)
 - 📊 **Real-time Dashboard**: Stitch design với metrics và charts
 - 🚨 **Smart Alerts**: Cảnh báo thiếu hụt vật tư tự động
 - 📦 **Inventory Management**: Quản lý tồn kho thời gian thực
-- 📈 **Procurement Planning**: Đề xuất kế hoạch nhập hàng tối ưu
+- 📉 **Cảnh báo thiếu hụt**: 4 mức Đỏ/Vàng/Xanh/Xám theo số ngày tồn phủ
+  nhu cầu (DOI) + FEFO, kèm lý do khi chưa đủ dữ liệu để kết luận
 - 🔐 **Role-based Access**: 3 roles (Administrator, Pharmacist, Inventory_Manager)
 - 📱 **Responsive Design**: Hoạt động trên desktop và mobile
 

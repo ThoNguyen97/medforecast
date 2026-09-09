@@ -15,7 +15,7 @@ thái sản phẩm sau khi nối HIS thật. Ký hiệu: ✅ đạt · 🟡 đ�
 | Môi trường: nhiệt độ, ẩm, mưa, AQI; độ trễ 1–2 tháng | 🟡 | 309 tháng-dòng Open-Meteo, lag đã dùng trong mô hình; **AQI chưa có trong chuỗi mô hình** (chỉ hiện ở panel giải thích — mà panel đó đang là văn mẫu) |
 | Vật tư: danh mục, tồn kho, lượng dùng | ✅ | 5.017 mã, tồn 1,76 triệu đơn vị, fact_supply_usage 83.637 dòng |
 | Định mức sử dụng + tồn kho an toàn | ❌ | 60 định mức chỉ phủ 4 mã cũ — **J18 (bệnh lớn nhất, 30% số ca) chưa có định mức** → chuỗi cảnh báo/đề xuất mù đúng chỗ nặng nhất |
-| Cờ COVID | ✅ | is_covid 2020–2021, dùng làm biến ngoại sinh SARIMAX |
+| Cờ COVID | 🟡 | is_covid 2020–2021 có trong dữ liệu và được dùng để **loại tháng COVID** khi ước lượng mùa vụ/xu hướng (`models.py:57,106,184`). **Chưa** dùng làm biến ngoại sinh SARIMAX — `sarimax_opt.py:25-33` chỉ lấy temp/humidity/rainfall. Sửa 09/09/2026 sau khi đối chiếu mã |
 | Cờ dữ liệu chưa hoàn chỉnh | ✅ | is_complete, mô hình tự loại tháng dở dang |
 | Số liệu được bệnh viện xác nhận | ❌ | **Chưa gửi phòng KHTH** — mọi con số vẫn là "theo hệ thống" |
 | Vệ sinh còn treo | 🟡 | 1 dòng "Không Xác Định Tỉnh" + 6 mã chưa tên — đã vá code, **chờ chạy lại store 03 trên PROD + một lần sync full** |
