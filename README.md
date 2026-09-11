@@ -30,7 +30,7 @@ Hệ thống AI/ML dự báo nhu cầu vật tư y tế dựa trên dữ liệu 
 
 - 🤖 **Dự báo nhu cầu**: ensemble 4 mô hình thống kê + dự báo phân cấp
   top-down động (EWMA), đánh giá bằng walk-forward mở rộng cửa sổ
-  (MASE mức mã ~0,60 — thắng seasonal-naive ~40%)
+  (RelMAE mức mã 0,659 — thắng seasonal-naive ~34%, cấu hình sản xuất 11/09/2026)
 - 📊 **Real-time Dashboard**: Stitch design với metrics và charts
 - 🚨 **Smart Alerts**: Cảnh báo thiếu hụt vật tư tự động
 - 📦 **Inventory Management**: Quản lý tồn kho thời gian thực
@@ -256,22 +256,38 @@ npm run test:coverage
 
 See [deployment documentation](docs/deployment.md) for production deployment instructions.
 
-## ML Models
+## Mô hình dự báo
 
-The system uses an ensemble of three models:
+Ensemble bốn mô hình thống kê, khớp lại trên toàn bộ lịch sử mỗi lần dự báo
+(vài giây với chuỗi 92 điểm — không có bước huấn luyện định kỳ phải vận hành):
 
-1. **XGBoost** (40% weight): Gradient boosting for non-linear patterns
-2. **LSTM** (35% weight): Deep learning for temporal dependencies
-3. **Prophet** (25% weight): Time series with seasonality
+| Thành viên | Học gì | Thang |
+|---|---|---|
+| SeasonalTrend | hệ số mùa nhân + xu hướng tuyến tính giảm dần | trung bình |
+| PoissonTrend | log1p(ca) ~ xu hướng + 11 biến giả tháng, Ridge λ=10 chuẩn hoá | log |
+| Harmonic-Poisson | mùa sin/cos + nhiệt độ/độ ẩm/mưa **trễ 1–2 tháng** | log |
+| SARIMAX (1,1,1)(1,0,0,12) | exog thời tiết chuẩn hoá; tuỳ chọn, cần `statsmodels` | log |
 
-Models are automatically retrained when new data exceeds 10% of training dataset.
+Trên đó là **dự báo phân cấp top-down động**: mô hình hoá chuỗi nhóm ICD rồi
+chia xuống mã theo tỷ trọng EWMA. Mọi tham số nằm ở một chỗ:
+`backend/app/forecasting/config.py` → `PRODUCTION_CONFIG`.
 
-## Data Requirements
+**Bằng chứng** (walk-forward mở rộng cửa sổ, 68 bước/nhóm, dữ liệu HIS thật):
+RelMAE mức mã 0,659 — thắng seasonal-naive ~34%; khoảng dự báo 90% phủ thật
+85–88%. Sinh lại bằng `python -m app.forecasting.run_eval`, chi tiết trong
+`KetQua_Backtest_ChonCauHinh.md`.
 
-- **Minimum historical data**: 90 days
-- **Disease types**: Dengue fever, Seasonal flu, Respiratory diseases
-- **Environmental data**: Temperature, Humidity, Rainfall, Air Quality Index
-- **Update frequency**: Daily
+**Không dùng deep learning.** 92 quan sát tháng trên mỗi chuỗi không đủ cho
+LSTM; nhánh XGBoost/Prophet/LSTM cũ chưa từng chạy trong sản phẩm và đã chuyển
+vào `_archive/ai_engine_cu/`.
+
+## Dữ liệu
+
+- **Phạm vi**: 3 nhóm ICD hô hấp J00-J06 / J09-J18 / J20-J22 (20 mã), 2019–2026
+- **Nguồn**: HIS eHospital → STA (đã khử định danh, ngưỡng ô nhỏ k=5) → SQLite
+- **Môi trường**: nhiệt độ, độ ẩm, lượng mưa theo tháng (Open-Meteo), dùng ở độ trễ
+- **Tối thiểu**: 24 tháng lịch sử để ensemble hoạt động; 26 tháng cho SARIMAX
+
 
 ## Support
 

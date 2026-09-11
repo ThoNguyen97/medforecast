@@ -50,15 +50,16 @@ giải thích theo yếu tố thật trong mô hình · nâng cảnh báo lên 4
 | Hồi quy Poisson **hoặc** NegBin | ✅ | PoissonTrend + HarmonicPoisson(thời tiết); chữ "hoặc" → Poisson là đủ cam kết |
 | **Prophet** | ❌ | Đề cương hứa khẳng định ("Huấn luyện Prophet...") nhưng ensemble hiện KHÔNG có. Phải có bằng chứng: chạy đối chứng một lần rồi ghi kết quả — giữ hay loại đều được, miễn là **loại bằng số đo chứ không phải im lặng** |
 | Rolling-origin / walk-forward | ✅ | walk-forward mở rộng cửa sổ, 66–67 bước |
-| Đánh giá **MAE, RMSE, sMAPE, WAPE** | 🟡 | Có MAE/RMSE/**MASE** — thiếu sMAPE, WAPE (thêm ~20 dòng vào evaluate.py) |
+| Đánh giá **MAE, RMSE, sMAPE, WAPE** | ✅ | Đủ từ 11/09/2026, thêm ME/MPE (sai số có dấu) và RelMAE. Chỉ số cũ gọi là "MASE" thực ra là RelMAE — đã đổi tên |
 | Dự báo phân cấp top-down + tỷ trọng | ✅ | 4 hướng, có bằng chứng chọn (bottom-up nổ MASE 483 trên mã thưa) |
 | Bảng so sánh chỉ số + cơ chế chọn mô hình | 🟡 | Có cho 4 hướng phân cấp × 3 cửa sổ; **chưa có hàng Prophet/NegBin** |
 | Lưu phiên bản mô hình, tham số, chỉ số, khoảng dự báo | 🟡 | disease_forecasts lưu kết quả + khoảng; chưa lưu "phiên bản cấu hình mô hình" đi kèm — bổ sung nhẹ được |
 | Khoảng dự báo | ✅ | z=1,96 ở mức nhóm, lan xuống mã |
 
-**Kết quả đã đo (giữ làm số chính thức):** MASE mức mã ~0,60 (thắng
-seasonal-naive ~40%); mức nhóm 0,51–0,65; thời tiết giảm 33%/28% MAE cho
-J00-J06/J20-J22, không giúp J09-J18.
+**Kết quả đã đo — số chính thức 11/09/2026** (thay bản 09/08): RelMAE mức mã
+0,659 (thắng seasonal-naive ~34%); mức nhóm 0,60–0,76; độ phủ khoảng 90% đo
+thật 85–88% (68% ở J09-J18); thời tiết −33%/−28% MAE ở mức mô hình đơn nhưng
+chỉ +2–3% ở mức ensemble, có hại nhẹ với J09-J18. Xem KetQua_Backtest_ChonCauHinh.md.
 
 ## 4. "MÔ HÌNH CẦN TRAIN GÌ KHÔNG?" — trả lời thẳng
 

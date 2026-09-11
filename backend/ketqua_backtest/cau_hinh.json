@@ -1,0 +1,18 @@
+{
+  "chay_luc": "2026-09-11T10:46:33",
+  "db": "data/medforecast.db",
+  "co_statsmodels": true,
+  "bien_the_doi_chung": {},
+  "config": {
+    "use_weather": true,
+    "weather_min_months": 12,
+    "smearing": false,
+    "ridge_lam": 10.0,
+    "method": "top_down_dynamic",
+    "ewma_span": 6,
+    "from_period": null,
+    "min_train": 24,
+    "interval_level": 0.9,
+    "interval_n_back": 24
+  }
+}
