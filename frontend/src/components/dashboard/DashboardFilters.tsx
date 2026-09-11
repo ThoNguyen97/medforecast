@@ -72,8 +72,8 @@ export default function DashboardFilters({
           value={value.focus ? 'focus' : 'all'}
           onChange={(e) => onChange({ ...value, focus: e.target.value === 'focus' })}
         >
-          <option value="focus">Trọng tâm hô hấp · {focusCount.toLocaleString('vi-VN')} mã</option>
-          <option value="all">Toàn danh mục còn dùng · {allCount.toLocaleString('vi-VN')} mã</option>
+          <option value="focus">Trọng tâm hô hấp · {focusCount.toLocaleString('vi-VN')} mã có mẫu số</option>
+          <option value="all">Toàn danh mục · {allCount.toLocaleString('vi-VN')} mã có mẫu số</option>
         </select>
       </div>
       <div>

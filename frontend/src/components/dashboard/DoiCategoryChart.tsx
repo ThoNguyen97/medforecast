@@ -71,18 +71,8 @@ export default function DoiCategoryChart({
               interval={0}
             />
             <Tooltip content={<DoiTooltip />} cursor={{ fill: 'rgba(148,163,184,0.10)' }} />
-            <ReferenceLine
-              x={thresholds.red_days}
-              stroke={LEVEL_HEX.red}
-              strokeDasharray="3 3"
-              label={{ value: `Đỏ ≤ ${thresholds.red_days}`, position: 'insideTopRight', fontSize: 10, fill: LEVEL_HEX.red }}
-            />
-            <ReferenceLine
-              x={thresholds.amber_days}
-              stroke={LEVEL_HEX.amber}
-              strokeDasharray="3 3"
-              label={{ value: `Vàng ≤ ${thresholds.amber_days}`, position: 'insideTopRight', fontSize: 10, fill: '#a16207' }}
-            />
+            <ReferenceLine x={thresholds.red_days} stroke={LEVEL_HEX.red} strokeDasharray="3 3" />
+            <ReferenceLine x={thresholds.amber_days} stroke={LEVEL_HEX.amber} strokeDasharray="3 3" />
             <Bar dataKey="median_doi" radius={[0, 4, 4, 0]} barSize={16} isAnimationActive={false}>
               {rows.map((r) => (
                 <Cell key={r.category} fill={LEVEL_HEX[r.level]} />
@@ -97,8 +87,22 @@ export default function DoiCategoryChart({
           </BarChart>
         </ResponsiveContainer>
       </div>
+      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-neutral-600">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="w-4 border-t-2 border-dashed" style={{ borderColor: LEVEL_HEX.red }} />
+          Đỏ ≤ {thresholds.red_days} ngày
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="w-4 border-t-2 border-dashed" style={{ borderColor: LEVEL_HEX.amber }} />
+          Vàng ≤ {thresholds.amber_days} ngày
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-sm" style={{ background: LEVEL_HEX.green }} />
+          Xanh &gt; {thresholds.amber_days} ngày
+        </span>
+      </div>
       <p className="mt-1 text-[11px] text-neutral-500">
-        DOI trung vị của các mã đo được trong danh mục (ngày). Thanh Đỏ/Vàng/Xanh theo ngưỡng của trung vị.
+        DOI trung vị của các mã đo được trong danh mục (ngày); màu thanh theo ngưỡng của trung vị.
         {chuaDo.length > 0 && (
           <>
             {' '}Chưa đo được: {chuaDo.map((d) => `${d.category} (${d.n})`).join(', ')}.

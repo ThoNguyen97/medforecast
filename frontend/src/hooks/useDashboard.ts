@@ -88,6 +88,7 @@ export function useDashboardV2(params: DashboardV2Params) {
     staleTime: 60_000,
     enabled: isAuthenticated,
     retry: false,
+    refetchOnWindowFocus: false,
     placeholderData: (prev) => prev, // đổi bộ lọc không nháy trắng
   });
 }

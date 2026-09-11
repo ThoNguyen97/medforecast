@@ -75,7 +75,7 @@ export default function AlertsTable({
                 )}
               </td>
               <td className="px-3 py-2.5 text-right tabular-nums text-neutral-600">{fmt(r.d_daily, 1)}</td>
-              <td className="px-3 py-2.5 text-right tabular-nums font-semibold">
+              <td className="px-3 py-2.5 text-right tabular-nums font-semibold whitespace-nowrap">
                 {r.doi == null ? '—' : `${fmt(r.doi, 1)} ng`}
               </td>
               <td className="px-3 py-2.5 text-right tabular-nums">

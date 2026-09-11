@@ -47,7 +47,7 @@ export default function DataStatusCard({ status }: { status: DataStatusSection }
           isLoading
             ? 'đang đọc MF_Watermark…'
             : !sta?.available
-              ? 'không kết nối được STA'
+              ? (warn ?? 'không đọc được STA (nguồn không phải SQL Server hoặc chưa cấu hình)')
               : warn
                 ? warn
                 : sta.last_pushes?.[0]

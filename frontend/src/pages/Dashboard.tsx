@@ -47,11 +47,17 @@ export default function Dashboard() {
     return () => clearTimeout(t);
   }, [refreshedAt]);
 
-  const refreshing = v2.isFetching || fc.isFetching;
+  const [manualRefresh, setManualRefresh] = useState(false);
+  const refreshing = manualRefresh || v2.isLoading;
   const handleRefresh = async () => {
     if (refreshing) return;
-    await Promise.all([v2.refetch(), fc.refetch()]);
-    setRefreshedAt(Date.now());
+    setManualRefresh(true);
+    try {
+      await Promise.all([v2.refetch(), fc.refetch()]);
+      setRefreshedAt(Date.now());
+    } finally {
+      setManualRefresh(false);
+    }
   };
 
   const handleExport = async () => {
@@ -138,8 +144,8 @@ export default function Dashboard() {
         onChange={setFilters}
         lastClosed={data?.meta.last_closed_period ?? null}
         openPeriod={data?.meta.open_period ?? null}
-        focusCount={data?.catalogue.focus ?? 0}
-        allCount={data?.risk.all.total ?? data?.catalogue.active ?? 0}
+        focusCount={data?.risk.focus.total ?? 0}
+        allCount={data?.risk.all.total ?? 0}
       />
 
       {/* KPI */}
