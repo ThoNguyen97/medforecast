@@ -33,7 +33,7 @@ trước bước đó), rồi huấn luyện lần cuối và ghi:
 - `models/v1/model_v1.pkl` — thành viên đã khớp + trạng thái kết hợp (joblib),
   cho `predict.py` dùng không cần khớp lại.
 
-Kết quả phải trùng bảng chính thức trong `KetQua_Backtest_ChonCauHinh.md`
+Kết quả phải trùng bảng chính thức trong `docs/KetQua_Backtest_ChonCauHinh.md`
 (RelMAE mức mã 0,500; mức nhóm 0,516 / 0,377 / 0,541). Nếu không trùng thì
 hoặc dataset đã xuất từ DB khác, hoặc cấu hình `PRODUCTION_CONFIG` đã đổi —
 `model_v1.json` ghi cả hai để truy ngược.

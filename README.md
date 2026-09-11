@@ -254,7 +254,7 @@ npm run test:coverage
 
 ## Deployment
 
-See [deployment documentation](docs/deployment.md) for production deployment instructions.
+Triển khai: xem `DEPLOY.md`; tài liệu đồ án: `docs/README.md`.
 
 ## Mô hình dự báo
 
@@ -281,7 +281,7 @@ tỷ trọng EWMA. Mọi tham số nằm ở một chỗ: `backend/app/forecasti
 RelMAE mức mã **0,500** — thắng seasonal-naive 50 %; mức nhóm 0,52 / 0,38 / 0,54;
 lệch hệ thống −0,5 / −3,0 / +4,1 %; khoảng dự báo 90 % phủ thật 80–87 %. Sinh lại
 bằng `python -m app.forecasting.run_eval`, chi tiết và các biến thể đối chứng
-trong `KetQua_Backtest_ChonCauHinh.md`.
+trong `docs/KetQua_Backtest_ChonCauHinh.md`.
 
 **Không dùng deep learning.** 92 quan sát tháng trên mỗi chuỗi không đủ cho
 LSTM; nhánh XGBoost/Prophet/LSTM cũ chưa từng chạy trong sản phẩm và đã chuyển

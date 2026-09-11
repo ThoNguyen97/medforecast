@@ -77,7 +77,7 @@ thực hiện đồ án; không có tài trợ.
   `python -m app.forecasting.dataset`; tăng phiên bản khi đổi định nghĩa cột
   hoặc quy tắc gộp, không tăng khi chỉ thêm tháng.
 - Kết quả huấn luyện chính thức trên bản này: RelMAE mức mã 0,500 (top-down
-  động), mức nhóm 0,516 / 0,377 / 0,541 — `KetQua_Backtest_ChonCauHinh.md`.
+  động), mức nhóm 0,516 / 0,377 / 0,541 — `docs/KetQua_Backtest_ChonCauHinh.md`.
 
 ## 8. Cách trích dẫn
 
