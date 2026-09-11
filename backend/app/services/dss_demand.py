@@ -2,7 +2,7 @@
 
 Đặt tại: backend/app/services/dss_demand.py
 
-    Ŷ_g  (từ topdown.forecast)
+    Ŷ_g  (từ group_forecast.forecast_group_next — Tầng 1)
       → Ŷ_g,c = Ŷ_g × p̂(g,c)                    phân rã theo rổ chăm sóc
       → D_i   = Σ_g Σ_c Ŷ_g,c × Norm(i,g,c)     quy đổi qua định mức
               + D_i,baseline                     nhu cầu nền không do hô hấp
@@ -398,7 +398,7 @@ def demand_by_supply(db: Session,
     """D_i = Σ_g Σ_c (Ŷ_g × p̂(g,c) × Norm(i, g, sev(c))) + D_i,baseline.
 
     `forecast_by_block` là số ca dự báo của MỘT kỳ (tháng) cho từng nhóm — lấy
-    từ `topdown.forecast()`, phần `muc == 'NHOM'`.
+    từ Tầng 1 (dss_dashboard.forecast_payload — ensemble M12 mức nhóm).
 
     `horizon_days` cho phép quy về cửa sổ khác 30 ngày; phần quy đổi từ ca bệnh
     và phần nền được co giãn CÙNG một hệ số.

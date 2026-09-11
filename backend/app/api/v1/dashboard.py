@@ -12,7 +12,6 @@ without raising an error.
 Routes
 ------
 GET /api/v1/dashboard/overview        – KPI summary (totals, risk counts)
-GET /api/v1/dashboard/supply-demand   – Time-series data for chart
 GET /api/v1/dashboard/risk-status     – Safe / low / critical stock counts
 GET /api/v1/dashboard/critical-alerts – Top unresolved critical alerts
 GET /api/v1/dashboard/v2              – Toàn bộ màn hình Tổng quan (Tuần 3, DSS)
@@ -35,7 +34,6 @@ from app.models.alert import Alert
 from app.models.disease_forecast import DiseaseForecast
 from app.models.inventory import Inventory
 from app.models.medical_supply import MedicalSupply
-from app.models.supply_requirement import SupplyRequirement
 from app.models.user import User
 from app.services import dss_dashboard, dss_runner, period_service as ps
 
@@ -264,112 +262,6 @@ async def get_dashboard_overview(
     return result
 
 
-@router.get("/supply-demand")
-async def get_supply_demand_data(
-    days_history: int = Query(30, ge=7, le=90, description="Days of historical data to include"),
-    days_forecast: int = Query(30, ge=7, le=30, description="Days of forecast data to include"),
-    supply_id: Optional[int] = Query(None, description="Filter to a specific supply ID"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> Dict:
-    """
-    Return time-series data for the supply/demand chart.
-
-    The response includes:
-    - A list of date points with actual supply requirement quantities (history)
-    - A list of date points with forecast predicted case counts (future)
-
-    This is suitable for rendering a combined historical + forecast line chart.
-
-    Query Params
-    ------------
-    days_history  : how many past days of actual requirement data to return (default 30)
-    days_forecast : how many future days of forecast data to return (default 30)
-    supply_id     : optional filter to a single supply
-    """
-    cache_key = f"dashboard:supply-demand:{days_history}:{days_forecast}:{supply_id}"
-    cached = _cache_get(cache_key)
-    if cached:
-        logger.debug("Cache hit: %s", cache_key)
-        return cached
-
-    logger.info(
-        "Building supply-demand data for user=%s supply_id=%s",
-        current_user.username,
-        supply_id,
-    )
-
-    today = date.today()
-    history_start = today - timedelta(days=days_history)
-    forecast_end = today + timedelta(days=days_forecast)
-
-    # ── Historical: aggregate supply requirements per day ─────────────────────
-    hist_query = (
-        db.query(
-            SupplyRequirement.requirement_date.label("req_date"),
-            func.sum(SupplyRequirement.required_quantity).label("total_required"),
-        )
-        .filter(
-            SupplyRequirement.requirement_date >= history_start,
-            SupplyRequirement.requirement_date <= today,
-        )
-    )
-    if supply_id is not None:
-        hist_query = hist_query.filter(SupplyRequirement.supply_id == supply_id)
-
-    hist_rows = hist_query.group_by(SupplyRequirement.requirement_date).order_by(
-        SupplyRequirement.requirement_date
-    ).all()
-
-    # ── Forecast: aggregate predicted cases per day ───────────────────────────
-    forecast_query = (
-        db.query(
-            DiseaseForecast.forecast_date.label("fc_date"),
-            func.sum(DiseaseForecast.predicted_cases).label("total_predicted"),
-        )
-        .filter(
-            DiseaseForecast.forecast_date > today,
-            DiseaseForecast.forecast_date <= forecast_end,
-        )
-    )
-    forecast_rows = forecast_query.group_by(DiseaseForecast.forecast_date).order_by(
-        DiseaseForecast.forecast_date
-    ).all()
-
-    # ── Merge into unified data_points list ───────────────────────────────────
-    data_points: List[Dict] = []
-
-    for row in hist_rows:
-        data_points.append(
-            {
-                "date": str(row.req_date),
-                "actual": int(row.total_required),
-                "forecast": None,
-            }
-        )
-
-    for row in forecast_rows:
-        data_points.append(
-            {
-                "date": str(row.fc_date),
-                "actual": None,
-                "forecast": int(row.total_predicted),
-            }
-        )
-
-    result = {
-        "supply_id": supply_id,
-        "days_history": days_history,
-        "days_forecast": days_forecast,
-        "data_points": data_points,
-        "total_historical_points": len(hist_rows),
-        "total_forecast_points": len(forecast_rows),
-    }
-
-    _cache_set(cache_key, result)
-    return result
-
-
 @router.get("/risk-status")
 async def get_risk_status(
     db: Session = Depends(get_db),
@@ -567,48 +459,6 @@ async def get_case_trend(
         "open_period": anchor["open_period"],
         "source": "mart_monthly_cases_by_block",
     }
-
-
-@router.get("/demand-vs-stock")
-async def get_demand_vs_stock(
-    top_n: int = Query(5, ge=1, le=20),
-    only_focus: bool = Query(True, description="Chỉ tập trọng tâm (~555 mã hô hấp ≥ 25%)"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> List[Dict]:
-    """Top N mã có nhu cầu dự báo cao nhất, kèm tồn hữu dụng.
-
-    ── G2·DSS ─────────────────────────────────────────────────────────────
-    Đây là chỗ ba tầng gặp nhau, chạy qua `dss_runner.run_forecast_cycle()`:
-
-        Tầng 1  topdown  → Ŷ_tổng → Ŷ_g
-        Tầng 2  dss_demand → Ŷ_g,c × Norm + D_baseline → D_i
-        Tầng 3  dss_alerts → S_usable (FEFO), DOI, nhãn màu
-
-    Bản cũ gọi `SupplyRecommendationService.calculate_for_month` với buffer
-    15% cứng. Buffer đó là một hằng số do người đặt, không đo được; nay
-    thay bằng khoảng dự báo thực nghiệm ở Tầng 1 và nhu cầu nền đo được ở
-    Tầng 2.
-
-    `only_focus = True` là mặc định có chủ đích: xếp hạng trên toàn danh mục
-    thì đầu bảng sẽ toàn dịch truyền và thuốc bệnh mạn — đúng về số lượng
-    nhưng mô hình dịch tễ không nói được gì về chúng.
-    ─────────────────────────────────────────────────────────────────────── """
-    cache_key = f"dashboard:demand-vs-stock:{top_n}:{only_focus}"
-    cached = _cache_get(cache_key)
-    if cached is not None:
-        logger.debug("Cache hit: %s", cache_key)
-        return cached
-
-    try:
-        result = dss_runner.demand_vs_stock_payload(db, top_n=top_n,
-                                                    only_focus=only_focus)
-    except Exception as exc:                      # noqa: BLE001
-        logger.warning("demand-vs-stock lỗi: %s", exc)
-        return []
-
-    _cache_set(cache_key, result)
-    return result
 
 
 @router.get("/care-level")

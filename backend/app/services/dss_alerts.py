@@ -366,8 +366,8 @@ def _canh_bao(tong: int, fefo_that: int, co_demand: bool,
                   "— không có hạn dùng nào đọc được. S_usable đang bằng tồn hiện có. "
                   "Chạy: python scripts/run_dss_load.py --flow inventory_lot")
     elif fefo_that < tong:
-        cb.append(f"Chỉ {fefo_that}/{tong} mã có hạn dùng — số còn lại "
-                  f"S_usable = tồn hiện có (giả định lạc quan).")
+        cb.append(f"{fefo_that}/{tong} mã có lô tồn kèm hạn dùng (đã áp FEFO); "
+                  f"{tong - fefo_that} mã còn lại không có dòng tồn kho → Xám.")
     if not co_demand:
         cb.append("Chưa truyền nhu cầu dự báo: cột D_forecast và Δ_need để trống. "
                   "DOI vẫn đúng vì mẫu số lấy từ tiêu hao 12 kỳ.")

@@ -39,3 +39,5 @@ gọi nó cũng nằm trong danh sách này. Đã loại trừ file `test_*` kh�
 công ghi ở đầu `bo_ma_chet.sh`.
 
 - `frontend_chet/components_dashboard/EpidemicMapCard.tsx` — thẻ bản đồ dịch tễ của Dashboard cũ; Dashboard v2 (11/09/2026) thay bằng thẻ "Trạng thái dữ liệu" vì hệ thống chỉ có một cơ sở.
+
+- `ai_engine_cu/topdown.py` — Tầng 1 cũ của Dashboard (Ridge + lag trên tổng, chia theo tỷ trọng); chưa từng nằm trong bảng so sánh. Gỡ 11/09/2026 khi Dashboard chuyển sang ensemble M12 (`group_forecast.py`). Bảng `forecast_accuracy` nó ghi cũng không còn ai đọc.

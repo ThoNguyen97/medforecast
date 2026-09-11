@@ -1,42 +1,29 @@
-"""VÒNG KHÉP KÍN: DỰ BÁO → NHU CẦU → CẢNH BÁO, VÀ CÁC RESPONSE CHO DASHBOARD.
+"""RESPONSE CHO DASHBOARD CŨ + đếm tín hiệu tồn kho — một nguồn chân lý cho DOI.
 
 Đặt tại: backend/app/services/dss_runner.py
 
-    topdown.forecast()          Ŷ_tổng → Ŷ_g          (Tầng 1)
-        → dss_demand            Ŷ_g → Ŷ_g,c → D_i     (Tầng 2)
-            → dss_alerts        D_i, S_usable → DOI   (Tầng 3)
+Tầng 3 (dss_alerts) → các hàm `*_payload()` giữ HỢP ĐỒNG JSON cũ của
+/dashboard/risk-status, /critical-alerts, /care-level, và `stock_signal()` cho
+/overview, /summary. Trang Tổng quan mới dùng dss_dashboard (v2).
 
-=============================================================================
-VÌ SAO CẦN MODULE NÀY
+11/09/2026 (M12): `run_forecast_cycle` và `demand_vs_stock_payload` — vốn gọi
+`topdown.py` (Ridge riêng, chưa từng có trong bảng so sánh) — đã gỡ; Tầng 1
+duy nhất là `group_forecast.forecast_group_next` qua dss_dashboard. topdown.py
+chuyển vào _archive/ai_engine_cu/.
 
-Ba module tầng đều thuần chức năng, nhưng chúng nói hai "thứ tiếng" khác nhau:
-`topdown` mở kết nối sqlite3 chỉ-đọc bằng đường dẫn file, còn `dss_demand` và
-`dss_alerts` nhận một `Session` của SQLAlchemy. Chỗ nối phải nằm ở đâu đó —
-đặt trong endpoint thì mỗi endpoint lại nối một kiểu.
-
-Quan trọng hơn: các hàm `*_payload()` ở dưới giữ nguyên HỢP ĐỒNG JSON cũ của
-dashboard. Nhờ vậy `dashboard.py` chỉ còn vài dòng gọi hàm, và phần logic
-chuyển đổi nằm ở đây — nơi có thể kiểm thử được mà không cần dựng cả FastAPI.
-
-=============================================================================
 ÁNH XẠ NHÃN MỚI VỀ TÊN CŨ
 
-Giao diện hiện tại đọc `safe / low / critical`. Tầng 3 sinh ra bốn nhãn
+Giao diện cũ đọc `safe / low / critical`. Tầng 3 sinh ra bốn nhãn
 `green / amber / red / grey`. Ánh xạ:
 
     green  → safe        DOI > 36 ngày
     amber  → low         18 < DOI ≤ 36
     red    → critical    DOI ≤ 18
     grey   → (khoá mới)  không đo được — KHÔNG dồn vào safe
-
-Nhãn Xám phải có khoá riêng. Dồn nó vào `safe` là điều tệ nhất có thể làm ở
-đây: hàng nghìn mã chưa có định mức sẽ hiện màu xanh và dashboard trông rất
-đẹp mà hoàn toàn vô nghĩa.
 """
 from __future__ import annotations
 
 import logging
-from datetime import date
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import text
@@ -49,112 +36,6 @@ logger = logging.getLogger(__name__)
 # Nhãn DOI → tên cũ mà giao diện đang đọc
 MUC_SANG_TEN_CU = {"green": "safe", "amber": "low", "red": "critical",
                    "grey": "grey"}
-
-
-def _db_path(db: Session) -> str:
-    """Đường dẫn file SQLite của session hiện tại.
-
-    `topdown` cần đường dẫn file (nó tự mở kết nối chỉ-đọc riêng để chắc chắn
-    không ghi gì trong lúc huấn luyện). Lấy từ chính engine đang dùng thay vì
-    viết cứng, để môi trường dev và production không lệch nhau.
-    """
-    url = db.get_bind().url
-    if url.database:
-        return str(url.database)
-    raise RuntimeError("Không lấy được đường dẫn DB từ session — "
-                       "topdown chỉ hỗ trợ SQLite.")
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# BƯỚC 4 · vòng khép kín
-# ─────────────────────────────────────────────────────────────────────────────
-
-def run_forecast_cycle(db: Session,
-                       horizon: int = 1,
-                       save_accuracy: bool = True,
-                       only_focus: bool = False) -> Dict[str, Any]:
-    """Chạy trọn ba tầng, trả về mọi thứ dashboard cần.
-
-    `horizon` là tầm dự báo dùng để tính nhu cầu. Mặc định 1 (kỳ kế tiếp kỳ đã
-    chốt) vì đó là kỳ mà quyết định cấp phát nhắm vào; h=2 và h=3 vẫn được tính
-    và trả về trong `du_bao` để giao diện vẽ đường dự báo.
-
-    Một tầng hỏng KHÔNG chặn hai tầng còn lại: Tầng 3 (DOI) vẫn tính được mà
-    không cần dự báo, vì mẫu số lấy từ tiêu hao 12 kỳ đã qua. Trả về `loi` để
-    nơi gọi biết phần nào thiếu.
-    """
-    from app.forecasting import topdown
-
-    ket: Dict[str, Any] = {"loi": [], "chay_luc": date.today().isoformat()}
-
-    # ── Tầng 1
-    du_bao_nhom: Dict[str, float] = {}
-    try:
-        # M9: Dashboard và trang Kế hoạch dùng CÙNG một mức tin cậy. Trước đây
-        # topdown mặc định 0,80 còn Kế hoạch ~0,90 — hai màn hình hai khoảng.
-        from app.forecasting.config import PRODUCTION_CONFIG
-        cfg = topdown.Config(db_path=_db_path(db),
-                             interval_level=PRODUCTION_CONFIG.interval_level)
-        bt = topdown.backtest(cfg)
-        fc = topdown.forecast(cfg, bt)
-        df = fc["du_bao"]
-
-        ket["ky_neo"] = fc["ky_neo"]
-        ket["ty_trong_nhom"] = fc["ty_trong"].to_dict("records")
-        ket["du_bao"] = df.to_dict("records")
-        ket["do_chinh_xac"] = topdown.summarise(bt).to_dict("records")
-        ket["do_phu_khoang"] = topdown.interval_coverage(
-            bt, cfg.interval_level).to_dict("records")
-        ket["ghi_chu_khoang"] = fc["ghi_chu"]
-
-        chon = df[(df["muc"] == "NHOM") & (df["h"] == horizon)]
-        du_bao_nhom = {r.block_code: float(r.diem) for r in chon.itertuples()}
-        tong = df[(df["muc"] == "TONG") & (df["h"] == horizon)]
-        if not tong.empty:
-            ket["du_bao_tong"] = {
-                "period": str(tong.iloc[0]["period"]),
-                "diem": float(tong.iloc[0]["diem"]),
-                "lo": float(tong.iloc[0]["lo"]),
-                "hi": float(tong.iloc[0]["hi"]),
-                "muc_tin_cay": cfg.interval_level,
-            }
-
-        if save_accuracy:
-            n = topdown.save_accuracy(
-                cfg, bt, ghi_chu=f"dss_runner · h={horizon} · Tầng A Ridge, không thời tiết")
-            ket["so_dong_do_chinh_xac_da_ghi"] = n
-    except Exception as exc:                                  # noqa: BLE001
-        logger.exception("Tầng 1 lỗi")
-        ket["loi"].append(f"Tầng 1 (dự báo): {exc}")
-
-    # ── Tầng 2
-    nhu_cau: Dict[str, float] = {}
-    try:
-        th = dss_alerts.get_thresholds(db)
-        dm = dss_demand.demand_by_supply(
-            db, du_bao_nhom, horizon_days=int(th.get("horizon_days", 30)))
-        nhu_cau = {r["supply_code"]: r["d_forecast"] for r in dm["rows"]}
-        ket["nhu_cau"] = {
-            "so_ma": dm["so_ma"],
-            "horizon_days": dm["horizon_days"],
-            "nhom_thieu_p_hat": dm["nhom_thieu_p_hat"],
-            "nhom_thieu_dinh_muc": dm["nhom_thieu_dinh_muc"],
-            "chan_doan_dinh_muc": dm["chan_doan_dinh_muc"],
-        }
-        ket["_rows_nhu_cau"] = dm["rows"]
-    except Exception as exc:                                  # noqa: BLE001
-        logger.exception("Tầng 2 lỗi")
-        ket["loi"].append(f"Tầng 2 (quy đổi): {exc}")
-
-    # ── Tầng 3
-    try:
-        al = dss_alerts.alert_rows(db, demand=nhu_cau, only_focus=only_focus)
-        ket["canh_bao"] = al
-    except Exception as exc:                                  # noqa: BLE001
-        logger.exception("Tầng 3 lỗi")
-        ket["loi"].append(f"Tầng 3 (DOI): {exc}")
-
-    return ket
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -344,49 +225,6 @@ def critical_alerts_payload(db: Session, limit: int = 10) -> Dict[str, Any]:
         "chi_doc": True,
         "canh_bao": al.get("canh_bao", []),
     }
-
-
-def demand_vs_stock_payload(db: Session, top_n: int = 5,
-                            only_focus: bool = True) -> List[Dict[str, Any]]:
-    """Top N mã có nhu cầu dự báo cao nhất, kèm tồn hữu dụng.
-
-    Đây là chỗ ba tầng gặp nhau. Mặc định giới hạn ở TẬP TRỌNG TÂM (~555 mã có
-    tỷ trọng hô hấp ≥ 25%): xếp hạng trên toàn danh mục thì đầu bảng sẽ toàn
-    dịch truyền và thuốc bệnh mạn — đúng về số lượng nhưng không phải thứ mô
-    hình dịch tễ nói được điều gì về nó.
-
-    Khoá cũ giữ nguyên: `supply_id`, `supply_name`, `unit`, `demand`, `stock`.
-    """
-    chu_ky = run_forecast_cycle(db, horizon=1, save_accuracy=False,
-                                only_focus=only_focus)
-    al = chu_ky.get("canh_bao") or {}
-    rows = al.get("rows") or []
-    if not rows:
-        logger.warning("demand-vs-stock rỗng. Lỗi: %s", chu_ky.get("loi"))
-        return []
-
-    co_nc = [r for r in rows if r["d_forecast"] is not None]
-    co_nc.sort(key=lambda r: -(r["d_forecast"] or 0))
-
-    out: List[Dict[str, Any]] = []
-    for r in co_nc[:top_n]:
-        out.append({
-            # ── khoá cũ ──
-            "supply_id": r["supply_code"],
-            "supply_name": r["ten"],
-            "unit": r["don_vi"],
-            "demand": int(round(r["d_forecast"] or 0)),
-            "stock": int(round(r["s_usable"])),
-            # ── khoá mới ──
-            "supply_code": r["supply_code"],
-            "s_total": r["s_total"],
-            "s_usable": r["s_usable"],
-            "delta_need": r["delta_need"],
-            "doi": r["doi"],
-            "muc": r["muc"],
-            "ty_trong_hohap": r["ty_trong_hohap"],
-        })
-    return out
 
 
 def care_level_payload(db: Session) -> Dict[str, Any]:

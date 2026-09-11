@@ -5,7 +5,7 @@ Vì sao cần file này
 Trước 11/09/2026 có BỐN cấu hình mô hình cùng tồn tại:
 
     evaluate.py                      build_default_ensemble()        thời tiết TẮT
-    dashboard  (dss_runner/topdown)  Ridge + lag, không phải ensemble
+    dashboard  (dss_runner/topdown)  Ridge + lag, không phải ensemble (đã gỡ, _archive)
     trang Phân tích                  ensemble(use_weather=auto)      thời tiết BẬT
     trang Kế hoạch                   nhóm BẬT / mã TẮT
 

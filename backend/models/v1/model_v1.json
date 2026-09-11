@@ -1,11 +1,11 @@
 {
   "model": "MedForecast ensemble M12 — top-down động",
   "version": "1",
-  "trained_at": "2026-09-11T14:40:16",
+  "trained_at": "2026-09-11T21:51:00",
   "dataset": {
-    "dir": "../dataset_v1",
+    "dir": "..\\dataset\\v1",
     "version": "1.0",
-    "exported_at": "2026-09-11T14:39:08",
+    "exported_at": "2026-09-11T14:42:33",
     "sha256": {
       "nhom": "0f93f004bbb6bf0a997345978fd44e7b44f5efe3c508b292da688c7fad87138b",
       "ma": "5a29661376d75c48bc7c00dfe87ab0e7b5fc95c0dd6b206e3c844397f7d6b4c6",
@@ -41,8 +41,8 @@
       "forecast": {
         "point": 161.1,
         "point_raw": 166.0,
-        "lower": 103.98877671793207,
-        "upper": 235.18567577516413,
+        "lower": 104,
+        "upper": 235,
         "level": 0.9
       },
       "members_used": [
@@ -71,23 +71,23 @@
       "backtest": {
         "n_steps": 68,
         "group": {
-          "MAE": 26.695,
-          "RMSE": 33.912,
-          "RelMAE": 0.516,
-          "ME": -0.69,
-          "MPE_pct": -0.543,
-          "sMAPE_pct": 23.346,
-          "WAPE_pct": 20.983
+          "MAE": 26.723,
+          "RMSE": 33.98,
+          "RelMAE": 0.517,
+          "ME": -0.723,
+          "MPE_pct": -0.569,
+          "sMAPE_pct": 23.395,
+          "WAPE_pct": 21.006
         },
         "coverage_pct": 86.66666666666667,
         "codes_top_down_dynamic": {
-          "MAE": 10.636,
-          "RMSE": 15.031,
+          "MAE": 10.641,
+          "RMSE": 15.046,
           "RelMAE": 0.547,
-          "ME": -0.527,
-          "MPE_pct": -2.021,
-          "sMAPE_pct": 35.751,
-          "WAPE_pct": 32.721
+          "ME": -0.536,
+          "MPE_pct": -2.047,
+          "sMAPE_pct": 35.728,
+          "WAPE_pct": 32.736
         },
         "members_used_pct": {
           "seasonal_trend": 100.0,
@@ -114,8 +114,8 @@
       "forecast": {
         "point": 189.5,
         "point_raw": 189.5,
-        "lower": 154.626876585954,
-        "upper": 302.8143776480318,
+        "lower": 155,
+        "upper": 303,
         "level": 0.9
       },
       "members_used": [
@@ -144,23 +144,23 @@
       "backtest": {
         "n_steps": 68,
         "group": {
-          "MAE": 19.559,
-          "RMSE": 27.537,
-          "RelMAE": 0.377,
-          "ME": -3.095,
-          "MPE_pct": -2.964,
-          "sMAPE_pct": 23.718,
-          "WAPE_pct": 18.73
+          "MAE": 19.6,
+          "RMSE": 27.564,
+          "RelMAE": 0.378,
+          "ME": -2.986,
+          "MPE_pct": -2.859,
+          "sMAPE_pct": 23.658,
+          "WAPE_pct": 18.769
         },
-        "coverage_pct": 80.0,
+        "coverage_pct": 83.33333333333334,
         "codes_top_down_dynamic": {
-          "MAE": 16.3,
-          "RMSE": 22.429,
-          "RelMAE": 0.413,
-          "ME": -2.878,
-          "MPE_pct": -5.728,
-          "sMAPE_pct": 29.623,
-          "WAPE_pct": 21.943
+          "MAE": 16.334,
+          "RMSE": 22.448,
+          "RelMAE": 0.414,
+          "ME": -2.789,
+          "MPE_pct": -5.627,
+          "sMAPE_pct": 29.568,
+          "WAPE_pct": 21.983
         },
         "members_used_pct": {
           "seasonal_trend": 100.0,
@@ -190,8 +190,8 @@
       "forecast": {
         "point": 42.2,
         "point_raw": 48.8,
-        "lower": 15.108051463182347,
-        "upper": 81.96951220898758,
+        "lower": 15,
+        "upper": 82,
         "level": 0.9
       },
       "members_used": [
@@ -220,23 +220,23 @@
       "backtest": {
         "n_steps": 67,
         "group": {
-          "MAE": 16.503,
-          "RMSE": 22.098,
+          "MAE": 16.518,
+          "RMSE": 22.099,
           "RelMAE": 0.541,
-          "ME": 2.263,
-          "MPE_pct": 4.134,
-          "sMAPE_pct": 35.765,
-          "WAPE_pct": 30.144
+          "ME": 2.255,
+          "MPE_pct": 4.118,
+          "sMAPE_pct": 35.782,
+          "WAPE_pct": 30.171
         },
         "coverage_pct": 84.7457627118644,
         "codes_top_down_dynamic": {
-          "MAE": 16.381,
-          "RMSE": 21.985,
+          "MAE": 16.396,
+          "RMSE": 21.986,
           "RelMAE": 0.541,
-          "ME": 2.284,
-          "MPE_pct": 4.009,
-          "sMAPE_pct": 35.849,
-          "WAPE_pct": 30.15
+          "ME": 2.276,
+          "MPE_pct": 3.994,
+          "sMAPE_pct": 35.866,
+          "WAPE_pct": 30.177
         },
         "members_used_pct": {
           "seasonal_trend": 100.0,
@@ -255,30 +255,30 @@
   },
   "summary": {
     "code_level_top_down_dynamic": {
-      "MAE": 14.439,
-      "RMSE": 19.815,
-      "RelMAE": 0.5,
-      "ME": -0.374,
-      "MPE_pct": -1.247,
-      "sMAPE_pct": 33.741,
-      "WAPE_pct": 28.271
+      "MAE": 14.457,
+      "RMSE": 19.827,
+      "RelMAE": 0.501,
+      "ME": -0.35,
+      "MPE_pct": -1.227,
+      "sMAPE_pct": 33.721,
+      "WAPE_pct": 28.299
     },
     "code_level_by_method": {
       "bottom_up": 0.605,
       "top_down_fixed": 0.547,
-      "top_down_dynamic": 0.5,
+      "top_down_dynamic": 0.501,
       "ols_reconcile": 0.592
     },
     "group_level": {
       "J00-J06": {
-        "RelMAE": 0.516,
-        "MPE_pct": -0.5,
+        "RelMAE": 0.517,
+        "MPE_pct": -0.6,
         "coverage_pct": 86.7
       },
       "J09-J18": {
-        "RelMAE": 0.377,
-        "MPE_pct": -3.0,
-        "coverage_pct": 80.0
+        "RelMAE": 0.378,
+        "MPE_pct": -2.9,
+        "coverage_pct": 83.3
       },
       "J20-J22": {
         "RelMAE": 0.541,

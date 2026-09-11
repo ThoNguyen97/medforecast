@@ -62,7 +62,7 @@ def _metrics_block(a: np.ndarray, p: np.ndarray, sn: np.ndarray) -> dict:
 def empirical_interval(pred: float, rel_resid: np.ndarray, level: float):
     """Khoảng dự báo từ phân vị của tỷ số (thực tế / dự báo) trong quá khứ.
 
-    Cùng cách với topdown.empirical_intervals: bất đối xứng tự nhiên, không
+    Phân vị thực nghiệm: bất đối xứng tự nhiên, không
     giả định phân phối, và KHÔNG thể âm. Cần ≥ 8 phần dư; ít hơn thì trả
     None để nơi gọi nói rõ "chưa đủ lịch sử", không bịa khoảng.
     """
