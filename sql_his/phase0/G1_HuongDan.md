@@ -88,6 +88,7 @@ tập có nhãn rõ và cho lọc được. `G1_03` tạo sẵn hai view:
 | 2 | `G1_02_PROD_store_tieuhao_toanvien.sql` | HIS PROD | Tạo thủ tục |
 | 3 | *(sửa tay 2 chỗ trong SP ca bệnh — mục 3 dưới)* | HIS PROD | — |
 | 4 | `G1_03_LOCAL_cau_hinh.sql` | `medforecast.db` | **Có — sao lưu trước** |
+| 5 | `G1_05_STA_quyen_trang_thai.sql` (11/09) | STA · `MEDFORECAST_DW` | GRANT SELECT `MF_Watermark`/`MF_SyncLog` cho `medforecast_app` — thẻ "Trạng thái dữ liệu" trên Dashboard cần |
 
 ```bash
 cp backend/data/medforecast.db backend/data/saoluu_truoc_G1_medforecast.db

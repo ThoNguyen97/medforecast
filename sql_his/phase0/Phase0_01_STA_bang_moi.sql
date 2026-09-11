@@ -408,6 +408,7 @@ GRANT SELECT ON dbo.vw_MedForecast_TonKhoLo         TO medforecast_app;
 GRANT SELECT ON dbo.vw_MedForecast_TonKhoLo_MoiNhat TO medforecast_app;
 GRANT SELECT ON dbo.vw_MedForecast_LichSuNhap       TO medforecast_app;
 GRANT SELECT ON dbo.vw_MedForecast_VatTuThuocTinh   TO medforecast_app;
+GRANT SELECT ON dbo.MF_Watermark                    TO medforecast_app;   -- thẻ Trạng thái dữ liệu (11/09)
 GO
 */
 

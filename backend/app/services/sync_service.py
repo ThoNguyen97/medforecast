@@ -28,6 +28,14 @@ from app.services import sync_config_service
 logger = logging.getLogger(__name__)
 
 
+def _ngan_gon(exc: Exception) -> str:
+    """Rút thông điệp pyodbc dài dòng về một câu: giữ phần sau '[SQL Server]'."""
+    m = str(exc)
+    if "[SQL Server]" in m:
+        m = m.split("[SQL Server]")[-1]
+    return m.strip().rstrip("')\"").strip()[:160]
+
+
 def _build_pipeline(db: Optional[Session] = None) -> DataPipeline:
     icd_dir = os.environ.get("PIPELINE_ICD_DIR", "../data")
     # Không bắt buộc có TM_ICD*.xlsx: nguồn STA đã kèm sẵn cột disease_group.
@@ -124,28 +132,37 @@ class SyncService:
         out = {"available": False, "watermarks": [], "last_pushes": [], "warning": None}
         if not isinstance(connector, SqlServerConnector):
             return out
+        loi = []
+        wm = lg = None
         try:
             wm = connector._read(                          # noqa: SLF001
                 "SELECT TenLuong, CONVERT(varchar(10), MocDaDay, 120) AS MocDaDay, "
                 "       CONVERT(varchar(19), LanChayCuoi, 120) AS LanChayCuoi "
                 "FROM dbo.MF_Watermark ORDER BY TenLuong", {})
+        except Exception as exc:                          # noqa: BLE001
+            loi.append(f"MF_Watermark: {_ngan_gon(exc)}")
+        try:
             lg = connector._read(                          # noqa: SLF001
                 "SELECT TOP 8 CONVERT(varchar(19), BatDau, 120) AS BatDau, "
                 "       CONVERT(varchar(19), KetThuc, 120) AS KetThuc, "
                 "       TrangThai, SoDongCaBenh, TongSoCa, LEFT(ThongDiep, 400) AS ThongDiep "
                 "FROM dbo.MF_SyncLog ORDER BY Id DESC", {})
-            out["available"] = True
-            out["watermarks"] = wm.to_dict("records") if wm is not None else []
-            out["last_pushes"] = lg.to_dict("records") if lg is not None else []
-            # cảnh báo ngắn cho giao diện
-            failed = [r for r in out["last_pushes"] if str(r.get("TrangThai", "")).lower() == "failed"]
-            if out["last_pushes"] and str(out["last_pushes"][0].get("TrangThai", "")).lower() != "ok":
-                out["warning"] = ("Lần đẩy PROD→STA gần nhất KHÔNG thành công: "
-                                  + str(out["last_pushes"][0].get("ThongDiep", ""))[:200])
-            elif failed:
-                out["warning"] = f"{len(failed)}/{len(out['last_pushes'])} lần đẩy gần đây thất bại — xem nhật ký."
         except Exception as exc:                          # noqa: BLE001
-            out["warning"] = f"Không đọc được MF_Watermark/MF_SyncLog: {str(exc)[:160]}"
+            loi.append(f"MF_SyncLog: {_ngan_gon(exc)}")
+
+        out["available"] = wm is not None or lg is not None
+        out["watermarks"] = wm.to_dict("records") if wm is not None else []
+        out["last_pushes"] = lg.to_dict("records") if lg is not None else []
+        # cảnh báo ngắn cho giao diện — ưu tiên lỗi đẩy thật hơn lỗi quyền đọc
+        failed = [r for r in out["last_pushes"] if str(r.get("TrangThai", "")).lower() == "failed"]
+        if out["last_pushes"] and str(out["last_pushes"][0].get("TrangThai", "")).lower() != "ok":
+            out["warning"] = ("Lần đẩy PROD→STA gần nhất KHÔNG thành công: "
+                              + str(out["last_pushes"][0].get("ThongDiep", ""))[:200])
+        elif failed:
+            out["warning"] = f"{len(failed)}/{len(out['last_pushes'])} lần đẩy gần đây thất bại — xem nhật ký."
+        elif loi:
+            out["warning"] = ("Thiếu quyền đọc trên STA (" + "; ".join(loi)
+                              + "). Chạy sql_his/phase0/G1_05_STA_quyen_trang_thai.sql.")
         return out
 
     def _lam_moi_bang_nghiep_vu(self) -> dict:
