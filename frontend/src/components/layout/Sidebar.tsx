@@ -6,7 +6,6 @@ import {
   TrendingUp,
   Boxes,
   ShieldAlert,
-  ClipboardList,
   FileBarChart,
   Settings,
   HelpCircle,
@@ -32,7 +31,6 @@ const navItems: NavItem[] = [
   { label: 'Phân tích & Dự báo', path: ROUTES.FORECASTING, icon: TrendingUp },
   { label: 'Vật tư y tế', path: ROUTES.INVENTORY, icon: Boxes },
   { label: 'Cảnh báo thiếu hụt', path: ROUTES.ALERTS, icon: ShieldAlert },
-  { label: 'Kế hoạch cung ứng', path: ROUTES.SUPPLY_PLAN, icon: ClipboardList },
   { label: 'Báo cáo', path: ROUTES.REPORTS, icon: FileBarChart },
   { label: 'Quản trị', path: ROUTES.SETTINGS, icon: Settings, adminOnly: true },
 ];

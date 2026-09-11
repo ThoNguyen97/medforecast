@@ -296,7 +296,7 @@ function buildKpis(
       value: fcLoading ? <span className="text-base font-semibold text-neutral-400">đang tính…</span> : fcErr ? <span className="text-base font-semibold text-red-700">lỗi</span> : n(fcPoint != null ? Math.round(fcPoint) : null),
       unit: fcLoading || fcErr ? undefined : 'ca',
       tone: 'blue',
-      to: ROUTES.SUPPLY_PLAN,
+      to: ROUTES.FORECASTING,
       context: fcLoading ? (
         <span className="text-neutral-500">Lần đầu khớp ensemble có thể mất tới một phút; các lần sau tức thì.</span>
       ) : fcErr ? (
