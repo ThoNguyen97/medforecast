@@ -580,6 +580,13 @@ def overview_payload(db: Session, focus: bool = True,
                 "ly_do_xam": t.get("ly_do_xam", {}), "san_sang": True}
 
     dem_focus, dem_all = _counts(al_focus), _counts(al_all)
+    # Chưa có dữ liệu vật tư (cài mới, chưa đồng bộ HIS) → nói rõ lý do, không
+    # để màn hình hiện 0/0/0/0 như thể kho không có mã nào cần theo dõi.
+    canh_bao_tang3 = list(chon.get("canh_bao") or [])
+    if not chon.get("san_sang"):
+        canh_bao_tang3.append(
+            (chon.get("ly_do") or "Chưa có dữ liệu tồn kho / tiêu hao.")
+            + " Vào Quản trị → Kết nối HIS rồi bấm Đồng bộ để nạp dữ liệu vật tư.")
     dem = dem_focus if focus else dem_all
     sig = {**dem, "nguong": {"red_days": float(th["doi_red_days"]),
                              "amber_days": float(th["doi_amber_days"])}}
@@ -669,7 +676,7 @@ def overview_payload(db: Session, focus: bool = True,
             "overall": risk,
             "basis": "DOI = S_usable(FEFO) / d_daily · Đỏ ≤ %.0f · Vàng ≤ %.0f · Xanh > %.0f ngày"
                      % (sig["nguong"]["red_days"], sig["nguong"]["amber_days"], sig["nguong"]["amber_days"]),
-            "canh_bao": chon.get("canh_bao", []),
+            "canh_bao": canh_bao_tang3,
         },
         "catalogue": cat,
         "alerts": alerts,

@@ -18,12 +18,25 @@ Base = declarative_base()
 
 
 def get_db_url() -> str:
-    url = (
-        os.environ.get("PIPELINE_DB_URL")
-        or os.environ.get("DATABASE_URL")
-        or "sqlite:///./data/medforecast_dw.db"
-    )
-    return url
+    """URL của DB tầng dữ liệu, theo thứ tự ưu tiên.
+
+    11/09/2026 — thêm bậc 3 (app.config): khi chạy TRONG app mà `.env` không có
+    (clone sạch), hai bậc đầu đều rỗng nên bảng mart/fact rơi vào
+    `medforecast_dw.db` — một FILE KHÁC với DB của app. Hậu quả im lặng: app tạo
+    bảng xong, đồng bộ xong, mà Dashboard không thấy dòng nào. Đọc thêm cấu hình
+    của app (nếu import được) giữ mọi thứ trong CÙNG một file; chạy CLI độc lập
+    không có app vẫn rơi về mặc định cũ.
+    """
+    url = os.environ.get("PIPELINE_DB_URL") or os.environ.get("DATABASE_URL")
+    if url:
+        return url
+    try:
+        from app.config import settings
+        if settings.DATABASE_URL:
+            return settings.DATABASE_URL
+    except Exception:                                     # noqa: BLE001
+        pass
+    return "sqlite:///./data/medforecast_dw.db"
 
 
 def make_engine(url: str | None = None):

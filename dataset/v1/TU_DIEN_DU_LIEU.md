@@ -38,6 +38,17 @@ Khoá: (`period`, `block_code`, `icd_code`).
 | `cases` | số lượt có chẩn đoán chính = mã này trong tháng, **gộp toàn quốc** (đã cộng các tỉnh). Tổng theo mã trong một khối có thể **lớn hơn** `cases` của khối vì một lượt có thể mang hai mã trong cùng khối |
 | các cột còn lại | như `nhom_thang.csv` |
 
+## `dim_icd.csv` — từ điển mã ICD (tham chiếu, không phải dữ liệu quan sát)
+
+| Cột | Ý nghĩa |
+|---|---|
+| `icd_code` | mã ICD-10 3 ký tự |
+| `icd_name` | tên chẩn đoán theo danh mục Bộ Y tế (rỗng nếu danh mục nguồn không có) |
+| `block_code`, `block_name` | khối chứa mã và tên khối |
+| `is_target` | 1 = thuộc phạm vi đồ án (ba khối hô hấp) |
+
+Dùng để dựng lại danh mục khi cài hệ thống trên máy mới (`scripts/khoi_tao_moi.py`).
+
 ## `ty_trong_co_dinh.csv`
 
 | Cột | Ý nghĩa |

@@ -1,8 +1,8 @@
 {
   "dataset": "MedForecast — bộ huấn luyện dự báo ca bệnh hô hấp theo tháng",
   "version": "1.0",
-  "exported_at": "2026-09-11T14:42:33",
-  "source_db": "backend/data/medforecast.db (xuất qua bản rút gọn 3 bảng mart, nội dung y hệt)",
+  "exported_at": "2026-09-11T16:53:56",
+  "source_db": "data/medforecast.db",
   "region": "TOAN_QUOC",
   "blocks": [
     "J00-J06",
@@ -63,6 +63,18 @@
         "share"
       ],
       "sha256": "4c6fbbb8869b52835dbc8da6fef4100b48d815cb2473a68eafc464567c6d506a"
+    },
+    "dim_icd": {
+      "csv": "dim_icd.csv",
+      "rows": 20,
+      "cols": [
+        "icd_code",
+        "icd_name",
+        "block_code",
+        "block_name",
+        "is_target"
+      ],
+      "sha256": "5059e7bf35efbdb1071c907a4641e30b068cbb934eb95f49d82fb7f4d2693df2"
     }
   },
   "split_protocol": {

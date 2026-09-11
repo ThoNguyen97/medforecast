@@ -1,0 +1,21 @@
+﻿icd_code,icd_name,block_code,block_name,is_target
+J00,Viêm mũi họng cấp tính [cảm thường],J00-J06,Nhiễm khuẩn hô hấp trên cấp,1
+J01,Viêm xoang cấp tính,J00-J06,Nhiễm khuẩn hô hấp trên cấp,1
+J02,Viêm họng cấp tính,J00-J06,Nhiễm khuẩn hô hấp trên cấp,1
+J03,Viêm amydan cấp tính,J00-J06,Nhiễm khuẩn hô hấp trên cấp,1
+J04,Viêm thanh quản và/hoặc khí quản cấp tính,J00-J06,Nhiễm khuẩn hô hấp trên cấp,1
+J05,,J00-J06,Nhiễm khuẩn hô hấp trên cấp,1
+J06,Nhiễm trùng đường hô hấp trên cấp tính ở nhiều vị trí và/hoặc vị trí không xác định,J00-J06,Nhiễm khuẩn hô hấp trên cấp,1
+J09,,J09-J18,Cúm và viêm phổi,1
+J10,Cảm cúm do virus cúm mùa đã xác định,J09-J18,Cúm và viêm phổi,1
+J11,"Cúm, virus không được định danh",J09-J18,Cúm và viêm phổi,1
+J12,"Viêm phổi do virus, không phân loại mục khác",J09-J18,Cúm và viêm phổi,1
+J13,Viêm phổi do vi khuẩn phế cầu khuẩn [Streptococcus pneumoniae],J09-J18,Cúm và viêm phổi,1
+J14,,J09-J18,Cúm và viêm phổi,1
+J15,"Viêm phổi do vi khuẩn, không phân loại mục khác",J09-J18,Cúm và viêm phổi,1
+J16,"Viêm phổi do vi sinh vật truyền nhiễm khác, không phân loại mục khác",J09-J18,Cúm và viêm phổi,1
+J17,Viêm phổi do nhiễm nấm,J09-J18,Cúm và viêm phổi,1
+J18,"Viêm phổi, tác nhân không xác định",J09-J18,Cúm và viêm phổi,1
+J20,Viêm phế quản cấp tính,J20-J22,Nhiễm khuẩn hô hấp dưới cấp khác,1
+J21,Viêm tiểu phế quản cấp tính,J20-J22,Nhiễm khuẩn hô hấp dưới cấp khác,1
+J22,,J20-J22,Nhiễm khuẩn hô hấp dưới cấp khác,1

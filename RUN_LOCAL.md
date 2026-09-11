@@ -3,14 +3,44 @@
 Chạy 2 cửa sổ terminal: một cho backend, một cho frontend. Dùng SQLite sẵn có
 (không cần Docker/Postgres ở bước thử này).
 
+## 0) Máy MỚI vừa `git clone` — chạy một lệnh khởi tạo
+
+`backend\.env` và `backend\data\*.db` **không nằm trong git** (chứa mật khẩu HIS
+và dữ liệu bệnh viện). Clone xong là thư mục trống: backend tự tạo một DB rỗng,
+không có tài khoản nào, và mọi lần đăng nhập trả **401**. Lệnh dưới lấp đúng
+khoảng trống đó — tạo `.env`, tạo bảng, tạo tài khoản, nạp bộ dữ liệu đóng gói:
+
+```powershell
+cd <thư-mục-repo>\backend
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+python scripts\khoi_tao_moi.py          # ~10 giây
+```
+
+Sau đó chạy được ngay: đăng nhập (**admin / admin123**, đổi mật khẩu ngay), trang
+Dữ liệu bệnh, Phân tích & Dự báo, và Dashboard phần dịch tễ (số ca, xu hướng, dự
+báo kỳ tới, chất lượng mô hình) — vì `dataset\v1` đã có 92 tháng số ca + thời tiết.
+
+Phần **vật tư** (tồn kho, DOI, Cảnh báo thiếu hụt) cần dữ liệu kho của bệnh viện:
+vào **Quản trị → Kết nối HIS**, nhập thông tin STA rồi bấm **Đồng bộ**. Bộ dữ liệu
+công bố không chứa dữ liệu vật tư, nên trước khi đồng bộ Dashboard sẽ ghi rõ
+"thiếu dữ liệu tồn kho" thay vì hiện 0.
+
+Muốn máy mới giống hệt máy đang làm việc thì chép `backend\data\medforecast.db`
+và `backend\.env` sang — nhưng chỉ làm vậy giữa hai thư mục của **cùng một người**;
+DB chứa dữ liệu bệnh viện, không gửi ra ngoài.
+
 ## 1) Backend (FastAPI)
 ```powershell
 cd D:\Personnal\LienThong\CDTN\webyte\webyte\backend
 python -m venv venv                # nếu chưa có
 venv\Scripts\activate
 pip install -r requirements.txt    # lần đầu — mất khoảng 5-10 phút
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --reload-dir app --port 8000
 ```
+> `--reload-dir app` để watcher chỉ theo dõi mã nguồn; thiếu nó thì mỗi lần
+> SQLite ghi là một dòng log "changes detected" (log phình hàng chục nghìn dòng).
 - Kiểm tra: mở http://localhost:8000/docs → thấy các nhóm API (có `data-sync`,
   `supply-planning`, `forecast-hierarchical`).
 - Lần khởi động đầu, backend tự tạo thêm các bảng `stg_/dim_/fact_/mart_` của tầng
@@ -34,7 +64,8 @@ npm install                        # lần đầu
 npm run dev
 ```
 - Mở **http://localhost:3000** (cổng đặt trong `vite.config.ts`, không phải 5173).
-- Đăng nhập **admin / admin123**. Nếu sai mật khẩu: `python scripts\create_admin_user.py`.
+- Đăng nhập **admin / admin123**. Chưa có tài khoản: `python scripts\khoi_tao_moi.py`
+  (hoặc `python scripts\create_admin_user.py` nếu chỉ cần tạo mỗi tài khoản).
 - Frontend gọi API qua đường dẫn tương đối `/api/v1`, được Vite proxy sang
   `http://localhost:8000`. Vì vậy **phải chạy backend trước**.
 

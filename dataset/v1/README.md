@@ -9,6 +9,7 @@ bệnh viện, không cần SQL Server, không cần SQLite của app.
 | `nhom_thang.csv` | tháng × khối ICD: số ca, cờ COVID, cờ đã chốt, thời tiết cùng kỳ và trễ 1–2 tháng | 278 |
 | `ma_thang.csv` | tháng × khối × mã ICD: số ca (gộp toàn quốc) | 938 |
 | `ty_trong_co_dinh.csv` | tỷ trọng cố định mã trong khối (cho hướng top-down cố định) | 20 |
+| `dim_icd.csv` | từ điển mã ICD: tên mã, khối, tên khối (tham chiếu) | 20 |
 | `manifest.json` | phiên bản, ngày xuất, khoảng thời gian, số dòng, sha256 từng file, giao thức chia dữ liệu | — |
 | `TU_DIEN_DU_LIEU.md` | từ điển: mỗi cột — ý nghĩa, đơn vị, nguồn, cách tính | — |
 | `DATASHEET.md` | phạm vi, cách khử định danh, ô nhỏ, hạn chế đã biết, cách trích dẫn | — |

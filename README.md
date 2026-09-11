@@ -287,6 +287,18 @@ trong `docs/KetQua_Backtest_ChonCauHinh.md`.
 LSTM; nhánh XGBoost/Prophet/LSTM cũ chưa từng chạy trong sản phẩm và đã chuyển
 vào `_archive/ai_engine_cu/`.
 
+## Cài trên máy mới
+
+```bash
+cd backend && pip install -r requirements.txt
+python scripts/khoi_tao_moi.py      # .env + bảng + tài khoản + nạp dataset/v1
+uvicorn app.main:app --reload --reload-dir app
+```
+
+`.env` và `data/*.db` không nằm trong git; script trên dựng lại từ `dataset/v1`
+nên phần dịch tễ và dự báo chạy được ngay. Phần vật tư cần đồng bộ HIS — xem
+`RUN_LOCAL.md` mục 0.
+
 ## Bộ huấn luyện đóng gói (`dataset/v1/`)
 
 Đúng đầu vào mà mô hình học, xuất phẳng để huấn luyện lại không cần DB:

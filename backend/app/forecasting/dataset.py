@@ -18,6 +18,8 @@ Ba file dữ liệu (CSV UTF-8, có BOM để Excel mở đúng dấu; Parquet n
                        cùng kỳ và trễ 1–2 tháng — đúng đầu vào của Tầng 1 mức nhóm
     ma_thang.csv       period × block_code × icd_code: cases (đã gộp toàn quốc)
     ty_trong_co_dinh.csv  block_code × icd_code × share — cho top-down cố định
+    dim_icd.csv        từ điển mã ICD: tên mã, khối, tên khối (tham chiếu, không
+                       phải dữ liệu quan sát) — để dựng lại danh mục khi cài mới
 
 Khử định danh: toàn bộ là SỐ ĐẾM theo tháng, không có mã bệnh nhân, không có
 ngày khám, không có địa chỉ dưới cấp tỉnh (và bản phát hành gộp toàn quốc).
@@ -39,7 +41,8 @@ from . import data_access as da
 DATASET_VERSION = "1.0"
 WCOLS = ["temp", "humidity", "rainfall"]
 LAGS = (1, 2)
-FILES = {"nhom": "nhom_thang.csv", "ma": "ma_thang.csv", "ty_trong": "ty_trong_co_dinh.csv"}
+FILES = {"nhom": "nhom_thang.csv", "ma": "ma_thang.csv", "ty_trong": "ty_trong_co_dinh.csv",
+         "dim_icd": "dim_icd.csv"}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -83,7 +86,13 @@ def build_frames(db_path: str, region: str = "TOAN_QUOC") -> Dict[str, pd.DataFr
         flag = nhom[["period", "block_code", "is_complete"]].drop_duplicates()
         ma = ma.merge(flag, on=["period", "block_code"], how="left")
     ty_trong = pd.DataFrame(tt_parts)
-    return {"nhom": nhom, "ma": ma, "ty_trong": ty_trong}
+
+    # Từ điển ICD — tham chiếu, cần khi dựng lại hệ thống từ clone sạch
+    dim = pd.DataFrame(da._q(db_path,
+        "select icd_code, icd_name, block_code, block_name, is_target from dim_icd "
+        "order by icd_code"),
+        columns=["icd_code", "icd_name", "block_code", "block_name", "is_target"])
+    return {"nhom": nhom, "ma": ma, "ty_trong": ty_trong, "dim_icd": dim}
 
 
 def _sha256(path: Path) -> str:
