@@ -1,15 +1,37 @@
 """Các mô hình dự báo chuỗi tháng (numpy/pandas thuần, chạy với dữ liệu nhỏ).
 
 Giao diện chung:
-    m.fit(df)            df có cột [month(int 1-12), cases(float), is_covid(bool)]
+    m.fit(df)              df có cột [month(int 1-12), cases(float), is_covid(bool)]
     m.predict(next_month)  -> float (dự báo 1 bước tới)
+    m.fitted               True sau khi fit thành công (Ensemble dựa vào cờ này)
+    m.name                 tên ngắn, ghi vào bản ghi "thành viên đã đóng góp"
 
 SARIMAX là tùy chọn: build_default_ensemble() tự thêm nếu statsmodels có sẵn.
+
+Sửa 11/09/2026 (xem RaSoat_MoHinh_MedForecast_2026-09-09.md):
+  M6  Ensemble ghi lại thành viên nào đã đóng góp, cảnh báo khi một thành viên
+      rớt, và KHÔNG gọi predict trên thành viên chưa fit thành công.
+  M8  Smearing (Duan 1983) có sẵn nhưng TẮT mặc định. Giả thuyết ban đầu là
+      expm1(E[log1p Y]) cho trung vị → hụt. ĐO THẬT (walk-forward 3 nhóm, mức
+      nhóm, 11/09/2026) cho thấy ngược lại: ensemble vốn đã dự báo THỪA
+      (MPE +13…+18%), smearing chỉ nhân thêm ≥1 nên đẩy lệch lên +30%. Giữ mã
+      để đối chứng, không bật.
+  M10 Chuẩn hoá cột trước Ridge — BẬT, với λ dò lại. λ=1 cũ được "ngầm hiệu
+      chuẩn" cho thang chưa chuẩn hoá; chuẩn hoá xong mà giữ λ=1 thì tệ hơn ở
+      cả 3 nhóm. Dò λ∈{3,10,30,100,300}: λ=10 thắng hoặc hoà bản cũ ở mọi ô
+      (Harm 0,81→0,78 / 0,75→0,69 / 0,75→0,76; Poisson 1,12→1,06 / 0,87→0,73
+      / 1,07→0,93). λ≥30 giết J09-J18 (dịch chuyển mức nền 3,66×, phạt xu hướng
+      mạnh thì không theo kịp: MPE −29…−48%). λ tối ưu KHÁC NHAU theo nhóm
+      (J00-J06≈100, J09-J18≈10, J20-J22≈30) — dò theo nhóm là bước tiếp theo.
+  M14 ĐÃ THỬ VÀ HOÀN TÁC — xem chú thích trong SeasonalTrendForecaster.fit.
 """
 from __future__ import annotations
-from typing import List, Optional
+import logging
+from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 def _arrays(df: pd.DataFrame):
@@ -20,10 +42,47 @@ def _arrays(df: pd.DataFrame):
     return y, m, cov
 
 
+def _smear_factor(resid_log: np.ndarray) -> float:
+    """Hệ số Duan: mean(exp(ε)) trên phần dư thang log. ≥ 1 khi phần dư có
+    phương sai; = 1 nếu không có phần dư để ước lượng."""
+    r = np.asarray(resid_log, float)
+    r = r[np.isfinite(r)]
+    if len(r) < 3:
+        return 1.0
+    # chặn ngoại lai cực đoan để một tháng bất thường không thổi phồng cả chuỗi
+    r = np.clip(r, -3.0, 3.0)
+    return float(np.mean(np.exp(r)))
+
+
+def _ridge_standardized(X: np.ndarray, t: np.ndarray, lam: float):
+    """Ridge với cột (trừ cột chặn, cột 0) đã chuẩn hoá về mean 0 / sd 1.
+
+    Trả (beta_goc, mu, sd): beta trên thang GỐC để predict không cần chuẩn hoá
+    lại, nhưng hình phạt đã được áp trên thang chuẩn hoá — đó là điểm khác
+    biệt so với bản cũ.
+    """
+    Xs = X.copy()
+    mu = Xs[:, 1:].mean(axis=0)
+    sd = Xs[:, 1:].std(axis=0)
+    sd = np.where(sd > 0, sd, 1.0)
+    Xs[:, 1:] = (Xs[:, 1:] - mu) / sd
+    p = Xs.shape[1]
+    I = np.eye(p); I[0, 0] = 0.0
+    beta_s = np.linalg.solve(Xs.T @ Xs + lam * I, Xs.T @ t)
+    # quy về thang gốc: b_j = b_s_j / sd_j ; b_0 = b_s_0 − Σ b_j·mu_j
+    beta = np.empty(p)
+    beta[1:] = beta_s[1:] / sd
+    beta[0] = beta_s[0] - float(np.dot(beta[1:], mu))
+    return beta
+
+
 class NaiveForecaster:
     """Dự báo = giá trị tháng gần nhất."""
+    name = "naive"
+    fitted = False
     def fit(self, df):
         self._last = float(df["cases"].iloc[-1]) if len(df) else 0.0
+        self.fitted = True
         return self
     def predict(self, next_month: int) -> float:
         return max(0.0, self._last)
@@ -31,8 +90,11 @@ class NaiveForecaster:
 
 class SeasonalNaiveForecaster:
     """Dự báo = số ca cùng tháng của năm gần nhất có dữ liệu."""
+    name = "seasonal_naive"
+    fitted = False
     def fit(self, df):
         self._df = df.reset_index(drop=True)
+        self.fitted = True
         return self
     def predict(self, next_month: int) -> float:
         same = self._df[self._df["month"] == next_month]["cases"]
@@ -45,7 +107,11 @@ class SeasonalTrendForecaster:
     """Mức + hệ số mùa (nhân) + xu hướng tuyến tính có giảm dần.
 
     Ước lượng hệ số mùa và xu hướng trên các tháng KHÔNG COVID để tránh méo.
+    Thang đo: TRUNG BÌNH (không biến đổi log) — không cần smearing.
     """
+    name = "seasonal_trend"
+    fitted = False
+
     def __init__(self, exclude_covid: bool = True, damping: float = 0.9):
         self.exclude_covid = exclude_covid
         self.damping = damping
@@ -57,7 +123,10 @@ class SeasonalTrendForecaster:
         use = ~cov if (self.exclude_covid and (~cov).sum() >= 6) else np.ones(self.n, bool)
         base_mean = y[use].mean() if use.any() else (y.mean() if self.n else 0.0)
         base_mean = base_mean if base_mean > 0 else 1.0
-        # hệ số mùa theo tháng (nhân)
+        # hệ số mùa theo tháng (nhân) — một lượt, KHÔNG chuẩn hoá.
+        # 11/09/2026: đã thử chuẩn hoá về trung bình 1 + ước lượng lại sau khi
+        # khử xu hướng (M14). Đo walk-forward 3 nhóm: tệ hơn ở 2/3 (J00-J06
+        # RelMAE 1,23→1,51; J20-J22 0,98→1,20), chỉ J09-J18 tốt hơn. Giữ bản cũ.
         self.sfac = {}
         for m in range(1, 13):
             sel = use & (mo == m)
@@ -71,6 +140,7 @@ class SeasonalTrendForecaster:
         else:
             self.slope, self.intercept = 0.0, (di.mean() if len(di) else base_mean)
         self._last_fit_idx = xi.max() if len(xi) else (self.n - 1)
+        self.fitted = True
         return self
 
     def predict(self, next_month: int) -> float:
@@ -86,11 +156,18 @@ class SeasonalTrendForecaster:
 class PoissonTrendForecaster:
     """Hồi quy log-tuyến tính (xấp xỉ Poisson): log1p(ca) ~ xu hướng + tháng.
 
-    Có chính quy hóa Ridge nhẹ. Ước lượng trên tháng không COVID.
+    Ridge trên cột ĐÃ CHUẨN HOÁ (M10). Ước lượng trên tháng không COVID.
+    Thang đo: log → cần smearing (M8) để trả kỳ vọng thay vì trung vị.
     """
-    def __init__(self, exclude_covid: bool = True, lam: float = 1.0):
+    name = "poisson_trend"
+    fitted = False
+
+    def __init__(self, exclude_covid: bool = True, lam: float = 10.0,
+                 smearing: bool = False):
         self.exclude_covid = exclude_covid
         self.lam = lam
+        self.smearing = smearing
+        self._smear = 1.0
 
     def _design(self, idx, months):
         n = len(idx)
@@ -107,18 +184,19 @@ class PoissonTrendForecaster:
         X = self._design(idx[use], mo[use])
         t = np.log1p(y[use])
         p = X.shape[1]
-        I = np.eye(p); I[0, 0] = 0.0
         try:
-            self.beta = np.linalg.solve(X.T @ X + self.lam * I, X.T @ t)
+            self.beta = _ridge_standardized(X, t, self.lam)
         except np.linalg.LinAlgError:
             self.beta = np.zeros(p); self.beta[0] = t.mean() if len(t) else 0.0
+        self._smear = _smear_factor(t - X @ self.beta) if self.smearing else 1.0
+        self.fitted = True
         return self
 
     def predict(self, next_month: int) -> float:
         X = self._design(np.array([float(self.n)]), np.array([next_month]))
-        pred = np.expm1(float(X @ self.beta))
+        eta = float(X @ self.beta)
+        pred = np.exp(eta) * self._smear - 1.0
         return float(max(0.0, pred))
-
 
 
 class HarmonicPoissonForecaster:
@@ -127,18 +205,27 @@ class HarmonicPoissonForecaster:
 
     Ưu điểm: ít tham số (hợp dữ liệu nhỏ). Thời tiết dùng ở độ trễ (lag) nên
     KHÔNG rò rỉ tương lai — đúng dịch tễ (bệnh bùng sau đợt thời tiết).
+    Thang đo: log → smearing (M8).
 
     df cần cột: month(int), cases(float), is_covid(bool),
                 và nếu use_weather: temp, humidity, rainfall (có thể NaN).
     """
     WCOLS = ["temp", "humidity", "rainfall"]
+    fitted = False
 
     def __init__(self, use_weather: bool = False, weather_lags=(1, 2),
-                 exclude_covid: bool = True, lam: float = 1.0):
+                 exclude_covid: bool = True, lam: float = 10.0,
+                 smearing: bool = False):
         self.use_weather = use_weather
         self.weather_lags = tuple(weather_lags)
         self.exclude_covid = exclude_covid
         self.lam = lam
+        self.smearing = smearing
+        self._smear = 1.0
+
+    @property
+    def name(self) -> str:
+        return "harmonic_poisson_weather" if self._has_w_stored() else "harmonic_poisson"
 
     def _has_w(self, df) -> bool:
         return self.use_weather and all(c in df.columns for c in self.WCOLS)
@@ -190,13 +277,15 @@ class HarmonicPoissonForecaster:
         if len(t) < self._nfeat + 1:
             self.beta = None
             self._fallback = float(np.log1p(np.mean(y))) if len(y) else 0.0
+            self.fitted = True
             return self
-        I = np.eye(self._nfeat); I[0, 0] = 0.0
         try:
-            self.beta = np.linalg.solve(X.T @ X + self.lam * I, X.T @ t)
+            self.beta = _ridge_standardized(X, t, self.lam)
+            self._smear = _smear_factor(t - X @ self.beta) if self.smearing else 1.0
         except np.linalg.LinAlgError:
             self.beta = None
             self._fallback = float(t.mean())
+        self.fitted = True
         return self
 
     def predict(self, next_month: int) -> float:
@@ -214,7 +303,12 @@ class HarmonicPoissonForecaster:
                     dev = (0.0 if (val is None or np.isnan(val))
                            else (val - self._w_mean[c]) / self._w_std[c])
                     row.append(dev)
-        pred = np.expm1(float(np.array(row[:len(self.beta)]) @ self.beta[:len(row)]))
+        # Bản cũ cắt ngắn âm thầm khi lệch chiều (row[:len(beta)] @ beta[:len(row)]).
+        # Lệch chiều là lỗi lập trình — phải nổ ra, không được đoán bừa.
+        if len(row) != len(self.beta):
+            raise ValueError(f"HarmonicPoisson: đặc trưng {len(row)} ≠ beta {len(self.beta)}")
+        eta = float(np.asarray(row) @ self.beta)
+        pred = np.exp(eta) * self._smear - 1.0
         return float(max(0.0, pred))
 
     def _has_w_stored(self) -> bool:
@@ -222,24 +316,62 @@ class HarmonicPoissonForecaster:
 
 
 class Ensemble:
-    """Trung bình hóa nhiều mô hình (giảm phương sai)."""
+    """Trung bình ĐỀU các thành viên đã fit thành công (giảm phương sai).
+
+    M6: ghi lại ai đóng góp. Sau mỗi lần predict:
+        .members_used   tên các thành viên góp giá trị vào trung bình
+        .members_failed {tên: lý do} các thành viên rớt ở fit hoặc predict
+    Không có trọng số thích ứng — một thành viên tồi bị LÀM LOÃNG chứ không
+    bị hạ trọng số. Nếu cần trọng số nghịch đảo MSE thì làm ở lớp trên với
+    kết quả backtest, không giấu vào đây.
+    """
+    name = "ensemble"
+
     def __init__(self, members: List):
         self.members = members
+        self.members_used: List[str] = []
+        self.members_failed: Dict[str, str] = {}
+
     def fit(self, df):
+        self.members_failed = {}
         for m in self.members:
+            m.fitted = False
             try:
                 m.fit(df)
-            except Exception:
-                pass
+            except Exception as exc:                          # noqa: BLE001
+                m.fitted = False
+                self.members_failed[getattr(m, "name", type(m).__name__)] = f"fit: {exc}"
+                logger.warning("Ensemble: thành viên %s rớt khi fit — %s",
+                               getattr(m, "name", type(m).__name__), exc)
         return self
+
     def predict(self, next_month: int) -> float:
-        vals = []
+        vals, used = [], []
         for m in self.members:
+            nm = getattr(m, "name", type(m).__name__)
+            if not getattr(m, "fitted", False):
+                continue                                      # đã ghi ở fit()
             try:
-                vals.append(m.predict(next_month))
-            except Exception:
-                pass
-        return float(np.mean(vals)) if vals else 0.0
+                v = float(m.predict(next_month))
+                if not np.isfinite(v):
+                    raise ValueError(f"giá trị không hữu hạn: {v}")
+                vals.append(v); used.append(nm)
+            except Exception as exc:                          # noqa: BLE001
+                self.members_failed[nm] = f"predict: {exc}"
+                logger.warning("Ensemble: thành viên %s rớt khi predict — %s", nm, exc)
+        self.members_used = used
+        if not vals:
+            logger.error("Ensemble: KHÔNG thành viên nào dự báo được — trả 0.")
+            return 0.0
+        return float(np.mean(vals))
+
+    def describe(self) -> dict:
+        """Bản ghi để lưu kèm kết quả: thành viên khai báo / đã dùng / đã rớt."""
+        return {
+            "members": [getattr(m, "name", type(m).__name__) for m in self.members],
+            "members_used": list(self.members_used),
+            "members_failed": dict(self.members_failed),
+        }
 
 
 def _has_statsmodels() -> bool:
@@ -250,15 +382,43 @@ def _has_statsmodels() -> bool:
         return False
 
 
-def build_default_ensemble(use_weather: bool = False) -> Ensemble:
-    """SeasonalTrend + PoissonTrend (+ Harmonic-thời-tiết nếu use_weather; + SARIMAX nếu có statsmodels)."""
-    members = [SeasonalTrendForecaster(), PoissonTrendForecaster()]
+def build_default_ensemble(use_weather: bool = False, smearing: bool = False,
+                           lam: float = 10.0) -> Ensemble:
+    """SeasonalTrend + PoissonTrend (+ Harmonic-thời-tiết nếu use_weather;
+    + SARIMAX nếu có statsmodels).
+
+    LƯU Ý: gọi hàm này KHÔNG tham số là cấu hình "thời tiết tắt" — đúng cái
+    bẫy đã làm bảng MASE công bố lệch với sản phẩm. Trong app, luôn đi qua
+    `build_production_ensemble()` bên dưới.
+    """
+    members = [SeasonalTrendForecaster(),
+               PoissonTrendForecaster(lam=lam, smearing=smearing)]
     if use_weather:
-        members.append(HarmonicPoissonForecaster(use_weather=True))
+        members.append(HarmonicPoissonForecaster(use_weather=True, lam=lam,
+                                                 smearing=smearing))
     if _has_statsmodels():
         try:
             from .sarimax_opt import SarimaxForecaster  # tùy chọn
-            members.append(SarimaxForecaster())
+            members.append(SarimaxForecaster(use_weather=use_weather,
+                                             smearing=smearing))
         except Exception:
             pass
     return Ensemble(members)
+
+
+def has_enough_weather(df: pd.DataFrame, min_months: int) -> bool:
+    """Chuỗi có đủ tháng thời tiết để bật thành viên thời tiết không."""
+    return ("temp" in df.columns) and int(df["temp"].notna().sum()) >= min_months
+
+
+def build_production_ensemble(df: pd.DataFrame, cfg=None) -> Ensemble:
+    """Ensemble theo PRODUCTION_CONFIG, tự hạ thời tiết nếu chuỗi chưa đủ.
+
+    Đây là hàm DUY NHẤT mà service và backtest được phép gọi để dựng ensemble
+    — để không bao giờ tái diễn tình trạng bốn cấu hình song song.
+    """
+    from .config import PRODUCTION_CONFIG
+    cfg = cfg or PRODUCTION_CONFIG
+    use_w = cfg.use_weather and has_enough_weather(df, cfg.weather_min_months)
+    return build_default_ensemble(use_weather=use_w, smearing=cfg.smearing,
+                                  lam=cfg.ridge_lam)

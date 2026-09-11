@@ -29,7 +29,8 @@ import pandas as pd
 from sqlalchemy import extract, func
 from sqlalchemy.orm import Session
 
-from app.forecasting.models import build_default_ensemble
+from app.forecasting.config import PRODUCTION_CONFIG
+from app.forecasting.models import build_production_ensemble
 from app.models.disease_case import DiseaseCase
 from app.models.environmental_data import EnvironmentalData
 from app.utils.icd_groups import dieu_kien_benh
@@ -134,9 +135,12 @@ def du_bao_nhom(db: Session, disease: str, region: Optional[str],
     w = _thoi_tiet_thang(db, region)
     if not w.empty:
         hist = hist.merge(w, on="period", how="left")
-    dung_thoi_tiet = (not w.empty) and hist["temp"].notna().sum() >= 12
+    # M1: ngưỡng và cờ thời tiết lấy từ PRODUCTION_CONFIG, không tự đặt 12 nữa
+    dung_thoi_tiet = (PRODUCTION_CONFIG.use_weather and (not w.empty)
+                      and hist["temp"].notna().sum() >= PRODUCTION_CONFIG.weather_min_months)
 
-    pred = build_default_ensemble(use_weather=dung_thoi_tiet).fit(hist).predict(target_month)
+    ens = build_production_ensemble(hist).fit(hist)
+    pred = ens.predict(target_month)
     predicted = int(round(max(0.0, pred)))
 
     # Backtest nhanh N bước cuối cùng điều kiện (fit lại từng bước, không nhìn
@@ -148,7 +152,7 @@ def du_bao_nhom(db: Session, disease: str, region: Optional[str],
     for t in range(max(SO_THANG_TOI_THIEU, n - SO_BUOC_DO_CHINH_XAC), n):
         h, dong = hist.iloc[:t], hist.iloc[t]
         try:
-            p = build_default_ensemble(use_weather=dung_thoi_tiet).fit(h).predict(int(dong["month"]))
+            p = build_production_ensemble(h).fit(h).predict(int(dong["month"]))
             sai_so.append(abs(float(p) - float(dong["cases"])))
             thuc_te.append(float(dong["cases"]))
         except Exception:
@@ -170,4 +174,6 @@ def du_bao_nhom(db: Session, disease: str, region: Optional[str],
         "use_weather": dung_thoi_tiet,
         "n_history_months": int(n),
         "accuracy": accuracy,
+        # M6 / lưu vết: thành viên nào đã đóng góp + cấu hình đã dùng
+        "model": {**ens.describe(), "config": PRODUCTION_CONFIG.as_record()},
     }

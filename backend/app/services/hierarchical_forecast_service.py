@@ -15,15 +15,24 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.forecasting.models import build_default_ensemble
+from app.forecasting.config import PRODUCTION_CONFIG
+from app.forecasting.models import build_production_ensemble
+from app.forecasting.evaluate import empirical_interval
 from app.forecasting.hierarchical import ewma_shares, reconcile_ols, split_topdown
 
 TOAN_QUOC = "TOAN_QUOC"
 METHODS = ("top_down_dynamic", "top_down_fixed", "bottom_up", "mint")
-# Hệ số khoảng dự báo. Đã HIỆU CHUẨN bằng backtest walk-forward trên dữ liệu
-# Gia An (54 bước/nhóm, 2026-07): z=1.645 chỉ phủ 81.5-87% thực tế (mục tiêu 90%)
-# vì sigma ước lượng từ mẫu nhỏ (12 sai số) bị hẹp; z=1.96 đạt phủ 87-90.7%.
-Z_SERVICE = 1.96
+# "mint" giữ làm khoá API cho frontend không vỡ; thuật toán thật là HOÀ GIẢI
+# OLS (W = I) — xem hierarchical.reconcile_ols. Nhãn hiển thị đã đổi (M5).
+
+# Khoảng dự báo (M9, 11/09/2026): phân vị THỰC NGHIỆM của tỷ số thực tế/dự báo
+# trên các bước walk-forward gần nhất — cùng cách với topdown.py, cùng mức
+# PRODUCTION_CONFIG.interval_level cho mọi màn hình.
+#
+# Lịch sử: bản cũ dùng mean ± z·σ với z=1,96, và đã HIỆU CHUẨN bằng độ phủ đo
+# thật (z=1,645 phủ 81,5–87%; z=1,96 phủ 87–90,7%, mục tiêu 90%). Kết quả
+# hiệu chuẩn đó là lý do config chọn 0,90 chứ không phải 0,95. Cách mới bỏ
+# được ba giả định của cách cũ: phân phối chuẩn, đối xứng, và σ biết trước.
 
 
 def _next_month(year: int, month: int):
@@ -95,24 +104,29 @@ class HierarchicalForecastService:
         import pandas as _pd
         return _pd.DataFrame(rows, columns=["period", "temp", "humidity", "rainfall"])
 
-    def _group_sigma(self, group_w, weather_used: bool, n_back: int = 12,
-                     min_train: int = 18) -> float:
-        """Độ lệch chuẩn sai số 1 bước (backtest gần đây) → dựng khoảng dự báo."""
+    def _group_interval(self, group_w, base_group: float, tm: int):
+        """Khoảng dự báo nhóm từ phần dư TƯƠNG ĐỐI walk-forward gần nhất.
+
+        Trả (lower, upper, n_resid) hoặc (None, None, n) khi chưa đủ lịch sử —
+        nơi gọi phải nói rõ "chưa đủ", không bịa khoảng.
+        """
+        cfg = PRODUCTION_CONFIG
         n = len(group_w)
-        start = max(min_train, n - n_back)
-        res = []
+        start = max(cfg.min_train, n - cfg.interval_n_back)
+        rel = []
         for t in range(start, n):
             hist = group_w.iloc[:t]
-            tm = int(group_w["month"].iloc[t])
+            m_t = int(group_w["month"].iloc[t])
             try:
-                pred = build_default_ensemble(use_weather=weather_used).fit(hist).predict(tm)
-                res.append(float(group_w["cases"].iloc[t]) - pred)
-            except Exception:
+                pred = build_production_ensemble(hist).fit(hist).predict(m_t)
+                if pred > 0:
+                    rel.append(float(group_w["cases"].iloc[t]) / pred)
+            except Exception:                                 # noqa: BLE001
                 pass
-        if len(res) >= 3:
-            return float(np.std(res))
-        # dự phòng: 20% giá trị trung bình gần nhất
-        return float(0.2 * group_w["cases"].tail(6).mean())
+        iv = empirical_interval(base_group, np.array(rel), cfg.interval_level)
+        if iv is None:
+            return None, None, len(rel)
+        return max(0.0, iv[0]), iv[1], len(rel)
 
     # ── dự báo phân cấp ────────────────────────────────────────
     def forecast(self, block: str, method: str = "top_down_dynamic",
@@ -128,21 +142,25 @@ class HierarchicalForecastService:
         last = group.iloc[-1]
         ty, tm = _next_month(int(last["year"]), int(last["month"]))
 
-        # Ghép thời tiết (biến ngoại sinh, dùng có độ trễ) cho dự báo NHÓM
+        # Ghép thời tiết (biến ngoại sinh, có độ trễ) cho CẢ nhóm lẫn mã.
+        # Bản cũ: nhóm có thời tiết, mã không — hai mức hai cấu hình (M1).
+        cfg = PRODUCTION_CONFIG
         wdf = self._weather_df(region)
-        group_w = group.merge(wdf, on="period", how="left") if not wdf.empty else group
-        weather_used = (not wdf.empty) and ("temp" in group_w.columns) and group_w["temp"].notna().any()
+        def _w(df):
+            return df.merge(wdf, on="period", how="left") if not wdf.empty else df
+        group_w = _w(group)
+        codes_w = {c: _w(codes[c]) for c in code_list}
 
-        base_group = build_default_ensemble(use_weather=weather_used).fit(group_w).predict(tm)
-        code_ens = build_default_ensemble()
-        base_codes = {c: code_ens.fit(codes[c]).predict(tm) for c in code_list}
+        ens_g = build_production_ensemble(group_w).fit(group_w)
+        base_group = ens_g.predict(tm)
+        weather_used = any(n.endswith("_weather") for n in ens_g.members_used)
+        base_codes = {c: build_production_ensemble(codes_w[c]).fit(codes_w[c]).predict(tm)
+                      for c in code_list}
 
-        # Khoảng dự báo nhóm (mức an toàn) + lan sang mã theo tỷ trọng điểm
-        sigma_g = self._group_sigma(group_w, weather_used)
-        group_lower = max(0.0, base_group - Z_SERVICE * sigma_g)
-        group_upper = base_group + Z_SERVICE * sigma_g
+        # Khoảng dự báo nhóm (M9) + lan sang mã theo tỷ trọng điểm
+        group_lower, group_upper, n_resid = self._group_interval(group_w, base_group, tm)
 
-        shares_dyn = ewma_shares(group, {c: codes[c] for c in code_list})
+        shares_dyn = ewma_shares(group, {c: codes[c] for c in code_list}, span=cfg.ewma_span)
         shares_fixed = self._fixed_shares(block)
 
         if method == "top_down_dynamic":
@@ -155,22 +173,31 @@ class HierarchicalForecastService:
         else:  # mint
             split, shares_used = reconcile_ols(code_list, base_group, base_codes), None
 
+        # Cận trên mỗi mã = mã × (cận trên nhóm / dự báo nhóm): giữ đúng tỷ lệ,
+        # thay cho phép cộng σ tuyến tính cũ.
+        up_ratio = (group_upper / base_group) if (group_upper is not None and base_group > 0) else None
         return {
             "block": block,
             "region": region,
             "target_period": f"{ty:04d}-{tm:02d}",
             "method": method,
             "group_forecast": round(float(base_group), 1),
-            "group_interval": {"lower": int(round(group_lower)), "upper": int(round(group_upper))},
+            "group_interval": (
+                {"lower": int(round(group_lower)), "upper": int(round(group_upper)),
+                 "level": cfg.interval_level, "n_resid": n_resid}
+                if group_lower is not None else
+                {"lower": None, "upper": None, "level": cfg.interval_level, "n_resid": n_resid,
+                 "reason": "chưa đủ bước walk-forward để dựng khoảng (cần ≥ 8)"}
+            ),
             "by_code": {c: int(round(v)) for c, v in split.items()},
-            "by_code_upper": {
-                c: int(round(v + Z_SERVICE * sigma_g * (v / base_group if base_group > 0 else 0)))
-                for c, v in split.items()
-            },
+            "by_code_upper": ({c: int(round(v * up_ratio)) for c, v in split.items()}
+                              if up_ratio is not None else None),
             "shares_used": ({c: round(float(s), 3) for c, s in shares_used.items()}
                             if shares_used else None),
             "n_history_months": int(len(group)),
             "weather_used": bool(weather_used),
+            # M6 / lưu vết: mô hình nào đã sinh ra con số này
+            "model": {**ens_g.describe(), "config": cfg.as_record()},
         }
 
     # ── báo cáo tồn kho từ MART ────────────────────────────────

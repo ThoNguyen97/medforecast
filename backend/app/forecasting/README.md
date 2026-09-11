@@ -45,22 +45,14 @@ Hiệu quả thời tiết (walk-forward group-level, dữ liệu Gia An):
 | J00-J06 | 0.780 | **0.715** | −8.4% |
 | J20-J22 | 0.756 | **0.695** | −8.1% |
 
-> ⚠ **SỐ LIỆU MÂU THUẪN — CHƯA DÙNG ĐƯỢC CHO BÁO CÁO (ghi 09/09/2026)**
+> **Đã làm rõ 11/09/2026.** Hai con số từng mâu thuẫn (−8% ở đây, −33% trong
+> `KetQua_Backtest_ChonCauHinh.md`) đo HAI THỨ KHÁC NHAU: −33% là
+> `HarmonicPoissonForecaster` ĐỨNG MỘT MÌNH, −8% gần với ensemble. Cả hai đều
+> không đo cấu hình sản xuất. Từ nay `weather_effect()` so đúng ensemble sản
+> xuất có/không thời tiết. Kết quả đo trên VM không có SARIMAX (chưa chính
+> thức): J00-J06 −12,2% MAE, J09-J18 −6,8%, J20-J22 −8,0%. Số chính thức lấy
+> từ `python -m app.forecasting.run_eval` chạy trên máy có statsmodels — xem
+> `ketqua_backtest/thoitiet.csv` + `cau_hinh.json` kèm ngày chạy.
 >
-> Bảng trên ghi −8,4% / −8,1% MAE. `KetQua_Backtest_ChonCauHinh.md` ghi
-> **−32,9% / −28,5%** cho cùng một phép đo ("walk-forward group-level").
-> Hai kết quả không thể cùng đúng — nhiều khả năng chạy trên hai cửa sổ
-> lịch sử hoặc hai cấu hình khác nhau nhưng không ghi lại.
->
-> Thêm nữa, cả hai đều đo `HarmonicPoissonForecaster` ĐỨNG MỘT MÌNH ở mức
-> nhóm, **không phải ensemble**. Trong khi đó `evaluate.py:38` gọi
-> `build_default_ensemble()` không tham số (`use_weather=False`) và
-> `data_access.group_series()` không SELECT cột thời tiết nào — nên bảng
-> MASE ~0,60 công bố được đo trên ensemble **hoàn toàn không có thời tiết**.
->
-> Việc phải làm (M1–M2, Tuần 4): chốt một `PRODUCTION_CONFIG` duy nhất, chạy
-> lại `walk_forward_block` CÓ thời tiết, giữ đúng một bảng kết quả kèm ngày
-> chạy và cấu hình. Đến lúc đó, đừng trích con số nào ở đây.
-
-→ Thời tiết giảm ~8% sai số (**số cũ, chờ đo lại — xem cảnh báo trên**). `build_default_ensemble(use_weather=True)` tự thêm
+> Bảng cũ phía trên giữ lại như tư liệu; **không trích vào báo cáo**. `build_default_ensemble(use_weather=True)` tự thêm
 mô hình này; service dùng cho dự báo TỔNG nhóm.

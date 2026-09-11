@@ -90,7 +90,11 @@ def run_forecast_cycle(db: Session,
     # ── Tầng 1
     du_bao_nhom: Dict[str, float] = {}
     try:
-        cfg = topdown.Config(db_path=_db_path(db))
+        # M9: Dashboard và trang Kế hoạch dùng CÙNG một mức tin cậy. Trước đây
+        # topdown mặc định 0,80 còn Kế hoạch ~0,90 — hai màn hình hai khoảng.
+        from app.forecasting.config import PRODUCTION_CONFIG
+        cfg = topdown.Config(db_path=_db_path(db),
+                             interval_level=PRODUCTION_CONFIG.interval_level)
         bt = topdown.backtest(cfg)
         fc = topdown.forecast(cfg, bt)
         df = fc["du_bao"]

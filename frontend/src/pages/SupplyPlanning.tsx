@@ -12,7 +12,7 @@ const METHOD_LABELS: Record<string, string> = {
   top_down_dynamic: 'Phân cấp — tỷ trọng động (khuyến nghị)',
   top_down_fixed: 'Phân cấp — tỷ trọng cố định',
   bottom_up: 'Bottom-up',
-  mint: 'Hòa giải MinT',
+  mint: 'Hoà giải OLS', // thuật toán thật là OLS (W = I), không phải MinT — xem hierarchical.py
 };
 
 export default function SupplyPlanning() {
