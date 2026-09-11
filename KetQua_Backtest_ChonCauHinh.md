@@ -73,7 +73,38 @@ So bản sáng: MAE nhóm giảm 32 % / 37 % / 21 %; lệch J09-J18 từ −14,4
 ở ensemble mới: +5,2 % / −4,4 % / +3,3 % MAE — vẫn nhỏ và trái chiều ở J09-J18,
 kết luận mục 3 giữ nguyên.
 
-### 0.4 · Tính tái lập
+### 0.4 · Đối chứng XGBoost và Prophet — đã thử, có số (`doi_chung_xgb_prophet.csv`)
+
+Cùng 68 bước walk-forward, cùng bản ghi thành viên (`app/forecasting/candidates_opt.py`):
+XGBoost trên [lag 1/2/3/12, sin/cos tháng, xu hướng, thời tiết trễ 1–2] thang log1p,
+cây sâu 3, 200 cây; Prophet mặc định (mùa năm, changepoint 0,05) trên log1p, bỏ tháng COVID.
+
+| Đứng một mình (RelMAE) | J00-J06 | J09-J18 | J20-J22 |
+|---|---|---|---|
+| SARIMAX(thời tiết) | **0,518** | **0,360** | **0,560** |
+| ETS | 0,547 | 0,395 | 0,578 |
+| **XGBoost** | 0,669 | 0,473 | 0,570 |
+| Harmonic-Poisson | 0,777 | 0,686 | 0,755 |
+| **Prophet** | 2,422 | 1,304 | 1,875 |
+
+| Tổ hợp inv_mae + bias | J00-J06 | J09-J18 | J20-J22 | TB |
+|---|---|---|---|---|
+| **5 thành viên (sản xuất)** | 0,516 | 0,377 | 0,541 | **0,478** |
+| + XGBoost | 0,501 | 0,378 | 0,540 | 0,473 |
+| + Prophet | 0,558 | 0,407 | 0,523 | 0,496 |
+| + cả hai | 0,538 | 0,404 | 0,518 | 0,487 |
+| chỉ SARIMAX + ETS | 0,495 | 0,373 | 0,581 | 0,483 |
+| SARIMAX + ETS + XGBoost | 0,479 | 0,362 | 0,564 | 0,468 |
+
+Kết luận: **Prophet tệ hơn seasonal-naive** trên cả ba khối (chuỗi ngắn, mức nền
+đứt gãy — changepoint tự động chạy theo nhiễu) và kéo tổ hợp xuống. **XGBoost**
+đứng thứ ba, thêm vào chỉ được 0,478 → 0,473 (1 %, trong sai số chọn mẫu) với giá
+là thêm một phụ thuộc nặng và một bộ siêu tham số; **không đưa vào sản xuất**,
+giữ làm đối chứng. Hai thành viên numpy yếu (SeasonalTrend, PoissonTrend) có thể
+bỏ hẳn (0,483) hoặc giữ (0,478) — khác biệt không có ý nghĩa; giữ để tổ hợp không
+phụ thuộc statsmodels.
+
+### 0.5 · Tính tái lập
 
 Bench cloud (Linux, numpy 2.4, statsmodels 0.15) chạy đúng cấu hình sáng cho
 0,659 / 0,755 / 0,594 / 0,688 / 88–68–85 % — khớp Windows tới chữ số thứ ba.
