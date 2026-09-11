@@ -287,6 +287,22 @@ trong `KetQua_Backtest_ChonCauHinh.md`.
 LSTM; nhánh XGBoost/Prophet/LSTM cũ chưa từng chạy trong sản phẩm và đã chuyển
 vào `_archive/ai_engine_cu/`.
 
+## Bộ huấn luyện đóng gói (`dataset/v1/`)
+
+Đúng đầu vào mà mô hình học, xuất phẳng để huấn luyện lại không cần DB:
+`nhom_thang.csv` (tháng × khối: số ca, COVID, đã chốt, thời tiết + trễ 1–2 tháng),
+`ma_thang.csv` (tháng × mã ICD), `ty_trong_co_dinh.csv`, `manifest.json` (sha256,
+giao thức chia walk-forward), từ điển dữ liệu và datasheet.
+
+    cd backend
+    python -m app.forecasting.train   --data ../dataset/v1 --out models/v1   # walk-forward + artifact
+    python -m app.forecasting.predict --model models/v1/model_v1.pkl          # dự báo từ artifact
+    python -m app.forecasting.dataset --db data/medforecast.db --out ../dataset/v1   # xuất lại
+
+`models/v1/model_v1.json` ghi cấu hình, trọng số, hệ số lệch, dự báo kỳ tới và
+chỉ số backtest kèm sha256 của dataset — kết quả trùng bảng chính thức
+(RelMAE mã 0,500).
+
 ## Dữ liệu
 
 - **Phạm vi**: 3 nhóm ICD hô hấp J00-J06 / J09-J18 / J20-J22 (20 mã), 2019–2026

@@ -79,23 +79,44 @@ def walk_forward_block(db_path: str, block: str,
                        *, min_train: Optional[int] = None,
                        ewma_span: Optional[int] = None,
                        from_period: Optional[str] = "__cfg__") -> Dict:
-    """Walk-forward mở rộng cửa sổ, dự báo 1 bước, cho một nhóm ICD.
+    """Walk-forward mở rộng cửa sổ, dự báo 1 bước, cho một nhóm ICD — đọc từ DB.
 
     Tham số mô hình đến từ `cfg`. Ba kwargs còn lại chỉ để script cũ chạy
-    được; giá trị mặc định của chúng cũng là cfg.
+    được; giá trị mặc định của chúng cũng là cfg. Thân hàm ở
+    `walk_forward_frames` để bộ huấn luyện xuất ra file (dataset.py) chạy
+    được y hệt mà không cần DB.
+    """
+    from_period = cfg.from_period if from_period == "__cfg__" else from_period
+    group = da.group_series(db_path, block, from_period=from_period)
+    codes_ser = da.code_series(db_path, block, from_period=from_period)
+    shares_fixed = da.fixed_shares(db_path, block)
+    weather = da.weather_series(db_path) if cfg.use_weather else pd.DataFrame()
+    return walk_forward_frames(block, group, codes_ser, shares_fixed, weather, cfg,
+                               min_train=min_train, ewma_span=ewma_span)
+
+
+def walk_forward_frames(block: str, group: pd.DataFrame,
+                        codes_ser: Dict[str, pd.DataFrame],
+                        shares_fixed: Dict[str, float],
+                        weather: pd.DataFrame,
+                        cfg: ForecastConfig = PRODUCTION_CONFIG,
+                        *, min_train: Optional[int] = None,
+                        ewma_span: Optional[int] = None) -> Dict:
+    """Walk-forward trên DataFrame đã nạp (từ DB hoặc từ dataset/v1/*.csv).
+
+    `group`      [period, year, month, cases, is_covid] của cả nhóm
+    `codes_ser`  {icd_code: DataFrame cùng cột} cho từng mã
+    `shares_fixed` {icd_code: tỷ trọng cố định} (top-down cố định)
+    `weather`    [period, temp, humidity, rainfall] hoặc rỗng
     """
     min_train = cfg.min_train if min_train is None else min_train
     ewma_span = cfg.ewma_span if ewma_span is None else ewma_span
-    from_period = cfg.from_period if from_period == "__cfg__" else from_period
-
-    group = da.group_series(db_path, block, from_period=from_period)
-    codes_ser = da.code_series(db_path, block, from_period=from_period)
     codes = sorted(codes_ser.keys())
-    shares_fixed = da.fixed_shares(db_path, block)
 
     # M2: ghép thời tiết vào CẢ nhóm lẫn mã — bản cũ không ghép nên backtest
     # chạy mù thời tiết dù kết luận là "thời tiết bật".
-    weather = da.weather_series(db_path) if cfg.use_weather else pd.DataFrame()
+    if not cfg.use_weather:
+        weather = pd.DataFrame()
     group = da.join_weather(group, weather)
     codes_ser = {c: da.join_weather(d, weather) for c, d in codes_ser.items()}
     weather_active = has_enough_weather(group, cfg.weather_min_months)

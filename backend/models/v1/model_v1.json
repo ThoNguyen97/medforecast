@@ -1,0 +1,290 @@
+{
+  "model": "MedForecast ensemble M12 — top-down động",
+  "version": "1",
+  "trained_at": "2026-09-11T14:40:16",
+  "dataset": {
+    "dir": "../dataset_v1",
+    "version": "1.0",
+    "exported_at": "2026-09-11T14:39:08",
+    "sha256": {
+      "nhom": "0f93f004bbb6bf0a997345978fd44e7b44f5efe3c508b292da688c7fad87138b",
+      "ma": "5a29661376d75c48bc7c00dfe87ab0e7b5fc95c0dd6b206e3c844397f7d6b4c6",
+      "ty_trong": "4c6fbbb8869b52835dbc8da6fef4100b48d815cb2473a68eafc464567c6d506a"
+    }
+  },
+  "config": {
+    "use_weather": true,
+    "weather_min_months": 12,
+    "smearing": false,
+    "ridge_lam": 10.0,
+    "use_ets": true,
+    "combine": "inv_mae",
+    "combine_window": 12,
+    "combine_power": 2.0,
+    "combine_min_hist": 6,
+    "bias_correct": true,
+    "bias_window": 12,
+    "bias_shrink": 0.5,
+    "bias_clip": 1.5,
+    "method": "top_down_dynamic",
+    "ewma_span": 6,
+    "from_period": null,
+    "min_train": 24,
+    "interval_level": 0.9,
+    "interval_n_back": 24
+  },
+  "blocks": {
+    "J00-J06": {
+      "n_history_months": 92,
+      "anchor_period": "2026-08",
+      "target_period": "2026-09",
+      "forecast": {
+        "point": 161.1,
+        "point_raw": 166.0,
+        "lower": 103.98877671793207,
+        "upper": 235.18567577516413,
+        "level": 0.9
+      },
+      "members_used": [
+        "seasonal_trend",
+        "poisson_trend",
+        "harmonic_poisson_weather",
+        "sarimax_weather",
+        "ets"
+      ],
+      "members_failed": {},
+      "member_forecasts": {
+        "seasonal_trend": 189.55,
+        "poisson_trend": 214.3,
+        "harmonic_poisson_weather": 191.66,
+        "sarimax_weather": 117.96,
+        "ets": 131.56
+      },
+      "weights": {
+        "seasonal_trend": 0.232,
+        "poisson_trend": 0.147,
+        "harmonic_poisson_weather": 0.196,
+        "sarimax_weather": 0.218,
+        "ets": 0.207
+      },
+      "bias_factor": 0.971,
+      "backtest": {
+        "n_steps": 68,
+        "group": {
+          "MAE": 26.695,
+          "RMSE": 33.912,
+          "RelMAE": 0.516,
+          "ME": -0.69,
+          "MPE_pct": -0.543,
+          "sMAPE_pct": 23.346,
+          "WAPE_pct": 20.983
+        },
+        "coverage_pct": 86.66666666666667,
+        "codes_top_down_dynamic": {
+          "MAE": 10.636,
+          "RMSE": 15.031,
+          "RelMAE": 0.547,
+          "ME": -0.527,
+          "MPE_pct": -2.021,
+          "sMAPE_pct": 35.751,
+          "WAPE_pct": 32.721
+        },
+        "members_used_pct": {
+          "seasonal_trend": 100.0,
+          "poisson_trend": 100.0,
+          "harmonic_poisson_weather": 100.0,
+          "ets": 100.0,
+          "sarimax_weather": 97.1
+        }
+      },
+      "codes": [
+        "J00",
+        "J01",
+        "J02",
+        "J03",
+        "J04",
+        "J05",
+        "J06"
+      ]
+    },
+    "J09-J18": {
+      "n_history_months": 92,
+      "anchor_period": "2026-08",
+      "target_period": "2026-09",
+      "forecast": {
+        "point": 189.5,
+        "point_raw": 189.5,
+        "lower": 154.626876585954,
+        "upper": 302.8143776480318,
+        "level": 0.9
+      },
+      "members_used": [
+        "seasonal_trend",
+        "poisson_trend",
+        "harmonic_poisson_weather",
+        "sarimax_weather",
+        "ets"
+      ],
+      "members_failed": {},
+      "member_forecasts": {
+        "seasonal_trend": 185.04,
+        "poisson_trend": 226.29,
+        "harmonic_poisson_weather": 182.06,
+        "sarimax_weather": 188.1,
+        "ets": 181.0
+      },
+      "weights": {
+        "seasonal_trend": 0.08,
+        "poisson_trend": 0.129,
+        "harmonic_poisson_weather": 0.1,
+        "sarimax_weather": 0.314,
+        "ets": 0.377
+      },
+      "bias_factor": 1.0,
+      "backtest": {
+        "n_steps": 68,
+        "group": {
+          "MAE": 19.559,
+          "RMSE": 27.537,
+          "RelMAE": 0.377,
+          "ME": -3.095,
+          "MPE_pct": -2.964,
+          "sMAPE_pct": 23.718,
+          "WAPE_pct": 18.73
+        },
+        "coverage_pct": 80.0,
+        "codes_top_down_dynamic": {
+          "MAE": 16.3,
+          "RMSE": 22.429,
+          "RelMAE": 0.413,
+          "ME": -2.878,
+          "MPE_pct": -5.728,
+          "sMAPE_pct": 29.623,
+          "WAPE_pct": 21.943
+        },
+        "members_used_pct": {
+          "seasonal_trend": 100.0,
+          "poisson_trend": 100.0,
+          "harmonic_poisson_weather": 100.0,
+          "ets": 100.0,
+          "sarimax_weather": 97.1
+        }
+      },
+      "codes": [
+        "J09",
+        "J10",
+        "J11",
+        "J12",
+        "J13",
+        "J14",
+        "J15",
+        "J16",
+        "J17",
+        "J18"
+      ]
+    },
+    "J20-J22": {
+      "n_history_months": 91,
+      "anchor_period": "2026-08",
+      "target_period": "2026-09",
+      "forecast": {
+        "point": 42.2,
+        "point_raw": 48.8,
+        "lower": 15.108051463182347,
+        "upper": 81.96951220898758,
+        "level": 0.9
+      },
+      "members_used": [
+        "seasonal_trend",
+        "poisson_trend",
+        "harmonic_poisson_weather",
+        "sarimax_weather",
+        "ets"
+      ],
+      "members_failed": {},
+      "member_forecasts": {
+        "seasonal_trend": 83.68,
+        "poisson_trend": 90.99,
+        "harmonic_poisson_weather": 59.29,
+        "sarimax_weather": 28.11,
+        "ets": 32.35
+      },
+      "weights": {
+        "seasonal_trend": 0.118,
+        "poisson_trend": 0.108,
+        "harmonic_poisson_weather": 0.195,
+        "sarimax_weather": 0.293,
+        "ets": 0.285
+      },
+      "bias_factor": 0.865,
+      "backtest": {
+        "n_steps": 67,
+        "group": {
+          "MAE": 16.503,
+          "RMSE": 22.098,
+          "RelMAE": 0.541,
+          "ME": 2.263,
+          "MPE_pct": 4.134,
+          "sMAPE_pct": 35.765,
+          "WAPE_pct": 30.144
+        },
+        "coverage_pct": 84.7457627118644,
+        "codes_top_down_dynamic": {
+          "MAE": 16.381,
+          "RMSE": 21.985,
+          "RelMAE": 0.541,
+          "ME": 2.284,
+          "MPE_pct": 4.009,
+          "sMAPE_pct": 35.849,
+          "WAPE_pct": 30.15
+        },
+        "members_used_pct": {
+          "seasonal_trend": 100.0,
+          "poisson_trend": 100.0,
+          "harmonic_poisson_weather": 100.0,
+          "ets": 100.0,
+          "sarimax_weather": 97.0
+        }
+      },
+      "codes": [
+        "J20",
+        "J21",
+        "J22"
+      ]
+    }
+  },
+  "summary": {
+    "code_level_top_down_dynamic": {
+      "MAE": 14.439,
+      "RMSE": 19.815,
+      "RelMAE": 0.5,
+      "ME": -0.374,
+      "MPE_pct": -1.247,
+      "sMAPE_pct": 33.741,
+      "WAPE_pct": 28.271
+    },
+    "code_level_by_method": {
+      "bottom_up": 0.605,
+      "top_down_fixed": 0.547,
+      "top_down_dynamic": 0.5,
+      "ols_reconcile": 0.592
+    },
+    "group_level": {
+      "J00-J06": {
+        "RelMAE": 0.516,
+        "MPE_pct": -0.5,
+        "coverage_pct": 86.7
+      },
+      "J09-J18": {
+        "RelMAE": 0.377,
+        "MPE_pct": -3.0,
+        "coverage_pct": 80.0
+      },
+      "J20-J22": {
+        "RelMAE": 0.541,
+        "MPE_pct": 4.1,
+        "coverage_pct": 84.7
+      }
+    }
+  }
+}

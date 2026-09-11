@@ -133,3 +133,8 @@ env_stagging.txt
 
 # Kết quả backtest chính thức — PHẢI theo dõi (Dashboard đọc, báo cáo trích)
 !backend/ketqua_backtest/*.csv
+
+# Bộ huấn luyện đóng gói và bảng backtest của artifact — theo dõi; artifact .pkl thì không (11 MB, sinh lại được)
+!dataset/**/*.csv
+!backend/models/**/*.csv
+backend/models/**/*.pkl

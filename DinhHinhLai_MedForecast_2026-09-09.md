@@ -245,6 +245,10 @@ và ba service). Kết quả: RelMAE mã **0,659 → 0,500**, nhóm 0,52/0,38/0,
 ≈0, độ phủ J09-J18 68 → 80 %. `ket_hop.csv` ghi 8 biến thể đối chứng. Trang Kế hoạch
 cung ứng ẩn theo quyết định phạm vi (dừng ở Cảnh báo thiếu hụt).
 
+**3.7 xong (tối 11/09):** `dataset/v1/` (3 CSV + manifest sha256 + README + TU_DIEN_DU_LIEU + DATASHEET),
+`app/forecasting/dataset.py | train.py | predict.py`, `backend/models/v1/model_v1.json`. `train.py` chạy
+từ CSV tái lập đúng 0,500 / 0,516 / 0,377 / 0,541. 3.8 (từ điển + datasheet) gộp vào đây.
+
 ### TUẦN 4 — Bằng chứng huấn luyện và đối chứng mô hình
 *Đây là tuần trả lời trực tiếp câu hỏi của thầy về "model train" và "tính ứng dụng".*
 

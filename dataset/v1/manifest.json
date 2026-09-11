@@ -1,0 +1,75 @@
+{
+  "dataset": "MedForecast — bộ huấn luyện dự báo ca bệnh hô hấp theo tháng",
+  "version": "1.0",
+  "exported_at": "2026-09-11T14:42:33",
+  "source_db": "backend/data/medforecast.db (xuất qua bản rút gọn 3 bảng mart, nội dung y hệt)",
+  "region": "TOAN_QUOC",
+  "blocks": [
+    "J00-J06",
+    "J09-J18",
+    "J20-J22"
+  ],
+  "period_min": "2019-01",
+  "period_max": "2026-09",
+  "period_max_closed": "2026-08",
+  "n_periods_closed_per_block": 91,
+  "n_icd_codes": 20,
+  "weather_months": 93,
+  "files": {
+    "nhom": {
+      "csv": "nhom_thang.csv",
+      "rows": 278,
+      "cols": [
+        "period",
+        "block_code",
+        "year",
+        "month",
+        "cases",
+        "is_covid",
+        "is_complete",
+        "temp",
+        "humidity",
+        "rainfall",
+        "temp_lag1",
+        "temp_lag2",
+        "humidity_lag1",
+        "humidity_lag2",
+        "rainfall_lag1",
+        "rainfall_lag2"
+      ],
+      "sha256": "0f93f004bbb6bf0a997345978fd44e7b44f5efe3c508b292da688c7fad87138b"
+    },
+    "ma": {
+      "csv": "ma_thang.csv",
+      "rows": 938,
+      "cols": [
+        "period",
+        "block_code",
+        "icd_code",
+        "year",
+        "month",
+        "cases",
+        "is_covid",
+        "is_complete"
+      ],
+      "sha256": "5a29661376d75c48bc7c00dfe87ab0e7b5fc95c0dd6b206e3c844397f7d6b4c6"
+    },
+    "ty_trong": {
+      "csv": "ty_trong_co_dinh.csv",
+      "rows": 20,
+      "cols": [
+        "block_code",
+        "icd_code",
+        "share"
+      ],
+      "sha256": "4c6fbbb8869b52835dbc8da6fef4100b48d815cb2473a68eafc464567c6d506a"
+    }
+  },
+  "split_protocol": {
+    "kind": "walk-forward, expanding window, 1-step-ahead",
+    "min_train_months": 24,
+    "test_steps_per_block": 67,
+    "open_period_excluded": true,
+    "note": "Không chia 80/20 một lần: với chuỗi thời gian, mỗi bước kiểm định là một lần huấn luyện lại trên toàn bộ quá khứ trước bước đó."
+  }
+}
