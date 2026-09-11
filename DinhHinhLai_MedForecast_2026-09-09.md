@@ -248,6 +248,9 @@ cung ứng ẩn theo quyết định phạm vi (dừng ở Cảnh báo thiếu h
 **Tuần 4 (tối 11/09):** 4a gỡ `topdown.py` → `_archive` (Tầng 1 duy nhất); 4b đối chứng
 XGBoost/Prophet đo trên cùng bench (`doi_chung_xgb_prophet.csv`, KetQua mục 0.4): Prophet
 tệ hơn naive, XGBoost +1 % không đáng phụ thuộc — 4.3–4.4 khép.
+4c (4.5) bảng `forecast_runs`: mỗi lần app khớp mô hình ghi một dòng (kỳ, điểm, khoảng, trọng số,
+lệch, thành viên, cấu hình); sau đồng bộ, kỳ chốt được điền thực tế + sai số; `GET /dashboard/v2/forecast/history`;
+thẻ Chất lượng hiện "n kỳ đã đối chiếu, WAPE". Đây là bằng chứng "có train, có theo dõi" trong vận hành.
 
 **3.7 xong (tối 11/09):** `dataset/v1/` (3 CSV + manifest sha256 + README + TU_DIEN_DU_LIEU + DATASHEET),
 `app/forecasting/dataset.py | train.py | predict.py`, `backend/models/v1/model_v1.json`. `train.py` chạy

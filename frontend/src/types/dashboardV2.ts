@@ -216,6 +216,16 @@ export interface QualitySection {
   by_block?: QualityBlock[];
   ghi_chu?: string;
   canh_bao?: string;
+  /** Sổ theo dõi trong vận hành (forecast_runs): kỳ đã chốt được đối chiếu. */
+  track_record?: {
+    n_runs: number;
+    n_verified: number;
+    mae?: number;
+    wape_pct?: number | null;
+    mpe_pct?: number | null;
+    coverage_pct?: number | null;
+    by_block?: Record<string, number>;
+  };
 }
 
 export interface DssTableStatus {

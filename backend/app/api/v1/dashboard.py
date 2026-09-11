@@ -534,3 +534,15 @@ def get_dashboard_v2_forecast(
     khoá tự đổi, không cần xoá cache tay.
     """
     return dss_dashboard.forecast_payload(db, compute=True, force=force)
+
+
+@router.get("/v2/forecast/history")
+def get_dashboard_v2_forecast_history(
+    limit: int = Query(60, ge=1, le=500),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Dict:
+    """Sổ theo dõi mô hình trong vận hành (Tuần 4c): mỗi lần app khớp mô hình
+    là một dòng; kỳ đích chốt thì tự điền thực tế và sai số. Khác backtest —
+    đây là con số màn hình đã hiện vào thời điểm đó."""
+    return dss_dashboard.forecast_history(db, limit=limit)

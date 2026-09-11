@@ -365,6 +365,13 @@ function buildKpis(
         <>
           Backtest walk-forward {q.run_at ? new Date(q.run_at).toLocaleDateString('vi-VN') : ''} · {q.phuong_an}
           {q.canh_bao && <span className="text-amber-700"> · {q.canh_bao}</span>}
+          {q.track_record && q.track_record.n_verified > 0 ? (
+            <>
+              {' '}· vận hành: {q.track_record.n_verified} kỳ đã đối chiếu, WAPE {q.track_record.wape_pct}%
+            </>
+          ) : q.track_record && q.track_record.n_runs > 0 ? (
+            <> · vận hành: {q.track_record.n_runs} lần khớp, chưa có kỳ nào chốt</>
+          ) : null}
         </>
       ) : undefined,
     },

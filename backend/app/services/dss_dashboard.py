@@ -68,9 +68,137 @@ CREATE TABLE IF NOT EXISTS dss_forecast_cache (
 """
 
 
+_RUNS_DDL = """
+CREATE TABLE IF NOT EXISTS forecast_runs (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    computed_at   TEXT NOT NULL,
+    block_code    TEXT NOT NULL,
+    anchor_period TEXT,
+    target_period TEXT NOT NULL,
+    point         REAL, point_raw REAL, lower REAL, upper REAL, level REAL,
+    bias_factor   REAL,
+    weights       TEXT, members_used TEXT, members_failed TEXT,
+    n_history     INTEGER,
+    config        TEXT,
+    fingerprint   TEXT,
+    actual        REAL, abs_err REAL, pct_err REAL, in_interval INTEGER,
+    actual_filled_at TEXT
+)
+"""
+
+
 def _ensure_cache(db: Session) -> None:
     db.execute(text(_CACHE_DDL))
+    db.execute(text(_RUNS_DDL))
     db.commit()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LƯU VẾT HUẤN LUYỆN (Tuần 4c, 11/09/2026)
+#
+# Mỗi lần app khớp mô hình cho một khối (cache miss) là một dòng: kỳ đích, điểm,
+# khoảng, trọng số, hệ số lệch, thành viên, cấu hình. Khi kỳ đích chốt (sau đồng
+# bộ), `fill_actuals` điền thực tế và sai số. Đây là "sổ theo dõi" sống của mô
+# hình trong vận hành — khác backtest ở chỗ nó ghi đúng con số màn hình đã hiện
+# vào thời điểm đó, không thể chỉnh lại sau.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _log_run(db: Session, block: str, fp: str, payload: Dict[str, Any]) -> None:
+    m = payload.get("model") or {}
+    try:
+        db.execute(text(
+            "INSERT INTO forecast_runs (computed_at, block_code, anchor_period, target_period, "
+            "point, point_raw, lower, upper, level, bias_factor, weights, members_used, "
+            "members_failed, n_history, config, fingerprint) VALUES "
+            "(:c, :b, :a, :t, :p, :pr, :lo, :hi, :lv, :bf, :w, :mu, :mf, :nh, :cfg, :fp)"),
+            {"c": datetime.now().isoformat(timespec="seconds"), "b": block,
+             "a": payload.get("anchor_period"), "t": payload.get("target_period"),
+             "p": payload.get("point"), "pr": m.get("point_raw"),
+             "lo": payload.get("lower"), "hi": payload.get("upper"), "lv": payload.get("level"),
+             "bf": m.get("bias_factor"),
+             "w": json.dumps(m.get("weights") or {}, ensure_ascii=False),
+             "mu": json.dumps(m.get("members_used") or [], ensure_ascii=False),
+             "mf": json.dumps(m.get("members_failed") or {}, ensure_ascii=False),
+             "nh": payload.get("n_history_months"),
+             "cfg": json.dumps(m.get("config") or {}, ensure_ascii=False), "fp": fp})
+        db.commit()
+    except Exception as exc:                                  # noqa: BLE001
+        db.rollback()
+        logger.warning("Không ghi được forecast_runs: %s", exc)
+
+
+def fill_actuals(db: Session) -> int:
+    """Điền thực tế cho các dòng có kỳ đích ĐÃ CHỐT. Trả số dòng vừa điền."""
+    try:
+        _ensure_cache(db)
+        rows = db.execute(text(
+            "SELECT r.id, r.block_code, r.target_period, r.point, r.lower, r.upper, m.cases "
+            "FROM forecast_runs r JOIN mart_monthly_cases_by_block m "
+            "  ON m.block_code = r.block_code AND m.period = r.target_period "
+            " AND m.region = :reg AND m.is_complete = 1 "
+            "WHERE r.actual IS NULL"), {"reg": TOAN_QUOC}).fetchall()
+        n = 0
+        now = datetime.now().isoformat(timespec="seconds")
+        for r in rows:
+            actual = float(r[6] or 0); point = float(r[3] or 0)
+            in_iv = (int(r[4] <= actual <= r[5]) if (r[4] is not None and r[5] is not None) else None)
+            db.execute(text(
+                "UPDATE forecast_runs SET actual = :a, abs_err = :e, pct_err = :pe, "
+                "in_interval = :ii, actual_filled_at = :now WHERE id = :id"),
+                {"a": actual, "e": abs(point - actual),
+                 "pe": ((point - actual) / actual * 100.0) if actual > 0 else None,
+                 "ii": in_iv, "now": now, "id": r[0]})
+            n += 1
+        db.commit()
+        return n
+    except Exception as exc:                                  # noqa: BLE001
+        db.rollback()
+        logger.warning("fill_actuals lỗi: %s", exc)
+        return 0
+
+
+def forecast_history(db: Session, limit: int = 60) -> Dict[str, Any]:
+    """Sổ theo dõi: các lần khớp gần nhất + tổng kết trên các kỳ đã đối chiếu."""
+    _ensure_cache(db)
+    fill_actuals(db)
+    rows = db.execute(text(
+        "SELECT id, computed_at, block_code, anchor_period, target_period, point, point_raw, "
+        "lower, upper, level, bias_factor, weights, members_used, n_history, actual, abs_err, "
+        "pct_err, in_interval, actual_filled_at FROM forecast_runs ORDER BY id DESC LIMIT :n"),
+        {"n": int(limit)}).fetchall()
+    cols = ["id", "computed_at", "block_code", "anchor_period", "target_period", "point", "point_raw",
+            "lower", "upper", "level", "bias_factor", "weights", "members_used", "n_history",
+            "actual", "abs_err", "pct_err", "in_interval", "actual_filled_at"]
+    items = []
+    for r in rows:
+        d = dict(zip(cols, r))
+        for k in ("weights", "members_used"):
+            try:
+                d[k] = json.loads(d[k]) if d[k] else None
+            except Exception:                                 # noqa: BLE001
+                pass
+        items.append(d)
+
+    # Tổng kết: mỗi (khối, kỳ đích) chỉ tính lần khớp CUỐI trước khi kỳ chốt
+    ver = db.execute(text(
+        "SELECT block_code, target_period, point, actual, abs_err, pct_err, in_interval "
+        "FROM forecast_runs WHERE actual IS NOT NULL AND id IN ("
+        "  SELECT MAX(id) FROM forecast_runs WHERE actual IS NOT NULL GROUP BY block_code, target_period)")).fetchall()
+    tong = {"n_verified": len(ver)}
+    if ver:
+        ae = [float(v[4]) for v in ver]; act = [float(v[3]) for v in ver]; pt = [float(v[2]) for v in ver]
+        tong.update({
+            "mae": round(sum(ae) / len(ae), 2),
+            "wape_pct": (round(sum(ae) / sum(act) * 100, 1) if sum(act) > 0 else None),
+            "mpe_pct": (round((sum(pt) - sum(act)) / sum(act) * 100, 1) if sum(act) > 0 else None),
+            "coverage_pct": (round(sum(1 for v in ver if v[6]) / sum(1 for v in ver if v[6] is not None) * 100, 1)
+                             if any(v[6] is not None for v in ver) else None),
+            "by_block": {b: sum(1 for v in ver if v[0] == b) for b in BLOCKS},
+        })
+    n_runs = db.execute(text("SELECT COUNT(*) FROM forecast_runs")).scalar() or 0
+    return {"items": items, "summary": {**tong, "n_runs": int(n_runs)},
+            "ghi_chu": ("Mỗi dòng là một lần app khớp mô hình (cache miss). Tổng kết chỉ tính lần khớp "
+                        "cuối của mỗi (khối, kỳ) sau khi kỳ đó chốt — số màn hình đã hiện, không chỉnh lại.")}
 
 
 def _read_cache(db: Session, block: str, fp: str) -> Optional[Dict[str, Any]]:
@@ -125,6 +253,7 @@ def forecast_payload(db: Session, compute: bool = True,
             try:
                 hit = svc.forecast_group(b)
                 _write_cache(db, b, fp, hit)
+                _log_run(db, b, fp, hit)                   # Tuần 4c: sổ theo dõi
                 hit["computed_at"] = datetime.now().isoformat(timespec="seconds")
                 hit["from_cache"] = False
             except Exception as exc:                          # noqa: BLE001
@@ -497,6 +626,12 @@ def overview_payload(db: Session, focus: bool = True,
         db.rollback()
 
     quality = backtest_quality()
+    try:
+        _ensure_cache(db)
+        fill_actuals(db)
+        quality["track_record"] = forecast_history(db, limit=1)["summary"]
+    except Exception as exc:                                  # noqa: BLE001
+        quality["track_record"] = {"n_runs": 0, "n_verified": 0, "error": str(exc)[:120]}
     doi_cat = _doi_by_category(rows)
     tap_ten = "tập trọng tâm" if focus else "toàn danh mục"
 

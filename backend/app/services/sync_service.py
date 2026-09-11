@@ -143,6 +143,13 @@ class SyncService:
 
         # trạng thái PROD→STA kèm theo, để giao diện thấy dữ liệu "mới" tới đâu
         result["sta"] = self.trang_thai_sta(pipeline.connector)
+
+        # Tuần 4c: kỳ vừa chốt → điền thực tế cho sổ theo dõi dự báo
+        try:
+            from app.services import dss_dashboard
+            result["forecast_runs_verified"] = dss_dashboard.fill_actuals(self.db)
+        except Exception as exc:                          # noqa: BLE001
+            logger.warning("fill_actuals sau đồng bộ lỗi: %s", exc)
         return result
 
     # ── trạng thái PROD → STA ──────────────────────────────────────────
