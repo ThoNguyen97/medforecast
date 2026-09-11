@@ -267,6 +267,26 @@ def main() -> int:
                             """Thiếu view (chạy lại script 01) hoặc tài khoản chưa được
                                GRANT SELECT (xem cuối script 01).""")
 
+            # 11/09/2026 — bẫy lùi phiên bản: Phase0_01 (cũ) và G1_01 cùng
+            # CREATE OR ALTER view này; bản 9 cột không có bốn cột dưới. Backend
+            # (usage_total_sta.sql) đọc bản 12 cột. Kiểm ở đây để lỗi hiện ra
+            # TRƯỚC khi dss_loader ghi "failed" rồi chạy tiếp với số cũ.
+            print("\n=== 3b. Phiên bản view vw_MedForecast_TieuHaoTong ===")
+            try:
+                cot = {r[0] for r in c.execute(text(
+                    "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
+                    "WHERE TABLE_NAME = 'vw_MedForecast_TieuHaoTong'")).fetchall()}
+                can = {"so_luong_toan_vien", "so_luong_hohap", "d_baseline_thang", "ty_trong_hohap"}
+                thieu = sorted(can - cot)
+                if thieu:
+                    bao_loi(f"vw_MedForecast_TieuHaoTong đang ở BẢN CŨ (9 cột) — thiếu {thieu}.",
+                            "Chạy lại sql_his/phase0/G1_01_STA_sua_bang.sql trên STA. "
+                            "Nguyên nhân thường gặp: chạy lại Phase0_01 sau G1_01.")
+                else:
+                    print(OK + f"vw_MedForecast_TieuHaoTong: bản G1 đủ {len(cot)} cột")
+            except Exception as e:
+                bao_loi(f"Không đọc được INFORMATION_SCHEMA cho view: {str(e)[:120]}")
+
             print("\n=== 4. Cột nhóm bệnh ===")
             try:
                 r = c.execute(text(

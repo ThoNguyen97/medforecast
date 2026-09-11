@@ -84,7 +84,7 @@ GO
    nối sang TT_DUOC_CHUNGTU — tránh phụ thuộc vào tên khoá chưa xác minh.
    ═════════════════════════════════════════════════════════════════════════════ */
 
-DECLARE @BENHVIEN_ID INT = NULL;      -- ⚙ đặt 79428 nếu DB chứa nhiều bệnh viện
+DECLARE @BENHVIEN_ID VARCHAR(8) = NULL;      -- ⚙ đặt 79428 nếu DB chứa nhiều bệnh viện
 DECLARE @SoThangD9   INT = 24;        -- cửa sổ lịch sử nhập
 
 IF OBJECT_ID('tempdb..#Nhap')   IS NOT NULL DROP TABLE #Nhap;
@@ -230,7 +230,7 @@ GO
    ghi trong luận văn.
    ═════════════════════════════════════════════════════════════════════════════ */
 
-DECLARE @BENHVIEN_ID INT = NULL;      -- ⚙ đặt 79428 nếu DB chứa nhiều bệnh viện
+DECLARE @BENHVIEN_ID VARCHAR(8) = NULL;      -- ⚙ đặt 79428 nếu DB chứa nhiều bệnh viện
 DECLARE @SoThang     INT = 12;        -- hạ xuống 6 hoặc 3 nếu chạy quá lâu
 DECLARE @Tu  DATE = DATEADD(MONTH, -@SoThang, CAST(GETDATE() AS DATE));
 DECLARE @Den DATE = CAST(GETDATE() AS DATE);

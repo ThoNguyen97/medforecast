@@ -452,7 +452,18 @@ def load_flow(db, connector, flow: str, full: bool = False) -> Dict[str, Any]:
         wm = _watermark(db, spec["table"])
         since = _shift(wm, -LOOKBACK_MONTHS) if wm else None
 
-    raw = _fetch(connector, sql, since)
+    try:
+        raw = _fetch(connector, sql, since)
+    except Exception as exc:                          # noqa: BLE001
+        msg = str(exc)
+        if "Invalid column name" in msg and flow == "usage_total":
+            # 11/09/2026 — dấu hiệu view vw_MedForecast_TieuHaoTong đang ở bản
+            # 9 cột (Phase0_01) thay vì 12 cột (G1_01). Nói thẳng cách sửa.
+            raise RuntimeError(
+                "vw_MedForecast_TieuHaoTong thiếu cột — view đang ở bản cũ. "
+                "Chạy lại sql_his/phase0/G1_01_STA_sua_bang.sql trên STA. "
+                f"Lỗi gốc: {msg[:200]}") from exc
+        raise
     df = _prepare(raw, spec)
     n = _replace_periods(db, spec["table"], df, list(spec["map"].keys()), khoa_pv)
     db.commit()

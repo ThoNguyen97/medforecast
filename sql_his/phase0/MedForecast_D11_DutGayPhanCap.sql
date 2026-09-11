@@ -54,7 +54,7 @@ GO
 SET NOCOUNT ON;
 GO
 
-DECLARE @BENHVIEN_ID INT = NULL;      -- ⚙ đặt 79428 nếu DB nhiều bệnh viện
+DECLARE @BENHVIEN_ID VARCHAR(8) = NULL;      -- ⚙ đặt 79428 nếu DB nhiều bệnh viện
 
 IF OBJECT_ID('tempdb..#Icd')  IS NOT NULL DROP TABLE #Icd;
 IF OBJECT_ID('tempdb..#Dot')  IS NOT NULL DROP TABLE #Dot;

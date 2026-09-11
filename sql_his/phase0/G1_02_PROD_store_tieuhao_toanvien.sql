@@ -38,7 +38,7 @@ USE GIAAN115_HIS;
 GO
 
 CREATE OR ALTER PROCEDURE dbo.usp_MedForecast_DayTieuHaoToanVien
-    @BENHVIEN_ID   INT = NULL,      -- ⚙ đặt 79428 nếu DB nhiều bệnh viện
+    @BENHVIEN_ID   VARCHAR(8) = NULL,   -- KHỚP KIỂU CỘT tn.BENHVIEN_ID (varchar(8)); INT sẽ ép kiểu ngầm lên cột → mất index      -- ⚙ đặt 79428 nếu DB nhiều bệnh viện
     @SoThang       INT = 24,        -- cửa sổ nạp lại; hạ xuống nếu chạy quá lâu
     @NhomBenhDich  NVARCHAR(400) = N'J00-J06,J09-J18,J20-J22',
     @GomVTYT       BIT = 1,         -- 1 = lấy cả VTYT. Ở đây MẶC ĐỊNH BẬT:

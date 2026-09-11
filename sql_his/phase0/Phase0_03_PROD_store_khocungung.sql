@@ -90,7 +90,7 @@ GO
    THỦ TỤC
    ═════════════════════════════════════════════════════════════════════════ */
 CREATE OR ALTER PROCEDURE dbo.usp_MedForecast_DayKhoCungUng
-    @BENHVIEN_ID        INT           = NULL,      -- ⚙ 79428 nếu DB nhiều BV
+    @BENHVIEN_ID        VARCHAR(8)           = NULL,      -- ⚙ 79428 nếu DB nhiều BV
     @SoThangLichSu      INT           = 36,        -- cửa sổ lịch sử nhập
     @LoaiChungTuNhap    NVARCHAR(400) = NULL,      -- ⚙ điền sau khi có Đ8-C,
                                                    --   vd N'NHAP,NHAPMUA'

@@ -332,15 +332,15 @@ FROM    dbo.MF_TieuHao_PhanCap t
 LEFT JOIN dbo.MF_MapVatTu m ON m.MaHIS = t.supply_code;
 GO
 
-CREATE OR ALTER VIEW dbo.vw_MedForecast_TieuHaoTong
-AS
-SELECT  t.Period, t.[month],
-        ISNULL(m.MaApp, t.supply_code) AS supply_code,
-        t.supply_name, t.supply_unit, t.is_vtyt,
-        t.so_luong, t.so_dong_toa, t.so_luot
-FROM    dbo.MF_TieuHao_Tong t
-LEFT JOIN dbo.MF_MapVatTu m ON m.MaHIS = t.supply_code;
-GO
+/* ── vw_MedForecast_TieuHaoTong: ĐÃ CHUYỂN SANG G1_01_STA_sua_bang.sql ──────
+   11/09/2026. Trước đây file này định nghĩa view với 9 cột (so_luong), còn
+   G1_01 định nghĩa lại với 12 cột (so_luong_toan_vien, so_luong_hohap,
+   d_baseline_thang, ty_trong_hohap) — bản backend đang đọc. Cả hai đều
+   CREATE OR ALTER, nên CHẠY LẠI Phase0_01 SAU G1_01 sẽ LÙI view về 9 cột:
+   usage_total_sta.sql lỗi cột, dss_loader ghi failed rồi chạy tiếp với
+   fact_usage_total cũ — hỏng im lặng. Từ nay G1_01 là chủ duy nhất của view
+   này; file này chỉ tạo BẢNG (có IF NOT EXISTS nên chạy lại vô hại).
+   ─────────────────────────────────────────────────────────────────────────── */
 
 CREATE OR ALTER VIEW dbo.vw_MedForecast_TonKhoLo
 AS

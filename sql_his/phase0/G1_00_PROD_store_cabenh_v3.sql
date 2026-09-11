@@ -78,7 +78,7 @@ CREATE OR ALTER PROCEDURE dbo.usp_MedForecast_DayDuLieu
     @SoThangLuiLai       INT   = 3,              -- khớp PIPELINE_LOOKBACK_MONTHS
     @NapLaiToanBo        BIT   = 0,
     @TuNgayGoc           DATE  = '2019-01-01',   -- mốc khi nạp lại toàn bộ
-    @BENHVIEN_ID         INT   = NULL,           -- ⚙ đặt 79428 nếu DB nhiều bệnh viện
+    @BENHVIEN_ID         VARCHAR(8)   = NULL,           -- ⚙ đặt 79428 nếu DB nhiều bệnh viện
     @NhomBenhDich        NVARCHAR(400) = N'J00-J06,J09-J18,J20-J22',
     @XuLyVungKhongXacDinh TINYINT = 1,           -- 0 giữ nhãn | 1 gộp | 2 loại bỏ
     @NguongOutlier       FLOAT = NULL,
