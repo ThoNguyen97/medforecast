@@ -29,6 +29,22 @@ export interface SyncStatus {
     status: string;
     run_at: string;
   }>;
+  /** Bốn bảng fact DSS (11/09/2026): có/không, kỳ mới nhất. */
+  dss_tables?: Record<string, { rows: number; latest: string | null } | null>;
+  /** Trạng thái PROD→STA đọc từ MF_Watermark / MF_SyncLog. */
+  sta?: {
+    available: boolean;
+    watermarks?: Array<{ TenLuong: string; MocDaDay: string | null; LanChayCuoi: string | null }>;
+    last_pushes?: Array<{
+      BatDau: string;
+      KetThuc: string | null;
+      TrangThai: string;
+      SoDongCaBenh: number | null;
+      TongSoCa: number | null;
+      ThongDiep: string | null;
+    }>;
+    warning: string | null;
+  };
 }
 
 /** Cấu hình kết nối HIS/STA — mật khẩu KHÔNG bao giờ được trả về từ server. */

@@ -209,6 +209,19 @@ _archive/
 | 3.7 | **Đóng gói bộ dữ liệu:** xuất panel `(tháng × mã ICD × nhóm) + thời tiết có độ trễ + tiêu hao vật tư` ra CSV/Parquet có phiên bản. Sửa lại từ `scripts/export_cases_to_csv.py` và `gen_full_history_csv.py` |
 | 3.8 | Viết **từ điển dữ liệu** (mỗi cột: ý nghĩa, đơn vị, nguồn, cách tính) + **datasheet** (phạm vi, cách khử định danh và căn cứ pháp lý, ngưỡng ô nhỏ k=5, hạn chế đã biết) |
 
+**Nhật ký Tuần 3 · 11/09/2026 — 3.0 Dashboard Tổng quan (làm trước 3.1–3.6 vì là ảnh chụp đầu tiên của báo cáo)**
+
+| Đã làm | Ở đâu |
+|---|---|
+| Hai endpoint mới `GET /dashboard/v2` (nhanh) và `GET /dashboard/v2/forecast` (cache SQLite `dss_forecast_cache`, khoá theo dấu vân tay chuỗi ca + thời tiết + cấu hình) | `backend/app/api/v1/dashboard.py`, `backend/app/services/dss_dashboard.py` |
+| **M11 khép một nửa:** Dashboard dùng CÙNG ensemble PRODUCTION_CONFIG với trang Kế hoạch qua `HierarchicalForecastService.forecast_group()` (không chia mã), không còn `topdown.py` Ridge riêng cho thẻ dự báo. `dss_runner.run_forecast_cycle` (demand-vs-stock cũ) vẫn gọi `topdown` — gỡ khi các trang khác thôi dùng 4 endpoint cũ | `hierarchical_forecast_service.py` |
+| `alert_rows` trả thêm `danh_muc` (medical_supplies.category) để vẽ DOI theo danh mục | `dss_alerts.py` |
+| Chất lượng dự báo đọc từ `backend/ketqua_backtest/` (phancap.csv, nhom.csv, cau_hinh.json) — không có thư mục thì thẻ ghi "chưa có", không bịa | `dss_dashboard.backtest_quality()` |
+| Trang `Dashboard.tsx` viết lại: bộ lọc (kỳ chỉ đọc · nhóm bệnh · tập vật tư · mức), 5 KPI, xu hướng 12 kỳ + dải khoảng dự báo, DOI theo danh mục với vạch 18/36, bảng cảnh báo 4 mức + "Thiếu hụt dự kiến" (= Δ_need, để trống khi chưa có dự báo), phân cấp chăm sóc, Trạng thái dữ liệu (thay bản đồ dịch tễ), Diễn giải nhanh. Bỏ "Hoạt động gần đây" theo yêu cầu | `frontend/src/pages/Dashboard.tsx`, `components/dashboard/*`, `types/dashboardV2.ts` (viết lại hợp đồng), `hooks/useDashboard.ts`, `services/dashboardService.ts` |
+| `EpidemicMapCard.tsx` không còn ai dùng → `_archive/frontend_chet/components_dashboard/` | |
+
+Bốn endpoint cũ `summary / case-trend / demand-vs-stock / critical-alerts` giữ nguyên cho tới khi Reports/Alerts thôi gọi.
+
 ### TUẦN 4 — Bằng chứng huấn luyện và đối chứng mô hình
 *Đây là tuần trả lời trực tiếp câu hỏi của thầy về "model train" và "tính ứng dụng".*
 

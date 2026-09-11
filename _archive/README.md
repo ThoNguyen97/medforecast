@@ -37,3 +37,5 @@ gọi nó cũng nằm trong danh sách này. Đã loại trừ file `test_*` kh�
 ## Khôi phục
 `git mv _archive/<nhóm>/<đường dẫn> <đường dẫn>` rồi hoàn lại 3 sửa đổi thủ
 công ghi ở đầu `bo_ma_chet.sh`.
+
+- `frontend_chet/components_dashboard/EpidemicMapCard.tsx` — thẻ bản đồ dịch tễ của Dashboard cũ; Dashboard v2 (11/09/2026) thay bằng thẻ "Trạng thái dữ liệu" vì hệ thống chỉ có một cơ sở.

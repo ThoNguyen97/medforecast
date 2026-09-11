@@ -15,6 +15,8 @@ GET /api/v1/dashboard/overview        – KPI summary (totals, risk counts)
 GET /api/v1/dashboard/supply-demand   – Time-series data for chart
 GET /api/v1/dashboard/risk-status     – Safe / low / critical stock counts
 GET /api/v1/dashboard/critical-alerts – Top unresolved critical alerts
+GET /api/v1/dashboard/v2              – Toàn bộ màn hình Tổng quan (Tuần 3, DSS)
+GET /api/v1/dashboard/v2/forecast     – Ŷ_g ba khối + khoảng (cache theo dấu vân tay)
 """
 
 import json
@@ -35,7 +37,7 @@ from app.models.inventory import Inventory
 from app.models.medical_supply import MedicalSupply
 from app.models.supply_requirement import SupplyRequirement
 from app.models.user import User
-from app.services import dss_runner, period_service as ps
+from app.services import dss_dashboard, dss_runner, period_service as ps
 
 logger = logging.getLogger(__name__)
 
@@ -635,3 +637,50 @@ async def get_care_level_mix(
     result = dss_runner.care_level_payload(db)
     _cache_set(cache_key, result)
     return result
+
+
+# ── Dashboard v2 (Tuần 3 · 11/09/2026) ───────────────────────────────────────
+#
+# Hai endpoint thay cho bốn endpoint cũ (summary / case-trend / demand-vs-stock
+# / critical-alerts) mà trang Dashboard đang gọi. Bốn endpoint cũ GIỮ NGUYÊN
+# cho tới khi các trang khác thôi dùng — chúng vẫn đúng, chỉ là mỗi cái một
+# mốc thời gian, một cách đếm. v2 đọc một lần, một mốc, một cách đếm.
+#
+# Không đi qua cache Redis: v2 đã tự cache phần đắt (dự báo) trong SQLite
+# theo dấu vân tay dữ liệu; phần còn lại là vài truy vấn nhỏ.
+
+@router.get("/v2")
+def get_dashboard_v2(
+    focus: bool = Query(True, description="Tập trọng tâm (tỷ trọng hô hấp ≥ 25%) hay toàn danh mục"),
+    level: Optional[str] = Query(None, description="Lọc bảng cảnh báo: red | amber | green | grey; bỏ trống = Đỏ + Vàng"),
+    limit: int = Query(8, ge=1, le=50),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Dict:
+    """Mọi thứ trang Tổng quan cần, trừ việc khớp mô hình dự báo.
+
+    Nếu dự báo kỳ tới đã có trong cache (xem `/v2/forecast`) thì Tầng 2 chạy
+    và bảng cảnh báo có cột `d_forecast` / `delta_need`; chưa có thì hai cột
+    ấy để None và `demand.ready = false` — giao diện phải nói "đang tính",
+    không được hiện 0.
+    """
+    try:
+        return dss_dashboard.overview_payload(db, focus=focus, level=level, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get("/v2/forecast")
+def get_dashboard_v2_forecast(
+    force: bool = Query(False, description="Bỏ cache, khớp lại mô hình"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Dict:
+    """Ŷ_g cho ba khối bằng ensemble PRODUCTION_CONFIG (cùng trang Kế hoạch).
+
+    Lần đầu cho một bộ dữ liệu có thể mất vài chục giây (dựng khoảng thực
+    nghiệm cần ~25 lần khớp mỗi khối). Kết quả lưu `dss_forecast_cache`, khoá
+    theo dấu vân tay (chuỗi ca + thời tiết + cấu hình) nên đồng bộ xong là
+    khoá tự đổi, không cần xoá cache tay.
+    """
+    return dss_dashboard.forecast_payload(db, compute=True, force=force)
