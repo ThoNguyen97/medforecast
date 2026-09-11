@@ -130,3 +130,6 @@ env_stagging.txt
 # Mọi biến thể .env (kể cả bản sao lưu) — chỉ .env.example được theo dõi
 .env*
 !.env.example
+
+# Kết quả backtest chính thức — PHẢI theo dõi (Dashboard đọc, báo cáo trích)
+!backend/ketqua_backtest/*.csv

@@ -39,6 +39,33 @@ class ForecastConfig:
     11/09/2026: 10 thắng hoặc hoà bản cũ ở mọi ô; ≥30 giết J09-J18. Tối ưu theo
     nhóm khác nhau (≈100 / 10 / 30) — dò theo nhóm là thí nghiệm kế tiếp."""
 
+    use_ets: bool = True
+    """Thành viên ETS Holt–Winters (cần statsmodels). M12, 11/09/2026: đứng
+    một mình đã RelMAE 0,55/0,40/0,58 (ba nhóm) — chỉ kém SARIMAX, tốt hơn xa
+    ba thành viên numpy. Bằng chứng: ket_hop.csv."""
+
+    # ── kết hợp thành viên & hiệu chỉnh lệch (M12) ───────────────────────
+    combine: str = "inv_mae"
+    """'mean' = trung bình đều (hành vi cũ); 'inv_mae' = trọng số nghịch đảo
+    MAE của từng thành viên trên `combine_window` bước walk-forward gần nhất
+    (Bates–Granger). Chỉ áp ở MỨC NHÓM; mức mã vẫn trung bình đều.
+
+    Chọn 11/09/2026 bằng bench walk-forward 68 bước (ket_hop.csv): trung bình
+    đều RelMAE nhóm 0,755/0,594/0,688 vì seasonal_trend và poisson_trend còn
+    TỆ HƠN seasonal-naive (RelMAE > 1 ở J00-J06) mà vẫn được 1/5 phiếu.
+    inv_mae power 2 + hệ số lệch: 0,516/0,377/0,541 — MPE về −0,5/−3/+4 %."""
+    combine_window: int = 12
+    combine_power: float = 2.0
+    combine_min_hist: int = 6
+    bias_correct: bool = True
+    """Nhân dự báo nhóm với hệ số = 1 + shrink·(median(thực tế/dự báo) − 1)
+    trên `bias_window` bước gần nhất, chặn trong [1/clip, clip]. Sửa lệch
+    một chiều (J09-J18 hụt ~15 %, J20-J22 thừa ~13 %) mà trung bình đều
+    không tự sửa. Ước lượng chỉ từ quá khứ → walk-forward vẫn trung thực."""
+    bias_window: int = 12
+    bias_shrink: float = 0.5
+    bias_clip: float = 1.5
+
     # ── phân cấp ─────────────────────────────────────────────────────────
     method: str = "top_down_dynamic"
     """Chốt bằng backtest 09/08/2026: bottom-up nổ MASE 483,7 trên mã thưa."""

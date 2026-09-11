@@ -194,7 +194,7 @@ class PoissonTrendForecaster:
 
     def predict(self, next_month: int) -> float:
         X = self._design(np.array([float(self.n)]), np.array([next_month]))
-        eta = float(X @ self.beta)
+        eta = float(np.ravel(X @ self.beta)[0])   # numpy ≥ 2.x: float(mảng (1,)) là lỗi
         pred = np.exp(eta) * self._smear - 1.0
         return float(max(0.0, pred))
 
@@ -355,8 +355,11 @@ class Ensemble:
                                getattr(m, "name", type(m).__name__), exc)
         return self
 
-    def predict(self, next_month: int) -> float:
-        vals, used = [], []
+    def predict_members(self, next_month: int) -> Dict[str, float]:
+        """Dự báo của TỪNG thành viên còn đứng (M12). Thành viên rớt / phi lý
+        bị loại và ghi lý do như trước. Lớp kết hợp (combine.AdaptiveCombiner)
+        quyết định trọng số — không phải việc của ensemble."""
+        out: Dict[str, float] = {}
         for m in self.members:
             nm = getattr(m, "name", type(m).__name__)
             if not getattr(m, "fitted", False):
@@ -367,15 +370,21 @@ class Ensemble:
                     raise ValueError(f"giá trị không hữu hạn: {v}")
                 if v > self._plausible_max:
                     raise ValueError(f"phi lý: {v:.0f} > {self.PLAUSIBLE_FACTOR:.0f}× max lịch sử ({self._y_max:.0f})")
-                vals.append(v); used.append(nm)
+                out[nm] = v
             except Exception as exc:                          # noqa: BLE001
                 self.members_failed[nm] = f"predict: {exc}"
                 logger.warning("Ensemble: thành viên %s rớt khi predict — %s", nm, exc)
-        self.members_used = used
+        self.members_used = list(out.keys())
+        return out
+
+    def predict(self, next_month: int) -> float:
+        """Trung bình ĐỀU — giữ cho mức mã và cho tương thích. Mức nhóm dùng
+        `group_forecast.py` với trọng số thích ứng."""
+        vals = self.predict_members(next_month)
         if not vals:
             logger.error("Ensemble: KHÔNG thành viên nào dự báo được — trả 0.")
             return 0.0
-        return float(np.mean(vals))
+        return float(np.mean(list(vals.values())))
 
     def describe(self) -> dict:
         """Bản ghi để lưu kèm kết quả: thành viên khai báo / đã dùng / đã rớt."""
@@ -395,7 +404,7 @@ def _has_statsmodels() -> bool:
 
 
 def build_default_ensemble(use_weather: bool = False, smearing: bool = False,
-                           lam: float = 10.0) -> Ensemble:
+                           lam: float = 10.0, use_ets: bool = False) -> Ensemble:
     """SeasonalTrend + PoissonTrend (+ Harmonic-thời-tiết nếu use_weather;
     + SARIMAX nếu có statsmodels).
 
@@ -415,6 +424,12 @@ def build_default_ensemble(use_weather: bool = False, smearing: bool = False,
                                              smearing=smearing))
         except Exception:
             pass
+        if use_ets:
+            try:
+                from .ets_opt import EtsForecaster       # tuỳ chọn (M12)
+                members.append(EtsForecaster(smearing=smearing))
+            except Exception:
+                pass
     return Ensemble(members)
 
 
@@ -433,4 +448,5 @@ def build_production_ensemble(df: pd.DataFrame, cfg=None) -> Ensemble:
     cfg = cfg or PRODUCTION_CONFIG
     use_w = cfg.use_weather and has_enough_weather(df, cfg.weather_min_months)
     return build_default_ensemble(use_weather=use_w, smearing=cfg.smearing,
-                                  lam=cfg.ridge_lam)
+                                  lam=cfg.ridge_lam,
+                                  use_ets=getattr(cfg, "use_ets", False))

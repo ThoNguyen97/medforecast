@@ -258,7 +258,7 @@ See [deployment documentation](docs/deployment.md) for production deployment ins
 
 ## Mô hình dự báo
 
-Ensemble bốn mô hình thống kê, khớp lại trên toàn bộ lịch sử mỗi lần dự báo
+Ensemble năm mô hình thống kê, khớp lại trên toàn bộ lịch sử mỗi lần dự báo
 (vài giây với chuỗi 92 điểm — không có bước huấn luyện định kỳ phải vận hành):
 
 | Thành viên | Học gì | Thang |
@@ -266,16 +266,22 @@ Ensemble bốn mô hình thống kê, khớp lại trên toàn bộ lịch sử 
 | SeasonalTrend | hệ số mùa nhân + xu hướng tuyến tính giảm dần | trung bình |
 | PoissonTrend | log1p(ca) ~ xu hướng + 11 biến giả tháng, Ridge λ=10 chuẩn hoá | log |
 | Harmonic-Poisson | mùa sin/cos + nhiệt độ/độ ẩm/mưa **trễ 1–2 tháng** | log |
-| SARIMAX (1,1,1)(1,0,0,12) | exog thời tiết chuẩn hoá; tuỳ chọn, cần `statsmodels` | log |
+| SARIMAX (1,1,1)(1,0,0,12) | exog thời tiết chuẩn hoá; cần `statsmodels` | log |
+| ETS Holt–Winters | xu hướng giảm chấn + mùa cộng 12; cần `statsmodels` | log |
 
-Trên đó là **dự báo phân cấp top-down động**: mô hình hoá chuỗi nhóm ICD rồi
-chia xuống mã theo tỷ trọng EWMA. Mọi tham số nằm ở một chỗ:
-`backend/app/forecasting/config.py` → `PRODUCTION_CONFIG`.
+Các thành viên được **kết hợp bằng trọng số nghịch đảo MAE** trên 12 bước
+walk-forward gần nhất (Bates–Granger) và **hiệu chỉnh lệch hệ thống** bằng hệ
+số nhân ước lượng từ quá khứ (`app/forecasting/combine.py`). Trên đó là **dự
+báo phân cấp top-down động**: mô hình hoá chuỗi nhóm ICD rồi chia xuống mã theo
+tỷ trọng EWMA. Mọi tham số nằm ở một chỗ: `backend/app/forecasting/config.py`
+→ `PRODUCTION_CONFIG`; mọi màn hình và backtest đi qua
+`group_forecast.forecast_group_next`.
 
 **Bằng chứng** (walk-forward mở rộng cửa sổ, 68 bước/nhóm, dữ liệu HIS thật):
-RelMAE mức mã 0,659 — thắng seasonal-naive ~34%; khoảng dự báo 90% phủ thật
-85–88%. Sinh lại bằng `python -m app.forecasting.run_eval`, chi tiết trong
-`KetQua_Backtest_ChonCauHinh.md`.
+RelMAE mức mã **0,500** — thắng seasonal-naive 50 %; mức nhóm 0,52 / 0,38 / 0,54;
+lệch hệ thống −0,5 / −3,0 / +4,1 %; khoảng dự báo 90 % phủ thật 80–87 %. Sinh lại
+bằng `python -m app.forecasting.run_eval`, chi tiết và các biến thể đối chứng
+trong `KetQua_Backtest_ChonCauHinh.md`.
 
 **Không dùng deep learning.** 92 quan sát tháng trên mỗi chuỗi không đủ cho
 LSTM; nhánh XGBoost/Prophet/LSTM cũ chưa từng chạy trong sản phẩm và đã chuyển

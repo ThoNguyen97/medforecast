@@ -1,4 +1,88 @@
-# Kết quả backtest chính thức — cấu hình sản xuất (11/09/2026)
+# Kết quả backtest chính thức — cấu hình sản xuất M12 (11/09/2026, chiều)
+
+**Lệnh sinh ra bảng này** (máy có `statsmodels`; bench cloud tái lập đúng số Windows
+buổi sáng trước khi đổi, xem mục 0.4):
+
+    cd backend && python -m app.forecasting.run_eval --db data/medforecast.db --out ketqua_backtest
+
+## 0. M12 — kết hợp thích ứng + hiệu chỉnh lệch + ETS: RelMAE mã 0,659 → **0,500**
+
+### 0.1 · Vì sao trung bình đều là sai lầm
+
+Ghi dự báo của TỪNG thành viên ở 68 bước walk-forward rồi chấm riêng (mức nhóm):
+
+| Thành viên | J00-J06 | J09-J18 | J20-J22 | MPE (J09-J18) |
+|---|---|---|---|---|
+| SARIMAX(thời tiết) | **0,518** | **0,360** | **0,560** | −6,0% |
+| ETS Holt–Winters (mới) | 0,547 | 0,395 | 0,578 | −1,4% |
+| Harmonic-Poisson(thời tiết) | 0,777 | 0,686 | 0,755 | −17,2% |
+| PoissonTrend | 1,057 | 0,730 | 0,932 | −11,7% |
+| SeasonalTrend | 1,229 | 0,908 | 0,981 | −23,6% |
+| *Trung bình đều 4 thành viên (cũ)* | *0,755* | *0,594* | *0,688* | *−14,5%* |
+
+Hai thành viên numpy đầu tiên **tệ hơn seasonal-naive** (RelMAE > 1 ở J00-J06) mà
+vẫn được 1/4 phiếu → tổ hợp tệ hơn thành viên tốt nhất của chính nó. Đó là lý
+do "bỏ một thành viên yếu" đã cải thiện ngay. Nhưng bỏ tay là quyết định cứng;
+cách đúng là **để dữ liệu chọn** — trọng số nghịch đảo MAE trên cửa sổ trượt
+(Bates–Granger 1969), tính lại mỗi bước từ các bước TRƯỚC.
+
+### 0.2 · Các biến thể kết hợp (`ket_hop.csv`, cùng một bản ghi thành viên)
+
+| Biến thể | J00-J06 | J09-J18 | J20-J22 | TB | MPE 3 nhóm | Độ phủ 90% |
+|---|---|---|---|---|---|---|
+| mean (cũ) | 0,755 | 0,594 | 0,688 | 0,679 | +7,1 / −14,5 / +13,1 | 88 / 68 / 85 |
+| mean + bias | 0,738 | 0,472 | 0,630 | 0,613 | +3,8 / −6,7 / +7,7 | 88 / 77 / 85 |
+| inv_mae (p=2, w=12) | 0,533 | 0,441 | 0,611 | 0,528 | +1,8 / −10,7 / +6,4 | 88 / 77 / 86 |
+| inv_mae + bias | 0,550 | 0,426 | 0,571 | 0,516 | −0,3 / −3,1 / +4,8 | 88 / 77 / 85 |
+| mean + ETS | 0,654 | 0,509 | 0,616 | 0,593 | | |
+| inv_mae + ETS | 0,504 | 0,388 | 0,559 | 0,484 | +1,4 / −7,7 / +4,9 | 85 / 80 / 85 |
+| **inv_mae + bias + ETS (CHỌN)** | **0,516** | **0,377** | **0,541** | **0,478** | **−0,5 / −3,0 / +4,1** | **87 / 80 / 85** |
+
+Chọn biến thể cuối vì: RelMAE ngang biến thể tốt nhất (0,473 với w=24 không
+bias — chênh trong sai số chọn mẫu), nhưng **lệch hệ thống về gần 0** ở cả ba
+nhóm — đúng vấn đề mà mục 2 (bản sáng) đã nêu là rủi ro thiếu hàng lặp lại.
+Tham số: cửa sổ 12 bước, luỹ thừa 2, hệ số lệch = 1 + 0,5·(median(thực/dự báo) − 1),
+chặn [1/1,5; 1,5], chỉ tính từ quá khứ. Độ nhạy w=12/24, p=1/2, shrink 0,5/1,0
+đều nằm trong 0,47–0,53 — kết luận không phụ thuộc một bộ tham số.
+
+### 0.3 · Kết quả chính thức với cấu hình M12
+
+**Mức MÃ (4 hướng phân cấp):**
+
+| Nhóm | Bottom-up | TD cố định | **TD động (EWMA)** | Hoà giải OLS |
+|---|---|---|---|---|
+| J00-J06 (7 mã) | 0,652 | 0,659 | **0,547** | 0,621 |
+| J09-J18 (10 mã) | 0,546 | 0,439 | **0,413** | 0,569 |
+| J20-J22 (3 mã) | 0,617 | 0,542 | **0,541** | 0,587 |
+| **Tổng hợp** | 0,605 | 0,547 | **0,500** | 0,592 |
+
+MPE TD động: −2,0 / −5,7 / +4,0 % · sMAPE 33,7 % · WAPE 28,3 %. Top-down thắng
+bottom-up rõ hơn trước vì Ŷ_g giờ tốt hơn nhiều còn mức mã vẫn trung bình đều
+(mã ngắn, SARIMAX/ETS rớt 70 % số lần).
+
+**Mức NHÓM:**
+
+| Nhóm | MAE | RelMAE | ME | MPE | sMAPE | Độ phủ 90% | Bề rộng/thực tế |
+|---|---|---|---|---|---|---|---|
+| J00-J06 | 26,7 | **0,516** | −0,7 | −0,5 % | 23,3 % | 86,7 % | 0,90 |
+| J09-J18 | 19,6 | **0,377** | −3,1 | −3,0 % | 23,7 % | 80,0 % | 0,92 |
+| J20-J22 | 16,5 | **0,541** | +2,3 | +4,1 % | 35,8 % | 84,7 % | 1,38 |
+
+So bản sáng: MAE nhóm giảm 32 % / 37 % / 21 %; lệch J09-J18 từ −14,4 % về −3,0 %;
+độ phủ J09-J18 từ 68 % lên 80 %; khoảng hẹp hơn (0,90 so 1,29 ở J00-J06). Thời tiết
+ở ensemble mới: +5,2 % / −4,4 % / +3,3 % MAE — vẫn nhỏ và trái chiều ở J09-J18,
+kết luận mục 3 giữ nguyên.
+
+### 0.4 · Tính tái lập
+
+Bench cloud (Linux, numpy 2.4, statsmodels 0.15) chạy đúng cấu hình sáng cho
+0,659 / 0,755 / 0,594 / 0,688 / 88–68–85 % — khớp Windows tới chữ số thứ ba.
+Phát hiện nhân tiện: `PoissonTrend.predict` gọi `float()` trên mảng (1,) — numpy
+≥ 2.x coi là lỗi → thành viên rớt 100 % ở mức mã trên máy mới; đã sửa.
+
+---
+
+# Bản sáng 11/09/2026 — cấu hình TRƯỚC M12 (giữ làm đối chứng)
 
 **Lệnh sinh ra bảng này** (chạy trên máy có `statsmodels`, ghi kèm `cau_hinh.json`):
 

@@ -9,6 +9,7 @@ Sinh ra trong --out:
     nhom.csv           mức nhóm + độ phủ khoảng dự báo (M9)
     thoitiet.csv       ensemble CÓ vs KHÔNG thời tiết — cùng cấu hình sản xuất
     smearing.csv       ensemble CÓ vs KHÔNG smearing (M8, đối chứng)
+    ket_hop.csv        M12: cách kết hợp thành viên (mean / inv_mae / +bias, có/không ETS)
     thanhvien.csv      thành viên nào đóng góp bao nhiêu % bước, rớt bao nhiêu (M6)
     cau_hinh.json      PRODUCTION_CONFIG đã dùng + ngày chạy + có statsmodels không
 
@@ -29,7 +30,7 @@ from pathlib import Path
 import pandas as pd
 
 from .config import PRODUCTION_CONFIG
-from .evaluate import walk_forward_block, weather_effect, smearing_effect, METHODS
+from .evaluate import walk_forward_block, weather_effect, smearing_effect, combine_effect, METHODS
 from . import data_access as da
 
 LABELS = {"bottom_up": "Bottom-up", "top_down_fixed": "Top-down cố định",
@@ -130,6 +131,24 @@ def main():
     pd.DataFrame(rows_tt).round(3).to_csv(out / "thoitiet.csv", index=False, encoding="utf-8-sig")
     pd.DataFrame(rows_sm).round(3).to_csv(out / "smearing.csv", index=False, encoding="utf-8-sig")
 
+    # M12: cách kết hợp — thành viên ghi một lần, combiner chạy lại
+    rows_kh = []
+    for b in blocks:
+        ce = combine_effect(db, b, cfg)
+        for name, m in ce.items():
+            if not isinstance(m, dict):
+                continue
+            rows_kh.append({"nhom": b, "bien_the": name, "n_buoc": ce["n_steps"],
+                            **{k: m[k] for k in ("MAE", "RelMAE", "ME", "MPE_pct", "sMAPE_pct", "WAPE_pct")},
+                            "do_phu_pct": m["coverage_pct"], "he_so_lech_tb": m["bias_mean"],
+                            "trong_so_cuoi": json.dumps(m["weights_last"], ensure_ascii=False)})
+    df_kh = pd.DataFrame(rows_kh)
+    if not df_kh.empty:
+        tb = df_kh.groupby("bien_the")[["RelMAE", "MPE_pct", "do_phu_pct"]].mean().reset_index()
+        tb.insert(0, "nhom", "TỔNG HỢP")
+        df_kh = pd.concat([df_kh, tb], ignore_index=True)
+    df_kh.round(3).to_csv(out / "ket_hop.csv", index=False, encoding="utf-8-sig")
+
     (out / "cau_hinh.json").write_text(json.dumps({
         "chay_luc": datetime.now().isoformat(timespec="seconds"),
         "db": db, "co_statsmodels": co_statsmodels, "bien_the_doi_chung": bien_the,
@@ -151,9 +170,12 @@ def main():
         print(pd.DataFrame(rows_tt)[["nhom", "khong_RelMAE", "co_RelMAE", "khong_MPE_pct", "co_MPE_pct", "giam_MAE_pct"]].round(3).to_string(index=False))
     print("\n=== SMEARING (đối chứng M8) ===")
     print(pd.DataFrame(rows_sm).round(3).to_string(index=False))
+    if not df_kh.empty:
+        print("\n=== KẾT HỢP THÀNH VIÊN (M12) — RelMAE nhóm theo biến thể ===")
+        print(df_kh.pivot_table(index="bien_the", columns="nhom", values="RelMAE").round(3).to_string())
     best = tong.loc[tong["RelMAE"].idxmin(), "phuong_an"]
     print(f"\n>> RelMAE thấp nhất: {best}")
-    print(f">> Đã ghi: {out}/  (phancap, nhom, thanhvien, thoitiet, smearing, cau_hinh)")
+    print(f">> Đã ghi: {out}/  (phancap, nhom, thanhvien, thoitiet, smearing, ket_hop, cau_hinh)")
 
 
 if __name__ == "__main__":

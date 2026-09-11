@@ -9,7 +9,6 @@ YÊU CẦU: các bảng mart_* và fact_disease_case phải nằm trong CÙNG DB
 from __future__ import annotations
 from typing import Dict, List, Optional
 
-import numpy as np
 import pandas as pd
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -17,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.forecasting.config import PRODUCTION_CONFIG
 from app.forecasting.models import build_production_ensemble
-from app.forecasting.evaluate import empirical_interval
+from app.forecasting.group_forecast import forecast_group_next
 from app.forecasting.hierarchical import ewma_shares, reconcile_ols, split_topdown
 
 TOAN_QUOC = "TOAN_QUOC"
@@ -25,9 +24,9 @@ METHODS = ("top_down_dynamic", "top_down_fixed", "bottom_up", "mint")
 # "mint" giữ làm khoá API cho frontend không vỡ; thuật toán thật là HOÀ GIẢI
 # OLS (W = I) — xem hierarchical.reconcile_ols. Nhãn hiển thị đã đổi (M5).
 
-# Khoảng dự báo (M9, 11/09/2026): phân vị THỰC NGHIỆM của tỷ số thực tế/dự báo
-# trên các bước walk-forward gần nhất — cùng cách với topdown.py, cùng mức
-# PRODUCTION_CONFIG.interval_level cho mọi màn hình.
+# Khoảng dự báo (M9) và kết hợp thành viên (M12) nay nằm ở
+# app/forecasting/group_forecast.forecast_group_next — một đường đi cho backtest,
+# trang Phân tích, trang Kế hoạch và Dashboard.
 #
 # Lịch sử: bản cũ dùng mean ± z·σ với z=1,96, và đã HIỆU CHUẨN bằng độ phủ đo
 # thật (z=1,645 phủ 81,5–87%; z=1,96 phủ 87–90,7%, mục tiêu 90%). Kết quả
@@ -104,30 +103,6 @@ class HierarchicalForecastService:
         import pandas as _pd
         return _pd.DataFrame(rows, columns=["period", "temp", "humidity", "rainfall"])
 
-    def _group_interval(self, group_w, base_group: float, tm: int):
-        """Khoảng dự báo nhóm từ phần dư TƯƠNG ĐỐI walk-forward gần nhất.
-
-        Trả (lower, upper, n_resid) hoặc (None, None, n) khi chưa đủ lịch sử —
-        nơi gọi phải nói rõ "chưa đủ", không bịa khoảng.
-        """
-        cfg = PRODUCTION_CONFIG
-        n = len(group_w)
-        start = max(cfg.min_train, n - cfg.interval_n_back)
-        rel = []
-        for t in range(start, n):
-            hist = group_w.iloc[:t]
-            m_t = int(group_w["month"].iloc[t])
-            try:
-                pred = build_production_ensemble(hist).fit(hist).predict(m_t)
-                if pred > 0:
-                    rel.append(float(group_w["cases"].iloc[t]) / pred)
-            except Exception:                                 # noqa: BLE001
-                pass
-        iv = empirical_interval(base_group, np.array(rel), cfg.interval_level)
-        if iv is None:
-            return None, None, len(rel)
-        return max(0.0, iv[0]), iv[1], len(rel)
-
     # ── dự báo phân cấp ────────────────────────────────────────
     def forecast(self, block: str, method: str = "top_down_dynamic",
                  region: str = TOAN_QUOC) -> dict:
@@ -151,14 +126,16 @@ class HierarchicalForecastService:
         group_w = _w(group)
         codes_w = {c: _w(codes[c]) for c in code_list}
 
-        ens_g = build_production_ensemble(group_w).fit(group_w)
-        base_group = ens_g.predict(tm)
-        weather_used = any(n.endswith("_weather") for n in ens_g.members_used)
-        base_codes = {c: build_production_ensemble(codes_w[c]).fit(codes_w[c]).predict(tm)
-                      for c in code_list}
-
-        # Khoảng dự báo nhóm (M9) + lan sang mã theo tỷ trọng điểm
-        group_lower, group_upper, n_resid = self._group_interval(group_w, base_group, tm)
+        # M12: mức nhóm đi qua group_forecast (trọng số thích ứng + hệ số lệch
+        # + khoảng thực nghiệm) — cùng đường với backtest và Dashboard.
+        gf = forecast_group_next(group_w, tm, cfg)
+        base_group = float(gf["point"])
+        weather_used = bool(gf["weather_used"])
+        group_lower, group_upper, n_resid = gf["lower"], gf["upper"], gf["n_resid"]
+        # Mức mã: chỉ cần khi bottom-up / hoà giải (top-down không dùng)
+        base_codes = ({c: build_production_ensemble(codes_w[c]).fit(codes_w[c]).predict(tm)
+                       for c in code_list}
+                      if method in ("bottom_up", "mint") else {})
 
         shares_dyn = ewma_shares(group, {c: codes[c] for c in code_list}, span=cfg.ewma_span)
         shares_fixed = self._fixed_shares(block)
@@ -196,8 +173,10 @@ class HierarchicalForecastService:
                             if shares_used else None),
             "n_history_months": int(len(group)),
             "weather_used": bool(weather_used),
-            # M6 / lưu vết: mô hình nào đã sinh ra con số này
-            "model": {**ens_g.describe(), "config": cfg.as_record()},
+            # M6 / M12 lưu vết: thành viên, trọng số, hệ số lệch, cấu hình
+            "model": {"members_used": gf["members_used"], "members_failed": gf["members_failed"],
+                      "weights": gf["weights"], "bias_factor": gf["bias_factor"],
+                      "point_raw": round(gf["point_raw"], 1), "config": cfg.as_record()},
         }
 
     # ── dự báo MỨC NHÓM, không chia mã (Dashboard) ─────────────
@@ -219,9 +198,8 @@ class HierarchicalForecastService:
         wdf = self._weather_df(region)
         group_w = group.merge(wdf, on="period", how="left") if not wdf.empty else group
 
-        ens_g = build_production_ensemble(group_w).fit(group_w)
-        base_group = float(ens_g.predict(tm))
-        lo, hi, n_resid = self._group_interval(group_w, base_group, tm)
+        gf = forecast_group_next(group_w, tm, cfg)
+        base_group, lo, hi, n_resid = float(gf["point"]), gf["lower"], gf["upper"], gf["n_resid"]
         name_row = self._rows(
             "SELECT block_name FROM mart_monthly_cases_by_block "
             "WHERE block_code=:b LIMIT 1", {"b": block})
@@ -239,8 +217,10 @@ class HierarchicalForecastService:
             "interval_reason": (None if lo is not None else
                                 "chưa đủ bước walk-forward để dựng khoảng (cần ≥ 8)"),
             "n_history_months": int(len(group)),
-            "weather_used": any(n.endswith("_weather") for n in ens_g.members_used),
-            "model": {**ens_g.describe(), "config": cfg.as_record()},
+            "weather_used": bool(gf["weather_used"]),
+            "model": {"members_used": gf["members_used"], "members_failed": gf["members_failed"],
+                      "weights": gf["weights"], "bias_factor": gf["bias_factor"],
+                      "point_raw": round(gf["point_raw"], 1), "config": cfg.as_record()},
         }
 
     def group_series_fingerprint(self, block: str, region: str = TOAN_QUOC) -> str:

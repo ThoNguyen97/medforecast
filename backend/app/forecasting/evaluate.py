@@ -28,6 +28,7 @@ from . import data_access as da
 from .config import ForecastConfig, PRODUCTION_CONFIG
 from .models import build_default_ensemble, has_enough_weather, SeasonalNaiveForecaster
 from .hierarchical import ewma_shares, reconcile_ols, split_topdown
+from .group_forecast import run_group_walk_forward, make_ensemble
 
 METHODS = ["bottom_up", "top_down_fixed", "top_down_dynamic", "ols_reconcile"]
 # tên cũ "mint" vẫn được chấp nhận ở đầu vào để không vỡ script cũ
@@ -35,11 +36,8 @@ _ALIAS = {"mint": "ols_reconcile"}
 
 
 def _ens(df: pd.DataFrame, cfg: ForecastConfig):
-    """Ensemble MỚI cho mỗi lần fit (M6) — bản cũ dùng chung một instance cho
-    nhóm lẫn mọi mã, nên thành viên rớt trên mã này giữ trạng thái mã trước."""
-    use_w = cfg.use_weather and has_enough_weather(df, cfg.weather_min_months)
-    return build_default_ensemble(use_weather=use_w, smearing=cfg.smearing,
-                                  lam=cfg.ridge_lam)
+    """Ensemble MỚI cho mỗi lần fit (M6). Giữ tên cũ; thân hàm ở group_forecast."""
+    return make_ensemble(df, cfg)
 
 
 def _metrics_block(a: np.ndarray, p: np.ndarray, sn: np.ndarray) -> dict:
@@ -108,46 +106,47 @@ def walk_forward_block(db_path: str, block: str,
     preds = {m: {c: [] for c in codes} for m in METHODS}
     snaive = {c: [] for c in codes}
     actuals = {c: [] for c in codes}
-    snaive_g, group_pred, group_actual = [], [], []
-    members_hist: List[List[str]] = []
     failed_count: Dict[str, int] = {}
     failed_why: Dict[str, str] = {}
-    # M9: độ phủ khoảng dự báo nhóm
+
+    # ── MỨC NHÓM: một đường đi chung với service (M12) ───────────────────
+    gwf = run_group_walk_forward(group, cfg, start=min_train)
+    group_pred, group_actual, snaive_g = gwf.pred, gwf.actual, gwf.snaive
+    members_hist = [list(mp.keys()) for mp in gwf.member_preds]
+    for nm, cnt in gwf.members_failed_count.items():
+        failed_count[nm] = cnt
+        failed_why[nm] = gwf.members_failed_example.get(nm, "")
+
+    # M9: độ phủ khoảng dự báo nhóm — khoảng của bước t dựng từ phần dư
+    # tương đối của các bước TRƯỚC t (tối đa interval_n_back)
     rel_resid: List[float] = []
     cov_hits, cov_total, widths = 0, 0, []
+    for a_g, p_g in zip(group_actual, group_pred):
+        iv = empirical_interval(p_g, rel_resid[-cfg.interval_n_back:], cfg.interval_level)
+        if iv is not None:
+            cov_total += 1
+            cov_hits += int(iv[0] <= a_g <= iv[1])
+            widths.append((iv[1] - iv[0]) / max(a_g, 1.0))
+        if p_g > 0:
+            rel_resid.append(a_g / p_g)
 
-    for t in range(min_train, len(periods)):
+    # ── MỨC MÃ: chia Ŷ_g (đã kết hợp thích ứng) về từng mã ───────────────
+    for k, t in enumerate(range(min_train, len(periods))):
         tgt_month = int(group["month"].iloc[t])
         hist_g = group.iloc[:t]
         past = set(periods[:t])
         hist_c = {c: codes_ser[c][codes_ser[c]["period"].isin(past)].reset_index(drop=True)
                   for c in codes}
+        base_group = group_pred[k]
 
-        sn_g = SeasonalNaiveForecaster().fit(hist_g).predict(tgt_month)
-        ens_g = _ens(hist_g, cfg).fit(hist_g)
-        base_group = ens_g.predict(tgt_month)
-        members_hist.append(list(ens_g.members_used))
-        for nm, why in ens_g.members_failed.items():
-            failed_count[nm] = failed_count.get(nm, 0) + 1
-            failed_why.setdefault(nm, why)
         base_codes = {}
         for c in codes:
-            e_c = _ens(hist_c[c], cfg).fit(hist_c[c])
+            e_c = make_ensemble(hist_c[c], cfg).fit(hist_c[c])
             base_codes[c] = e_c.predict(tgt_month)
             for nm, why in e_c.members_failed.items():
                 key = f"{nm} (mức mã)"
                 failed_count[key] = failed_count.get(key, 0) + 1
                 failed_why.setdefault(key, why)
-
-        # khoảng dự báo nhóm từ phần dư tương đối của các bước TRƯỚC t
-        actual_g = float(group["cases"].iloc[t])
-        iv = empirical_interval(base_group, rel_resid[-cfg.interval_n_back:], cfg.interval_level)
-        if iv is not None:
-            cov_total += 1
-            cov_hits += int(iv[0] <= actual_g <= iv[1])
-            widths.append((iv[1] - iv[0]) / max(actual_g, 1.0))
-        if base_group > 0:
-            rel_resid.append(actual_g / base_group)
 
         shares_dyn = ewma_shares(hist_g, hist_c, span=ewma_span)
         td_fixed = split_topdown(base_group, {c: shares_fixed.get(c, 1.0 / len(codes)) for c in codes})
@@ -166,9 +165,6 @@ def walk_forward_block(db_path: str, block: str,
             snaive[c].append(SeasonalNaiveForecaster().fit(hist_c[c]).predict(tgt_month))
             for m in METHODS:
                 preds[m][c].append(by_method[m].get(c, 0.0))
-        group_pred.append(base_group)
-        snaive_g.append(sn_g)
-        group_actual.append(actual_g)
 
     def metrics(method):
         rows, ws = [], []
@@ -204,6 +200,9 @@ def walk_forward_block(db_path: str, block: str,
         "members_failed_count": failed_count,
         "members_failed_example": failed_why,
         "n_code_fits": n_steps * len(codes),
+        # M12: trạng thái kết hợp ở bước cuối — để báo cáo nói được "ai được tin"
+        "combiner": gwf.combiner.describe() if gwf.combiner else {},
+        "bias_mean": float(np.mean(gwf.bias)) if gwf.bias else 1.0,
     }
     return res
 
@@ -226,13 +225,8 @@ def weather_effect(db_path: str, block: str,
 
     def wf(use_w: bool):
         c = replace(cfg, use_weather=use_w)
-        preds, acts, sn = [], [], []
-        for t in range(min_train, len(gw)):
-            hist = gw.iloc[:t]; tm = int(gw["month"].iloc[t])
-            preds.append(_ens(hist, c).fit(hist).predict(tm))
-            acts.append(float(gw["cases"].iloc[t]))
-            sn.append(SeasonalNaiveForecaster().fit(hist).predict(tm))
-        return _metrics_block(np.array(acts), np.array(preds), np.array(sn))
+        r = run_group_walk_forward(gw, c, start=min_train)
+        return _metrics_block(np.array(r.actual), np.array(r.pred), np.array(r.snaive))
 
     res = {"block": block, "has_weather": bool(has_w),
            "without_weather": wf(False),
@@ -256,12 +250,67 @@ def smearing_effect(db_path: str, block: str,
 
     def wf(sm: bool):
         c = replace(cfg, smearing=sm)
-        preds, acts, sn = [], [], []
-        for t in range(cfg.min_train, len(gw)):
-            hist = gw.iloc[:t]; tm = int(gw["month"].iloc[t])
-            preds.append(_ens(hist, c).fit(hist).predict(tm))
-            acts.append(float(gw["cases"].iloc[t]))
-            sn.append(SeasonalNaiveForecaster().fit(hist).predict(tm))
-        return _metrics_block(np.array(acts), np.array(preds), np.array(sn))
+        r = run_group_walk_forward(gw, c, start=cfg.min_train)
+        return _metrics_block(np.array(r.actual), np.array(r.pred), np.array(r.snaive))
 
     return {"block": block, "without_smearing": wf(False), "with_smearing": wf(True)}
+
+
+def combine_effect(db_path: str, block: str,
+                   cfg: ForecastConfig = PRODUCTION_CONFIG,
+                   variants: Optional[Dict[str, dict]] = None) -> dict:
+    """M12: so sánh cách KẾT HỢP thành viên ở mức nhóm, cùng một ensemble.
+
+    Thành viên được khớp và ghi dự báo MỘT lần (với đầy đủ ứng viên, kể cả
+    ETS nếu có statsmodels); mỗi biến thể chỉ chạy lại combiner trên bản ghi
+    đó — nên so được nhiều biến thể mà không tốn thêm lần khớp SARIMAX.
+
+    Biến thể mặc định (nền cfg):
+        mean            trung bình đều (hành vi cũ)                    — không ETS
+        inv_mae         trọng số nghịch đảo MAE, cửa sổ 12             — không ETS
+        mean+bias       trung bình đều + hệ số lệch                    — không ETS
+        inv_mae+bias    cả hai                                         — không ETS
+        *+ets           bốn biến thể trên có thêm ETS
+    Mỗi biến thể trả chỉ số nhóm + độ phủ khoảng + trọng số cuối.
+    """
+    from dataclasses import replace
+    from .group_forecast import replay
+    from .combine import combiner_from_config
+    g = da.group_series(db_path, block, from_period=cfg.from_period)
+    gw = da.join_weather(g, da.weather_series(db_path))
+
+    # ghi một lần với siêu tập thành viên
+    rec = run_group_walk_forward(gw, replace(cfg, use_ets=True), start=cfg.min_train)
+    has_ets = any("ets" in mp for mp in rec.member_preds)
+
+    base = {
+        "mean":         {"combine": "mean", "bias_correct": False},
+        "inv_mae":      {"combine": "inv_mae", "bias_correct": False},
+        "mean+bias":    {"combine": "mean", "bias_correct": True},
+        "inv_mae+bias": {"combine": "inv_mae", "bias_correct": True},
+    }
+    if variants is None:
+        variants = {k: {**v, "use_ets": False} for k, v in base.items()}
+        if has_ets:
+            variants.update({f"{k}+ets": {**v, "use_ets": True} for k, v in base.items()})
+
+    out = {"block": block, "n_steps": len(rec.actual), "has_ets": has_ets,
+           "members": sorted({k for mp in rec.member_preds for k in mp})}
+    for name, kw in variants.items():
+        c = replace(cfg, **kw)
+        drop = [] if getattr(c, "use_ets", False) else ["ets"]
+        comb = combiner_from_config(c)
+        rp = replay(rec.member_preds, rec.actual, comb, drop=drop)
+        m = _metrics_block(np.array(rec.actual), np.array(rp["pred"]), np.array(rec.snaive))
+        rel: List[float] = []; hits = tot = 0
+        for a, p in zip(rec.actual, rp["pred"]):
+            iv = empirical_interval(p, rel[-c.interval_n_back:], c.interval_level)
+            if iv is not None:
+                tot += 1; hits += int(iv[0] <= a <= iv[1])
+            if p > 0:
+                rel.append(a / p)
+        m["coverage_pct"] = (hits / tot * 100) if tot else None
+        m["bias_mean"] = float(np.mean(rp["bias"])) if rp["bias"] else 1.0
+        m["weights_last"] = comb.describe().get("weights", {})
+        out[name] = m
+    return out

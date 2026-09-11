@@ -236,6 +236,15 @@ Bốn endpoint cũ `summary / case-trend / demand-vs-stock / critical-alerts` gi
 
 Còn lại của Tuần 3: 3.7 đóng gói bộ dữ liệu, 3.8 từ điển dữ liệu + datasheet.
 
+**Nhật ký 11/09/2026 (chiều) — M12 kéo từ Tuần 4 lên, vì "độ chính xác tốt nhất có thể" là ưu tiên**
+
+Bench cloud (statsmodels 0.15) tái lập đúng số chính thức buổi sáng, rồi: `combine.py`
+(trọng số nghịch đảo MAE cửa sổ 12, luỹ thừa 2 + hệ số lệch co rút 0,5, chặn 1,5),
+`ets_opt.py` (thành viên ETS), `group_forecast.py` (một đường walk-forward cho backtest
+và ba service). Kết quả: RelMAE mã **0,659 → 0,500**, nhóm 0,52/0,38/0,54, lệch về
+≈0, độ phủ J09-J18 68 → 80 %. `ket_hop.csv` ghi 8 biến thể đối chứng. Trang Kế hoạch
+cung ứng ẩn theo quyết định phạm vi (dừng ở Cảnh báo thiếu hụt).
+
 ### TUẦN 4 — Bằng chứng huấn luyện và đối chứng mô hình
 *Đây là tuần trả lời trực tiếp câu hỏi của thầy về "model train" và "tính ứng dụng".*
 

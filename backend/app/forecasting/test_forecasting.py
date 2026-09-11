@@ -66,3 +66,51 @@ def test_ensemble_weather_flag_runs():
     df = _series(n=48, base=80)
     df["temp"] = 27.0; df["humidity"] = 75.0; df["rainfall"] = 100.0
     assert build_default_ensemble(use_weather=True).fit(df).predict(6) >= 0
+
+
+# ── M12: kết hợp thích ứng + hiệu chỉnh lệch ─────────────────────────────
+
+def test_combiner_mean_equals_plain_average():
+    from app.forecasting.combine import AdaptiveCombiner
+    c = AdaptiveCombiner("mean")
+    final, raw, w, b = c.combine({"a": 10.0, "b": 20.0})
+    assert abs(final - 15.0) < 1e-9 and b == 1.0 and abs(w["a"] - 0.5) < 1e-9
+
+
+def test_combiner_inv_mae_downweights_bad_member():
+    from app.forecasting.combine import AdaptiveCombiner
+    c = AdaptiveCombiner("inv_mae", window=12, power=2, min_hist=3)
+    # 'good' sai 1, 'bad' sai 10 trong 6 bước
+    for _ in range(6):
+        mp = {"good": 101.0, "bad": 110.0}
+        c.combine(mp); c.update(mp, 100.0, 105.5)
+    w = c.weights(["good", "bad"])
+    assert w["good"] > 0.95 and abs(sum(w.values()) - 1) < 1e-9
+
+
+def test_combiner_bias_is_learned_only_from_past_and_clipped():
+    from app.forecasting.combine import AdaptiveCombiner
+    c = AdaptiveCombiner("mean", bias_correct=True, bias_window=12, bias_shrink=1.0,
+                         bias_clip=1.5, min_hist=3)
+    assert c.bias() == 1.0                      # chưa có lịch sử
+    for _ in range(6):
+        mp = {"m": 50.0}
+        c.combine(mp); c.update(mp, 100.0, 50.0)   # thực tế gấp đôi dự báo
+    assert abs(c.bias() - 1.5) < 1e-9          # median 2,0 nhưng chặn ở 1,5
+    final, raw, _, b = c.combine({"m": 50.0})
+    assert raw == 50.0 and abs(final - 75.0) < 1e-9
+
+
+def test_group_walk_forward_shapes():
+    sample_df = _series(n=60)
+    from app.forecasting.group_forecast import run_group_walk_forward, forecast_group_next
+    from app.forecasting.config import PRODUCTION_CONFIG
+    from dataclasses import replace
+    cfg = replace(PRODUCTION_CONFIG, use_ets=False, min_train=24)
+    r = run_group_walk_forward(sample_df, cfg, start=24)
+    n = len(sample_df) - 24
+    assert len(r.pred) == len(r.actual) == len(r.member_preds) == n
+    assert all(p >= 0 for p in r.pred)
+    out = forecast_group_next(sample_df, 7, cfg)
+    assert out["point"] >= 0 and set(out["weights"]) == set(out["members_used"])
+    assert abs(sum(out["weights"].values()) - 1) < 1e-6
