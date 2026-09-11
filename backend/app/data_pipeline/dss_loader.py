@@ -37,6 +37,7 @@ Các kỳ KHÔNG có trong lần kéo này được giữ nguyên — nên nạp
 from __future__ import annotations
 
 import logging
+import re
 import os
 from datetime import date, datetime
 from pathlib import Path
@@ -296,10 +297,33 @@ def _shift(period: str, months: int) -> Optional[str]:
         return None
 
 
+_RE_BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.S)
+_RE_LINE_COMMENT = re.compile(r"--[^\n]*")
+
+
+def _bo_chu_thich(sql: str) -> str:
+    """Bóc chú thích /* */ và -- khỏi câu SQL TRƯỚC khi dùng.
+
+    11/09/2026 — lỗi thật gặp ở lần Đồng bộ đầu tiên qua giao diện:
+      - inventory_lot_sta.sql không có tham số, nhưng chú thích đầu file viết
+        "VÌ SAO LUỒNG NÀY KHÔNG CÓ :since_date" → `":since_date" in sql` đúng →
+        truyền 1 tham số cho câu có 0 dấu hỏi.
+      - usage_total_sta.sql có :since_date ở WHERE VÀ trong chú thích →
+        SQLAlchemy text() đổi cả hai thành `?`, pyodbc bóc chú thích rồi mới
+        đếm → "1 marker, 2 parameters".
+    Hai luồng còn lại chạy được chỉ vì chú thích của chúng tình cờ không nhắc
+    tới tham số. Bóc chú thích ở đây là cách duy nhất để tác giả file SQL được
+    tự do viết chú thích.
+    """
+    sql = _RE_BLOCK_COMMENT.sub(" ", sql)
+    sql = _RE_LINE_COMMENT.sub(" ", sql)
+    return sql.strip()
+
+
 def _load_sql(filename: str) -> str:
     path = SQL_DIR / filename
     try:
-        return path.read_text(encoding="utf-8").strip()
+        return _bo_chu_thich(path.read_text(encoding="utf-8"))
     except OSError as exc:
         logger.error("Không đọc được câu SQL %s: %s", path, exc)
         return ""
