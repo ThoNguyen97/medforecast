@@ -1,4 +1,4 @@
-"""Supply Recommendation model - Đề xuất nhập kho."""
+"""Supply Recommendation model - kết quả tính nhu cầu và lượng thiếu hụt cần chuẩn bị."""
 from sqlalchemy import Column, Integer, String, Date, Numeric, DateTime, ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -6,7 +6,7 @@ from app.database import Base
 
 
 class SupplyRecommendation(Base):
-    """Kết quả tính toán nhu cầu và đề xuất nhập kho thuốc/vật tư.
+    """Kết quả tính toán nhu cầu và lượng thiếu hụt cần chuẩn bị thuốc/vật tư.
     
     Được tính từ: dự báo số ca → phân bổ mức độ → nhân định mức → cộng dự phòng → so sánh tồn kho.
     """

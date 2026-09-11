@@ -15,7 +15,6 @@ import {
 import { useInventory } from '../hooks/useInventory';
 import { epidemiologyService } from '../services/epidemiologyService';
 import { reportsService } from '../services/reportsService';
-import { supplyRecommendationService } from '../services/supplyRecommendationService';
 import { SUPPLY_CATEGORY_LABELS } from '../utils/constants';
 import ReportTypePicker, {
   type ReportKind,
@@ -48,7 +47,7 @@ export default function Reports() {
   const { data: regions = [] } = useRegionOptions();
 
   const consumption = useConsumptionReport(
-    kind === 'inventory' || kind === 'shortage' || kind === 'procurement'
+    kind === 'inventory' || kind === 'shortage'
       ? {}
       : undefined,
   );
@@ -61,23 +60,6 @@ export default function Reports() {
         }
       : undefined,
   );
-
-  const procurement = useQuery({
-    queryKey: ['supply-recommendations', 'procurement-report', filters.category, filters.diseaseType],
-    queryFn: () => {
-      // Sử dụng cùng service như trang Alerts
-      const currentDate = new Date();
-      const forecastMonth = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-01`;
-      
-      return supplyRecommendationService.calculateForMonth({
-        forecast_month: forecastMonth,
-        buffer_rate: 15, // Mặc định 15% như trang Alerts
-      });
-    },
-    enabled: kind === 'procurement',
-    retry: false,
-    refetchOnWindowFocus: false,
-  });
 
   const requirements = useSupplyRequirementsSummary(
     kind === 'shortage'
@@ -144,26 +126,11 @@ export default function Reports() {
     refetchOnWindowFocus: false,
   });
 
-  const categoryOptions = useMemo(
-    () =>
-      Object.entries(SUPPLY_CATEGORY_LABELS).map(([key, label]) => ({
-        key,
-        label,
-      })),
-    [],
-  );
-
   const filtersLabel = buildFiltersLabel(kind, filters, diseases);
 
   const [exporting, setExporting] = useState<'pdf' | 'excel' | null>(null);
 
   const handleExport = async (format: 'pdf' | 'excel') => {
-    // Với procurement report, xuất Excel trực tiếp từ frontend
-    if (kind === 'procurement' && format === 'excel') {
-      await handleExportProcurementExcel();
-      return;
-    }
-    
     try {
       setExporting(format);
       // Backend nhận 'forecast-accuracy' chứ không phải 'accuracy'
@@ -185,61 +152,6 @@ export default function Reports() {
     }
   };
 
-  const handleExportProcurementExcel = async () => {
-    try {
-      setExporting('excel');
-      
-      // Import xlsx library
-      const XLSX = await import('xlsx');
-      
-      // Lấy dữ liệu đã được filter (giống với màn hình)
-      const previewData = buildProcurementPreview(procurement.data, filters.search);
-      
-      if (!previewData.sections || previewData.sections.length === 0) {
-        alert('Không có dữ liệu để xuất');
-        return;
-      }
-      
-      const section = previewData.sections[0];
-      
-      // Tạo worksheet từ dữ liệu
-      const wsData = [
-        // Header row
-        section.columns.map(col => col.label),
-        // Data rows
-        ...section.rows.map(row => 
-          section.columns.map(col => row[col.key])
-        ),
-      ];
-      
-      const ws = XLSX.utils.aoa_to_sheet(wsData);
-      
-      // Set column widths
-      ws['!cols'] = [
-        { wch: 20 },  // Mã vật tư
-        { wch: 40 },  // Tên vật tư
-        { wch: 12 },  // ĐVT
-        { wch: 16 },  // Nhu cầu dự báo
-        { wch: 16 },  // Tồn hiện tại
-        { wch: 18 },  // SL đề xuất nhập
-      ];
-      
-      // Create workbook
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Đề xuất nhập kho');
-      
-      // Export to file
-      const fileName = `de-xuat-nhap-kho-${new Date().toISOString().split('T')[0]}.xlsx`;
-      XLSX.writeFile(wb, fileName);
-      
-    } catch (err) {
-      console.error(err);
-      alert('Không thể xuất Excel. Vui lòng thử lại.');
-    } finally {
-      setExporting(null);
-    }
-  };
-
   // Build preview metrics + sections theo từng loại
   const preview = useMemo(() => {
     switch (kind) {
@@ -256,8 +168,6 @@ export default function Reports() {
         return buildInventoryPreview(inventory.data ?? [], filters.status, filters.search);
       case 'shortage':
         return buildShortagePreview(requirements.data?.items ?? [], filters.search);
-      case 'procurement':
-        return buildProcurementPreview(procurement.data, filters.search);
       case 'accuracy':
         return buildAccuracyPreview(accuracy.data, forecastHistory.data ?? [], filters.search);
     }
@@ -269,7 +179,6 @@ export default function Reports() {
     inventory.data,
     forecastHistory.data,
     diseaseCases.data,
-    procurement.data,
     filters.region,
     filters.status,
     filters.search,
@@ -280,7 +189,6 @@ export default function Reports() {
   const isLoading =
     (kind === 'inventory' && inventory.isLoading) ||
     (kind === 'shortage' && requirements.isLoading) ||
-    (kind === 'procurement' && procurement.isLoading) ||
     (kind === 'accuracy' && accuracy.isLoading) ||
     (kind === 'forecast' && forecastHistory.isLoading) ||
     (kind === 'epidemic' && diseaseCases.isLoading);
@@ -292,7 +200,7 @@ export default function Reports() {
         <div>
           <h2 className="text-3xl font-extrabold text-neutral-900">Báo cáo</h2>
           <p className="text-sm text-neutral-500 mt-1">
-            Tổng hợp dữ liệu dịch tễ, tồn kho và đề xuất nhập kho. Chọn loại báo cáo
+            Tổng hợp dữ liệu dịch tễ, dự báo, tồn kho và thiếu hụt. Chọn loại báo cáo
             rồi cấu hình bộ lọc để xem trước & xuất file.
           </p>
         </div>
@@ -420,7 +328,7 @@ function buildFiltersLabel(
     const statusLabels: Record<string, string> = {
       normal: 'An toàn',
       low: 'Dưới ngưỡng',
-      critical: 'Cần nhập gấp',
+      critical: 'Nguy cấp',
     };
     parts.push(statusLabels[f.status] ?? f.status);
   }
@@ -516,8 +424,8 @@ function buildEpidemicPreview(
 function buildForecastPreview(
   history: any[], 
   selectedRegion?: string, 
-  startMonth?: string,
-  endMonth?: string
+  _startMonth?: string,
+  _endMonth?: string
 ): PreviewBundle {
   // Lọc theo region được chọn
   let filtered = history;
@@ -640,7 +548,7 @@ function buildInventoryPreview(items: any[], statusFilter?: string, searchQuery?
       { label: 'Tổng vật tư', value: items.length },
       { label: 'An toàn', value: safe, tone: 'success' },
       { label: 'Dưới ngưỡng', value: low, tone: 'warning' },
-      { label: 'Cần nhập gấp', value: critical, tone: 'danger' },
+      { label: 'Nguy cấp', value: critical, tone: 'danger' },
     ],
     sections: [
       {
@@ -651,7 +559,7 @@ function buildInventoryPreview(items: any[], statusFilter?: string, searchQuery?
           { key: 'category', label: 'Loại' },
           { key: 'unit', label: 'ĐVT' },
           { key: 'current_stock', label: 'Tồn kho', align: 'right' },
-          { key: 'safety_stock', label: 'Ngưỡng AT', align: 'right' },
+          { key: 'safety_stock', label: 'Ngưỡng an toàn', align: 'right' },
         ],
         rows: filtered.map((i: any) => ({
           code: i.supply?.supply_code ?? '—',
@@ -710,91 +618,6 @@ function buildShortagePreview(items: any[], searchQuery?: string): PreviewBundle
           demand: (i.total_required_quantity ?? 0).toLocaleString('vi-VN'),
           stock: (i.current_stock ?? 0).toLocaleString('vi-VN'),
           shortage: (i.shortage_amount ?? 0).toLocaleString('vi-VN'),
-        })),
-      },
-    ],
-  };
-}
-
-function buildProcurementPreview(data: any, searchQuery?: string): PreviewBundle {
-  if (!data || !data.items) {
-    return {
-      metrics: [
-        { label: 'Số vật tư cần nhập', value: 0, tone: 'warning' },
-        { label: 'Tổng số lượng đề xuất', value: 0 },
-      ],
-      sections: [],
-    };
-  }
-
-  // Load manual thresholds từ sessionStorage (nếu có)
-  let manualThresholds = new Map<number, number>();
-  try {
-    const saved = sessionStorage.getItem('manualThresholds');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      manualThresholds = new Map(Object.entries(parsed).map(([k, v]) => [Number(k), v as number]));
-    }
-  } catch (e) {
-    console.error('Failed to load manual thresholds:', e);
-  }
-
-  // Áp dụng manual thresholds và tính lại đề xuất nhập
-  let items = data.items.map((item: any) => {
-    const manualThreshold = manualThresholds.get(item.supply_id);
-    if (manualThreshold !== undefined) {
-      // Tính lại đề xuất nhập với ngưỡng AT mới
-      const newSuggested = Math.max(0, manualThreshold - (item.current_stock ?? 0));
-      return {
-        ...item,
-        safety_stock: manualThreshold,
-        suggested_import: newSuggested,
-      };
-    }
-    return item;
-  });
-
-  // Lọc theo thanh tìm kiếm
-  if (searchQuery && searchQuery.trim()) {
-    const q = searchQuery.toLowerCase();
-    items = items.filter((i: any) => {
-      const name = (i.ten_hoat_chat || '').toLowerCase();
-      const code = (i.supply_code || '').toLowerCase();
-      const group = (i.group_name || '').toLowerCase();
-      return name.includes(q) || code.includes(q) || group.includes(q);
-    });
-  }
-
-  // Chỉ lấy các vật tư cần nhập (suggested_import > 0)
-  const needImportItems = items.filter((i: any) => (i.suggested_import ?? 0) > 0);
-  const totalOrder = needImportItems.reduce((acc: number, i: any) => acc + (i.suggested_import ?? 0), 0);
-
-  return {
-    metrics: [
-      { label: 'Số vật tư cần nhập', value: needImportItems.length, tone: 'warning' },
-      {
-        label: 'Tổng số lượng đề xuất',
-        value: totalOrder,
-      },
-    ],
-    sections: [
-      {
-        title: 'Đề xuất nhập kho',
-        columns: [
-          { key: 'code', label: 'Mã vật tư' },
-          { key: 'name', label: 'Tên vật tư' },
-          { key: 'unit', label: 'ĐVT' },
-          { key: 'demand', label: 'Nhu cầu dự báo', align: 'right' },
-          { key: 'stock', label: 'Tồn hiện tại', align: 'right' },
-          { key: 'recommended', label: 'SL đề xuất nhập', align: 'right' },
-        ],
-        rows: needImportItems.map((i: any) => ({
-          code: i.supply_code || '—',
-          name: i.ten_hoat_chat || '—',
-          unit: i.unit ?? '',
-          demand: (i.predicted_need_total ?? 0).toLocaleString('vi-VN'),
-          stock: (i.current_stock ?? 0).toLocaleString('vi-VN'),
-          recommended: (i.suggested_import ?? 0).toLocaleString('vi-VN'),
         })),
       },
     ],

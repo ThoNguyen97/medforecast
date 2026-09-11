@@ -34,7 +34,7 @@ const STATUS_OPTIONS: CategoryOption[] = [
   { key: 'all', label: 'Tất cả' },
   { key: 'normal', label: 'Bình thường' },
   { key: 'low', label: 'Dưới ngưỡng' },
-  { key: 'critical', label: 'Cần nhập gấp' },
+  { key: 'critical', label: 'Nguy cấp' },
 ];
 
 export default function InventoryToolbar({ filters, onChange, categories, diseases }: Props) {

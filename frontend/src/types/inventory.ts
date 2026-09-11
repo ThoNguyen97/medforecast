@@ -15,8 +15,6 @@ export interface MedicalSupply {
   category: SupplyCategory;
   unit: string;
   unit_price: number;
-  minimum_order_quantity: number;
-  lead_time_days: number;
   description?: string;
   is_active: boolean;
   created_at: string;

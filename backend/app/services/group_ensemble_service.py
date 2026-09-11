@@ -9,11 +9,11 @@ nhiều năm, nên với chuỗi có DỊCH CHUYỂN MỨC NỀN (J09-J18 tăng 
 kéo tụt về quá khứ. Đo trên tháng đã có kết quả: dự báo 65 ca cho tháng thực tế
 ~110 ca — hụt ~40%.
 
-Ensemble ở app/forecasting/models.py (SeasonalTrend + Poisson + Harmonic-thời
--tiết + SARIMAX) học xu hướng + mùa vụ + biến ngoại sinh trên TOÀN chuỗi, đã
-kiểm walk-forward 66–67 bước trên dữ liệu HIS thật: MASE mức nhóm 0,51–0,65,
-thời tiết giảm 28–33% MAE cho hai nhóm nhạy thời tiết. Cùng engine với trang
-Kế hoạch nhập kho — hai màn hình hết cảnh mỗi nơi một số.
+Ensemble ở app/forecasting (SeasonalTrend + Poisson + Harmonic-thời-tiết +
+SARIMAX + ETS), kết hợp bằng trọng số thích ứng + hệ số lệch (M12,
+group_forecast.py), đã kiểm walk-forward 68 bước trên dữ liệu HIS thật: RelMAE
+mức nhóm 0,52 / 0,38 / 0,54 (ketqua_backtest/nhom.csv). Cùng engine với
+Dashboard — hai màn hình hết cảnh mỗi nơi một số.
 
 CHỐNG RÒ RỈ THỜI GIAN: khi tháng đích nằm trong quá khứ (người dùng chọn để
 đối chiếu), mô hình CHỈ học trên các tháng trước tháng đích — dự báo "như thể
@@ -29,7 +29,8 @@ import pandas as pd
 from sqlalchemy import extract, func
 from sqlalchemy.orm import Session
 
-from app.forecasting.models import build_default_ensemble
+from app.forecasting.config import PRODUCTION_CONFIG
+from app.forecasting.group_forecast import forecast_group_next
 from app.models.disease_case import DiseaseCase
 from app.models.environmental_data import EnvironmentalData
 from app.utils.icd_groups import dieu_kien_benh
@@ -134,35 +135,30 @@ def du_bao_nhom(db: Session, disease: str, region: Optional[str],
     w = _thoi_tiet_thang(db, region)
     if not w.empty:
         hist = hist.merge(w, on="period", how="left")
-    dung_thoi_tiet = (not w.empty) and hist["temp"].notna().sum() >= 12
+    # M1: ngưỡng và cờ thời tiết lấy từ PRODUCTION_CONFIG, không tự đặt 12 nữa
+    dung_thoi_tiet = (PRODUCTION_CONFIG.use_weather and (not w.empty)
+                      and hist["temp"].notna().sum() >= PRODUCTION_CONFIG.weather_min_months)
 
-    pred = build_default_ensemble(use_weather=dung_thoi_tiet).fit(hist).predict(target_month)
-    predicted = int(round(max(0.0, pred)))
+    # M12 (11/09/2026): cùng đường với backtest, Dashboard và trang Kế hoạch —
+    # trọng số thích ứng + hệ số lệch + khoảng thực nghiệm. Walk-forward bên
+    # trong (interval_n_back bước) cũng cho luôn "độ chính xác tại chỗ".
+    gf = forecast_group_next(hist, target_month, PRODUCTION_CONFIG)
+    predicted = int(round(max(0.0, float(gf["point"]))))
 
-    # Backtest nhanh N bước cuối cùng điều kiện (fit lại từng bước, không nhìn
-    # tương lai) → WAPE cho ô "độ chính xác mô hình". Không phải con số chính
-    # thức của báo cáo (con số đó từ run_eval walk-forward đầy đủ) — đây là
-    # thước đo tại-chỗ cho đúng chuỗi người dùng đang xem.
-    sai_so, thuc_te = [], []
-    n = len(hist)
-    for t in range(max(SO_THANG_TOI_THIEU, n - SO_BUOC_DO_CHINH_XAC), n):
-        h, dong = hist.iloc[:t], hist.iloc[t]
-        try:
-            p = build_default_ensemble(use_weather=dung_thoi_tiet).fit(h).predict(int(dong["month"]))
-            sai_so.append(abs(float(p) - float(dong["cases"])))
-            thuc_te.append(float(dong["cases"]))
-        except Exception:
-            continue
-
+    wf = gf.get("walk_forward") or {}
+    acts = [float(a) for a in wf.get("actual", [])][-SO_BUOC_DO_CHINH_XAC:]
+    preds = [float(p) for p in wf.get("pred", [])][-SO_BUOC_DO_CHINH_XAC:]
+    sai_so = [abs(p - a) for p, a in zip(preds, acts)]
     accuracy = None
-    if sai_so and sum(thuc_te) > 0:
-        wape = 100.0 * sum(sai_so) / sum(thuc_te)
+    if sai_so and sum(acts) > 0:
+        wape = 100.0 * sum(sai_so) / sum(acts)
         accuracy = {
             "mae": round(float(np.mean(sai_so)), 2),
             "wape": round(wape, 1),
             "accuracy_pct": round(max(0.0, 100.0 - wape), 1),
             "n_steps": len(sai_so),
         }
+    n = len(hist)
 
     return {
         "predicted": predicted,
@@ -170,4 +166,12 @@ def du_bao_nhom(db: Session, disease: str, region: Optional[str],
         "use_weather": dung_thoi_tiet,
         "n_history_months": int(n),
         "accuracy": accuracy,
+        # M6 / lưu vết: thành viên nào đã đóng góp + cấu hình đã dùng
+        "interval": {"lower": (int(round(gf["lower"])) if gf["lower"] is not None else None),
+                     "upper": (int(round(gf["upper"])) if gf["upper"] is not None else None),
+                     "level": gf["level"], "n_resid": gf["n_resid"]},
+        "model": {"members_used": gf["members_used"], "members_failed": gf["members_failed"],
+                  "weights": gf["weights"], "bias_factor": gf["bias_factor"],
+                  "point_raw": round(gf["point_raw"], 1),
+                  "config": PRODUCTION_CONFIG.as_record()},
     }

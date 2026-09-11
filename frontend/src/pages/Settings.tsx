@@ -53,7 +53,7 @@ export default function Settings() {
   const [activeTab, setActiveTab] = useState<TabKey>('users');
 
   useEffect(() => {
-    setPageTitle('Quản trị hệ thống');
+    setPageTitle('Quản trị');
   }, [setPageTitle]);
 
   if (user && user.role !== 'Administrator') {

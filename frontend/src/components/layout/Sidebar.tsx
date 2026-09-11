@@ -5,12 +5,13 @@ import {
   CloudSun,
   TrendingUp,
   Boxes,
-  ShoppingCart,
+  ShieldAlert,
   FileBarChart,
   Settings,
   HelpCircle,
   LogOut,
   Stethoscope,
+  type LucideIcon,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { ROUTES } from '../../utils/constants';
@@ -19,17 +20,17 @@ import { cn } from '../../utils/cn';
 interface NavItem {
   label: string;
   path: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
+  icon: LucideIcon;
   adminOnly?: boolean;
 }
 
 const navItems: NavItem[] = [
-  { label: 'Dashboard', path: ROUTES.DASHBOARD, icon: LayoutDashboard },
+  { label: 'Tổng quan', path: ROUTES.DASHBOARD, icon: LayoutDashboard },
   { label: 'Dữ liệu bệnh', path: ROUTES.EPIDEMIOLOGY, icon: HeartPulse },
   { label: 'Dữ liệu thời tiết', path: ROUTES.WEATHER, icon: CloudSun },
   { label: 'Phân tích & Dự báo', path: ROUTES.FORECASTING, icon: TrendingUp },
   { label: 'Vật tư y tế', path: ROUTES.INVENTORY, icon: Boxes },
-  { label: 'Đề xuất nhập kho', path: ROUTES.ALERTS, icon: ShoppingCart },
+  { label: 'Cảnh báo thiếu hụt', path: ROUTES.ALERTS, icon: ShieldAlert },
   { label: 'Báo cáo', path: ROUTES.REPORTS, icon: FileBarChart },
   { label: 'Quản trị', path: ROUTES.SETTINGS, icon: Settings, adminOnly: true },
 ];

@@ -104,7 +104,7 @@ async def health_check():
 
 
 # ── API Routes ────────────────────────────────────────────────────────────────
-from app.api.v1 import auth, users, supplies, inventory, environmental, disease_cases, supply_requirements, alerts, procurement, dashboard, reports, config, audit_logs, forecast_analysis, admin_catalog, supply_recommendations, admin_severity, forecast_hier, sync, supply_plan
+from app.api.v1 import auth, users, supplies, inventory, environmental, disease_cases, supply_requirements, alerts, dashboard, reports, config, audit_logs, forecast_analysis, admin_catalog, supply_recommendations, admin_severity, forecast_hier, sync, supply_plan
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["authentication"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
@@ -114,7 +114,6 @@ app.include_router(environmental.router, prefix="/api/v1/environmental", tags=["
 app.include_router(disease_cases.router, prefix="/api/v1/disease-cases", tags=["disease-cases"])
 app.include_router(supply_requirements.router, prefix="/api/v1/supply-requirements", tags=["supply-requirements"])
 app.include_router(alerts.router, prefix="/api/v1/alerts", tags=["alerts"])
-app.include_router(procurement.router, prefix="/api/v1/procurement", tags=["procurement"])
 app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["dashboard"])
 app.include_router(reports.router, prefix="/api/v1/reports", tags=["reports"])
 app.include_router(config.router, prefix="/api/v1/config", tags=["configuration"])

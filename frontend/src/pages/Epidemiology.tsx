@@ -115,10 +115,10 @@ export default function Epidemiology() {
   } | null>(null);
 
   // Distinct values for region districts
-  const [regionDistricts, setRegionDistricts] = useState<Record<string, string[]>>({});
+  const [regionDistricts] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
-    setPageTitle('Quản Lý Dữ Liệu Bệnh');
+    setPageTitle('Dữ liệu bệnh');
     loadData();
     loadDistinctValues();
     // eslint-disable-next-line react-hooks/exhaustive-deps

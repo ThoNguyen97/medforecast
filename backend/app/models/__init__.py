@@ -7,7 +7,6 @@ from app.models.disease_case import DiseaseCase
 from app.models.disease_forecast import DiseaseForecast
 from app.models.supply_requirement import SupplyRequirement
 from app.models.alert import Alert
-from app.models.procurement_plan import ProcurementPlan
 from app.models.conversion_ratio import ConversionRatio
 from app.models.case_supply_usage import CaseSupplyUsage
 from app.models.system_config import SystemConfig
@@ -26,7 +25,6 @@ __all__ = [
     "DiseaseForecast",
     "SupplyRequirement",
     "Alert",
-    "ProcurementPlan",
     "ConversionRatio",
     "CaseSupplyUsage",
     "SystemConfig",

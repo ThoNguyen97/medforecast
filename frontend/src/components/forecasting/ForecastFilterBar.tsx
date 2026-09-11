@@ -31,7 +31,6 @@ export default function ForecastFilterBar({
   onChange,
   onAnalyze,
   diseases,
-  regionDistricts = {},
   isLoading = false,
   disabled = false,
   buttonLabel = 'Phân tích',

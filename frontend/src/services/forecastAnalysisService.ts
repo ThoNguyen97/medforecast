@@ -183,17 +183,8 @@ export const forecastAnalysisService = {
     return res.data?.found === false ? null : res.data;
   },
 
-  async trainModels(region?: string | null): Promise<TrainResponse> {
-    const res = await api.post<TrainResponse>('/forecast/train', {
-      region: region ?? null,
-    });
-    return res.data;
-  },
-
-  async mlAnalyze(payload: AnalyzeRequest): Promise<MLAnalyzeResponse> {
-    const res = await api.post<MLAnalyzeResponse>('/forecast/ml-analyze', payload);
-    return res.data;
-  },
+  // Đã gỡ trainModels() và mlAnalyze() ngày 09/09/2026 — hai endpoint
+  // /forecast/train và /forecast/ml-analyze không còn ở backend.
 
   async getHistory(params?: {
     limit?: number;

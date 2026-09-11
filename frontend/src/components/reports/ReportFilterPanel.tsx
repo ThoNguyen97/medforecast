@@ -201,7 +201,7 @@ export default function ReportFilterPanel({
                     <option value="all">Tất cả</option>
                     <option value="normal">An toàn</option>
                     <option value="low">Dưới ngưỡng</option>
-                    <option value="critical">Cần nhập gấp</option>
+                    <option value="critical">Nguy cấp</option>
                   </select>
                   <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
                 </div>

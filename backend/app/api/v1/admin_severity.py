@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import get_admin_user, get_current_user
 from app.models.disease_supply_norm import DiseaseSupplyNorm
 from app.models.medical_supply import MedicalSupply
 from app.models.severity_rate import SeverityRate
@@ -113,7 +113,7 @@ def update_severity_rate(
     icd_code: str,
     payload: SeverityRateUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ) -> Any:
     """Cập nhật tỷ lệ Nhẹ/TB/Nặng cho 1 bệnh.
 
@@ -344,7 +344,7 @@ def get_norm_matrix(
 def upsert_supply_norm(
     payload: DiseaseSupplyNormUpsert,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ) -> Any:
     """Tạo mới hoặc cập nhật 1 định mức (icd_code + severity + supply_id)."""
     if payload.severity not in {"mild", "moderate", "severe"}:
@@ -432,7 +432,7 @@ def upsert_supply_norm(
 def bulk_upsert_norms(
     payload: BulkNormUpsert,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ) -> Any:
     """Cập nhật hàng loạt định mức. Dùng khi admin save toàn bộ ma trận."""
     updated = 0
@@ -496,7 +496,7 @@ def bulk_upsert_norms(
 def delete_norm(
     norm_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ) -> Any:
     """Xoá 1 định mức."""
     norm = db.query(DiseaseSupplyNorm).filter(DiseaseSupplyNorm.id == norm_id).first()
@@ -605,7 +605,7 @@ def recompute_severity_from_history(
         ),
     ),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_admin_user),
 ) -> Any:
     """Tự động cập nhật tỷ lệ Nhẹ/TB/Nặng từ dữ liệu lịch sử (mục 5.2).
 

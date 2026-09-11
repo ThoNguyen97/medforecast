@@ -3,8 +3,6 @@ import {
   forecastAnalysisService,
   type AnalyzeRequest,
   type AnalyzeResponse,
-  type MLAnalyzeResponse,
-  type TrainResponse,
 } from '../services/forecastAnalysisService';
 import { useAuthStore } from '../store/authStore';
 
@@ -76,17 +74,8 @@ export function useSavedForecast(
   });
 }
 
-export function useTrainModels() {
-  return useMutation<TrainResponse, Error, string | null | undefined>({
-    mutationFn: (region) => forecastAnalysisService.trainModels(region),
-  });
-}
-
-export function useMLAnalyzeForecast() {
-  return useMutation<MLAnalyzeResponse, Error, AnalyzeRequest>({
-    mutationFn: (payload) => forecastAnalysisService.mlAnalyze(payload),
-  });
-}
+// Đã gỡ useTrainModels() và useMLAnalyzeForecast() ngày 09/09/2026 —
+// không component nào dùng, và endpoint backend đã bị gỡ.
 
 export function useForecastHistory(
   params?: {

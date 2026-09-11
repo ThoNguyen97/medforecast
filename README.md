@@ -10,7 +10,10 @@ Hệ thống AI/ML dự báo nhu cầu vật tư y tế dựa trên dữ liệu 
 - **ORM**: SQLAlchemy 2.0
 - **Authentication**: JWT (python-jose)
 - **Background Tasks**: FastAPI BackgroundTasks (built-in)
-- **ML/AI**: XGBoost, LSTM (TensorFlow), Prophet
+- **Dự báo**: ensemble thống kê thuần numpy/pandas — SeasonalTrend +
+  PoissonTrend + Harmonic-Poisson (thời tiết có độ trễ) + SARIMAX
+  (statsmodels, tùy chọn). KHÔNG dùng deep learning: chuỗi chỉ 92 điểm
+  tháng/mã, không đủ dữ liệu cho LSTM.
 
 ### Frontend
 - **Framework**: React 18+ with TypeScript
@@ -25,11 +28,14 @@ Hệ thống AI/ML dự báo nhu cầu vật tư y tế dựa trên dữ liệu 
 
 ## Features
 
-- 🤖 **AI-Powered Forecasting**: Ensemble model (XGBoost + LSTM + Prophet)
+- 🤖 **Dự báo nhu cầu**: ensemble 4 mô hình thống kê + dự báo phân cấp
+  top-down động (EWMA), đánh giá bằng walk-forward mở rộng cửa sổ
+  (RelMAE mức mã 0,659 — thắng seasonal-naive ~34%, cấu hình sản xuất 11/09/2026)
 - 📊 **Real-time Dashboard**: Stitch design với metrics và charts
 - 🚨 **Smart Alerts**: Cảnh báo thiếu hụt vật tư tự động
 - 📦 **Inventory Management**: Quản lý tồn kho thời gian thực
-- 📈 **Procurement Planning**: Đề xuất kế hoạch nhập hàng tối ưu
+- 📉 **Cảnh báo thiếu hụt**: 4 mức Đỏ/Vàng/Xanh/Xám theo số ngày tồn phủ
+  nhu cầu (DOI) + FEFO, kèm lý do khi chưa đủ dữ liệu để kết luận
 - 🔐 **Role-based Access**: 3 roles (Administrator, Pharmacist, Inventory_Manager)
 - 📱 **Responsive Design**: Hoạt động trên desktop và mobile
 
@@ -248,24 +254,62 @@ npm run test:coverage
 
 ## Deployment
 
-See [deployment documentation](docs/deployment.md) for production deployment instructions.
+Triển khai: xem `DEPLOY.md`; tài liệu đồ án: `docs/README.md`.
 
-## ML Models
+## Mô hình dự báo
 
-The system uses an ensemble of three models:
+Ensemble năm mô hình thống kê, khớp lại trên toàn bộ lịch sử mỗi lần dự báo
+(vài giây với chuỗi 92 điểm — không có bước huấn luyện định kỳ phải vận hành):
 
-1. **XGBoost** (40% weight): Gradient boosting for non-linear patterns
-2. **LSTM** (35% weight): Deep learning for temporal dependencies
-3. **Prophet** (25% weight): Time series with seasonality
+| Thành viên | Học gì | Thang |
+|---|---|---|
+| SeasonalTrend | hệ số mùa nhân + xu hướng tuyến tính giảm dần | trung bình |
+| PoissonTrend | log1p(ca) ~ xu hướng + 11 biến giả tháng, Ridge λ=10 chuẩn hoá | log |
+| Harmonic-Poisson | mùa sin/cos + nhiệt độ/độ ẩm/mưa **trễ 1–2 tháng** | log |
+| SARIMAX (1,1,1)(1,0,0,12) | exog thời tiết chuẩn hoá; cần `statsmodels` | log |
+| ETS Holt–Winters | xu hướng giảm chấn + mùa cộng 12; cần `statsmodels` | log |
 
-Models are automatically retrained when new data exceeds 10% of training dataset.
+Các thành viên được **kết hợp bằng trọng số nghịch đảo MAE** trên 12 bước
+walk-forward gần nhất (Bates–Granger) và **hiệu chỉnh lệch hệ thống** bằng hệ
+số nhân ước lượng từ quá khứ (`app/forecasting/combine.py`). Trên đó là **dự
+báo phân cấp top-down động**: mô hình hoá chuỗi nhóm ICD rồi chia xuống mã theo
+tỷ trọng EWMA. Mọi tham số nằm ở một chỗ: `backend/app/forecasting/config.py`
+→ `PRODUCTION_CONFIG`; mọi màn hình và backtest đi qua
+`group_forecast.forecast_group_next`.
 
-## Data Requirements
+**Bằng chứng** (walk-forward mở rộng cửa sổ, 68 bước/nhóm, dữ liệu HIS thật):
+RelMAE mức mã **0,500** — thắng seasonal-naive 50 %; mức nhóm 0,52 / 0,38 / 0,54;
+lệch hệ thống −0,5 / −3,0 / +4,1 %; khoảng dự báo 90 % phủ thật 80–87 %. Sinh lại
+bằng `python -m app.forecasting.run_eval`, chi tiết và các biến thể đối chứng
+trong `docs/KetQua_Backtest_ChonCauHinh.md`.
 
-- **Minimum historical data**: 90 days
-- **Disease types**: Dengue fever, Seasonal flu, Respiratory diseases
-- **Environmental data**: Temperature, Humidity, Rainfall, Air Quality Index
-- **Update frequency**: Daily
+**Không dùng deep learning.** 92 quan sát tháng trên mỗi chuỗi không đủ cho
+LSTM; nhánh XGBoost/Prophet/LSTM cũ chưa từng chạy trong sản phẩm và đã chuyển
+vào `_archive/ai_engine_cu/`.
+
+## Bộ huấn luyện đóng gói (`dataset/v1/`)
+
+Đúng đầu vào mà mô hình học, xuất phẳng để huấn luyện lại không cần DB:
+`nhom_thang.csv` (tháng × khối: số ca, COVID, đã chốt, thời tiết + trễ 1–2 tháng),
+`ma_thang.csv` (tháng × mã ICD), `ty_trong_co_dinh.csv`, `manifest.json` (sha256,
+giao thức chia walk-forward), từ điển dữ liệu và datasheet.
+
+    cd backend
+    python -m app.forecasting.train   --data ../dataset/v1 --out models/v1   # walk-forward + artifact
+    python -m app.forecasting.predict --model models/v1/model_v1.pkl          # dự báo từ artifact
+    python -m app.forecasting.dataset --db data/medforecast.db --out ../dataset/v1   # xuất lại
+
+`models/v1/model_v1.json` ghi cấu hình, trọng số, hệ số lệch, dự báo kỳ tới và
+chỉ số backtest kèm sha256 của dataset — kết quả trùng bảng chính thức
+(RelMAE mã 0,500).
+
+## Dữ liệu
+
+- **Phạm vi**: 3 nhóm ICD hô hấp J00-J06 / J09-J18 / J20-J22 (20 mã), 2019–2026
+- **Nguồn**: HIS eHospital → STA (đã khử định danh, ngưỡng ô nhỏ k=5) → SQLite
+- **Môi trường**: nhiệt độ, độ ẩm, lượng mưa theo tháng (Open-Meteo), dùng ở độ trễ
+- **Tối thiểu**: 24 tháng lịch sử để ensemble hoạt động; 26 tháng cho SARIMAX
+
 
 ## Support
 

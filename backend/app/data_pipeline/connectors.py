@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import abc
 import logging
+import re
 import os
 from pathlib import Path
 from typing import Iterable, Optional
@@ -77,12 +78,22 @@ EPOCH_DATE = "1900-01-01"
 SQL_DIR = Path(__file__).parent / "sql"
 
 
+_RE_BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.S)
+_RE_LINE_COMMENT = re.compile(r"--[^\n]*")
+
+
+def _bo_chu_thich(sql: str) -> str:
+    """Bóc /* */ và -- trước khi dùng — cùng lý do và cùng lỗi thật đã gặp
+    11/09/2026 như dss_loader._bo_chu_thich (xem ghi chú ở khối SQL bên dưới)."""
+    return _RE_LINE_COMMENT.sub(" ", _RE_BLOCK_COMMENT.sub(" ", sql)).strip()
+
+
 def _load_sql(filename: str) -> str:
     """Đọc câu SQL từ thư mục sql/. Thiếu file thì trả "" và báo lỗi trong log
     (để app vẫn khởi động được; connector sẽ báo lỗi rõ ràng khi thực sự dùng)."""
     path = SQL_DIR / filename
     try:
-        return path.read_text(encoding="utf-8").strip()
+        return _bo_chu_thich(path.read_text(encoding="utf-8"))
     except OSError as exc:
         logger.error("Không đọc được câu SQL %s: %s", path, exc)
         return ""
@@ -227,10 +238,18 @@ class SqlServerConnector(SourceConnector):
         # Thứ tự ưu tiên: tham số truyền vào > file chỉ định qua biến môi trường
         # > file mặc định trong sql/. Nhờ vậy đổi SQL cho khớp schema HIS (hoặc
         # đổi dialect khi đọc bản sao STA) chỉ là đổi cấu hình.
+        #
+        # 09/09/2026 — mặc định đổi từ case_mssql.sql / inventory_mssql.sql
+        # sang bản đọc STA. Hai file cũ truy vấn các bảng KhamBenh, ChanDoan,
+        # BenhNhan, SuDungVatTu, VatTu, TonKho — schema GIẢ ĐỊNH thời chưa nối
+        # HIS thật, KHÔNG tồn tại trong eHospital (schema thật là TT_TIEPNHAN,
+        # TT_NGOAITRU_KHAMBENH, TM_ICD, TT_DUOC_TONKHO). Chọn mặc định cũ là
+        # chắc chắn nổ 'Invalid object name'. Hai file đã chuyển sang
+        # _archive/sql_schema_cu/.
         self.case_sql = case_sql or _sql_from_env(
-            "PIPELINE_CASE_SQL_FILE", "case_mssql.sql")
+            "PIPELINE_CASE_SQL_FILE", "case_sta.sql")
         self.inventory_sql = inventory_sql or _sql_from_env(
-            "PIPELINE_INVENTORY_SQL_FILE", "inventory_mssql.sql")
+            "PIPELINE_INVENTORY_SQL_FILE", "inventory_sta.sql")
         # Luồng số ca theo nhóm: chỉ có khi đọc từ STA (do thủ tục PROD tính sẵn).
         # Không đặt biến môi trường thì bỏ trống — pipeline tự quay về cộng dồn.
         self.case_group_sql = case_group_sql if case_group_sql is not None else (
@@ -307,11 +326,15 @@ class SqlServerConnector(SourceConnector):
 # Python, và đổi dialect (SQL Server thật ↔ bản sao STA ↔ môi trường mô phỏng)
 # chỉ là đổi biến môi trường.
 #
-#   sql/case_group_sta.sql    đọc số ca theo NHÓM ICD — chỉ có khi nguồn là STA
-#   sql/case_mssql.sql        đọc ca bệnh + vật tư — SQL Server (mặc định)
-#   sql/inventory_mssql.sql   đọc tồn kho          — SQL Server (mặc định)
-#   sql/case_sqlite.sql       bản SQLite, dùng cho môi trường mô phỏng PROD/STA
-#   sql/inventory_sqlite.sql  bản SQLite, dùng cho môi trường mô phỏng PROD/STA
+#   sql/case_sta.sql          đọc ca bệnh + vật tư — vw_MedForecast_CaBenh (mặc định)
+#   sql/case_group_sta.sql    đọc số ca theo NHÓM ICD — vw_MedForecast_CaBenhNhom
+#   sql/inventory_sta.sql     đọc tồn kho          — vw_MedForecast_TonKho (mặc định)
+#   (bản *_mssql / *_sqlite cũ truy vấn schema giả định, đã chuyển vào
+#    _archive/sql_schema_cu/ ngày 09/09/2026)
+#
+# Chú thích trong file SQL được BÓC trước khi gửi: SQLAlchemy text() coi mọi
+# `:ten` là tham số kể cả trong /* */, còn pyodbc bóc chú thích trước khi đếm
+# dấu hỏi → "N parameter markers, M parameters supplied". Xem _bo_chu_thich.
 #
 # Chỉ định file khác qua PIPELINE_CASE_SQL_FILE / PIPELINE_INVENTORY_SQL_FILE
 # (đường dẫn tuyệt đối, hoặc tên file nằm trong thư mục sql/).
@@ -321,12 +344,12 @@ def _sql_from_env(env_var: str, default_file: str) -> str:
     path = Path(name)
     if path.is_absolute() or path.parent != Path("."):
         try:
-            return path.read_text(encoding="utf-8").strip()
+            return _bo_chu_thich(path.read_text(encoding="utf-8"))
         except OSError as exc:
             logger.error("Không đọc được câu SQL %s: %s", path, exc)
             return ""
     return _load_sql(name)
 
 
-DEFAULT_CASE_SQL = _load_sql("case_mssql.sql")
-DEFAULT_INVENTORY_SQL = _load_sql("inventory_mssql.sql")
+DEFAULT_CASE_SQL = _load_sql("case_sta.sql")
+DEFAULT_INVENTORY_SQL = _load_sql("inventory_sta.sql")

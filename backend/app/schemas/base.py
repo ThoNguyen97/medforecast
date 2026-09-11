@@ -121,8 +121,6 @@ class MedicalSupplyBase(BaseModel):
     group_name: str = Field(..., description="Nhóm thuốc/vật tư")
     category: Optional[str] = None
     unit_price: Optional[float] = None
-    minimum_order_quantity: Optional[int] = None
-    lead_time_days: Optional[int] = None
     storage_capacity: Optional[int] = None
     description: Optional[str] = None
 
@@ -139,8 +137,6 @@ class MedicalSupplyUpdate(BaseModel):
     group_name: Optional[str] = None
     category: Optional[str] = None
     unit_price: Optional[float] = None
-    minimum_order_quantity: Optional[int] = None
-    lead_time_days: Optional[int] = None
     storage_capacity: Optional[int] = None
     description: Optional[str] = None
 
@@ -328,52 +324,6 @@ class AlertResponse(ORMBase):
     is_resolved: bool
     resolved_at: Optional[datetime] = None
     created_at: datetime
-
-
-# ── Procurement Plan schemas ──────────────────────────────────────────────────
-
-class ProcurementPlanBase(BaseModel):
-    supply_id: int
-    order_quantity: int = Field(..., gt=0)
-    order_date: date
-    expected_delivery_date: Optional[date] = None
-    estimated_cost: Optional[float] = None
-    priority: Optional[str] = None
-    notes: Optional[str] = None
-
-
-class ProcurementPlanCreate(ProcurementPlanBase):
-    pass
-
-
-class ProcurementPlanUpdate(BaseModel):
-    order_quantity: Optional[int] = Field(None, gt=0)
-    order_date: Optional[date] = None
-    expected_delivery_date: Optional[date] = None
-    estimated_cost: Optional[float] = None
-    priority: Optional[str] = None
-    notes: Optional[str] = None
-    status: Optional[str] = None
-
-
-class ProcurementPlanResponse(ORMBase, ProcurementPlanBase):
-    id: int
-    supply_name: Optional[str] = None
-    status: str
-    created_at: datetime
-
-
-class ProcurementGenerateRequest(BaseModel):
-    forecast_days: int = Field(30, ge=7, le=90, description="Days ahead to plan for")
-
-
-class ProcurementGenerateResponse(BaseModel):
-    message: str
-    plans_generated: int
-    critical_plans: int
-    high_plans: int
-    normal_plans: int
-    plans: List["ProcurementPlanResponse"]
 
 
 # ── Dashboard schemas ─────────────────────────────────────────────────────────

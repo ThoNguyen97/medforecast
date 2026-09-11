@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ShoppingCart, AlertTriangle, CheckCircle2, TrendingUp, Calculator, Save, Loader2, Search, Edit } from 'lucide-react';
+import { PackageMinus, AlertTriangle, CheckCircle2, TrendingUp, Calculator, Save, Loader2, Search, Edit } from 'lucide-react';
 
 import { useUIStore } from '../store/uiStore';
 import api from '../services/api';
@@ -12,16 +12,16 @@ import {
 import LoadingSpinner from '../components/common/LoadingSpinner';
 
 // ─── Cảnh báo 4 mức theo Bảng 4 đề cương ─────────────────────────────────────
-// Tính tại client để badge tự cập nhật khi người dùng sửa Ngưỡng AT tay;
+// Tính tại client để badge tự cập nhật khi người dùng sửa ngưỡng an toàn tay;
 // backend cũng trả level/reason/action (nguồn chân lý) — hai bên cùng công thức:
-//   ĐỎ  tồn < nhu cầu chưa dự phòng · VÀNG tồn < ngưỡng AT · XANH đủ · XÁM thiếu dữ liệu
+//   ĐỎ  tồn < nhu cầu chưa dự phòng · VÀNG tồn < ngưỡng an toàn · XANH đủ · XÁM thiếu dữ liệu
 type MucCanhBao = { level: 'red' | 'yellow' | 'green' | 'gray'; label: string; reason: string };
 
 function mucCanhBao(needBeforeBuffer: number, safetyStock: number, currentStock: number): MucCanhBao {
   if (currentStock < needBeforeBuffer)
-    return { level: 'red', label: 'Đỏ', reason: `Tồn ${currentStock.toLocaleString('vi-VN')} thấp hơn nhu cầu chưa tính dự phòng ${Math.round(needBeforeBuffer).toLocaleString('vi-VN')} — đặt hàng ngay.` };
+    return { level: 'red', label: 'Đỏ', reason: `Tồn ${currentStock.toLocaleString('vi-VN')} thấp hơn nhu cầu chưa tính dự phòng ${Math.round(needBeforeBuffer).toLocaleString('vi-VN')} — cần chuẩn bị bổ sung ngay.` };
   if (currentStock < safetyStock)
-    return { level: 'yellow', label: 'Vàng', reason: `Đủ nhu cầu cơ bản nhưng dưới ngưỡng an toàn ${Math.round(safetyStock).toLocaleString('vi-VN')} — đưa vào kỳ đặt hàng kế tiếp.` };
+    return { level: 'yellow', label: 'Vàng', reason: `Đủ nhu cầu cơ bản nhưng dưới ngưỡng an toàn ${Math.round(safetyStock).toLocaleString('vi-VN')} — đưa vào kỳ bổ sung kế tiếp.` };
   return { level: 'green', label: 'Xanh', reason: 'Tồn kho cao hơn ngưỡng an toàn — theo dõi định kỳ.' };
 }
 
@@ -34,18 +34,18 @@ const MAU_MUC: Record<MucCanhBao['level'], string> = {
 
 
 /**
- * Module 7 — Đề xuất nhập kho
+ * Module 7 — Cảnh báo nguy cơ thiếu hụt
  *
  * Áp dụng đầy đủ công thức theo yêu cầu mục 4-7:
  *  - Mục 5.1: Phân bổ ca theo Nhẹ/TB/Nặng (severity_rate)
  *  - Mục 6:   Nhu cầu = Σ(số ca × định mức) × (1 + dự phòng 15%)
- *  - Mục 7:   Đề xuất nhập = max(0, nhu cầu + ngưỡng AT - tồn kho)
+ *  - Mục 7:   Lượng thiếu hụt cần chuẩn bị = max(0, nhu cầu + ngưỡng an toàn − tồn kho)
  */
 export default function Alerts() {
   const { setPageTitle } = useUIStore();
 
   useEffect(() => {
-    setPageTitle('Đề xuất nhập kho');
+    setPageTitle('Cảnh báo nguy cơ thiếu hụt');
   }, [setPageTitle]);
 
   // Mặc định lấy tháng hiện tại
@@ -59,11 +59,11 @@ export default function Alerts() {
   const [page, setPage] = useState<number>(1);
   const PAGE_SIZE = 10;
 
-  // State cho modal sửa ngưỡng AT
+  // State cho modal sửa ngưỡng an toàn
   const [editingItem, setEditingItem] = useState<AggregatedItem | null>(null);
   const [newThreshold, setNewThreshold] = useState<number>(0);
 
-  // State để lưu các giá trị Ngưỡng AT đã sửa thủ công
+  // State để lưu các giá trị Ngưỡng an toàn đã sửa thủ công
   // Load từ sessionStorage khi khởi tạo
   const [manualThresholds, setManualThresholds] = useState<Map<number, number>>(() => {
     try {
@@ -156,11 +156,11 @@ export default function Alerts() {
       }));
     }
     
-    // Áp dụng các giá trị Ngưỡng AT đã sửa thủ công
+    // Áp dụng các giá trị Ngưỡng an toàn đã sửa thủ công
     return items.map(item => {
       const manualThreshold = manualThresholds.get(item.supply_id);
       if (manualThreshold !== undefined) {
-        // Tính lại đề xuất nhập với ngưỡng AT mới
+        // Tính lại lượng thiếu hụt với ngưỡng an toàn mới
         const newSuggested = Math.max(0, manualThreshold - item.current_stock);
         return {
           ...item,
@@ -223,12 +223,12 @@ export default function Alerts() {
     
     setEditingItem(null);
     
-    alert(`Đã cập nhật ngưỡng AT cho ${editingItem.ten_hoat_chat} thành ${newThreshold}. Nhớ bấm "Lưu kết quả vào DB" để lưu vĩnh viễn.`);
+    alert(`Đã cập nhật ngưỡng an toàn cho ${editingItem.ten_hoat_chat} thành ${newThreshold}. Nhớ bấm "Lưu kết quả vào DB" để lưu vĩnh viễn.`);
   };
 
   const handleSaveToDB = async () => {
     try {
-      // Lưu các giá trị Ngưỡng AT đã sửa vào Inventory
+      // Lưu các giá trị Ngưỡng an toàn đã sửa vào Inventory
       for (const [supplyId, threshold] of manualThresholds.entries()) {
         const inventoryRes = await api.get('/inventory/', {
           params: { supply_id: supplyId },
@@ -249,7 +249,7 @@ export default function Alerts() {
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
       
       // KHÔNG clear local state - giữ nguyên giá trị đã sửa cho đến khi bấm "Tính lại"
-      alert(`Đã lưu thành công ${manualThresholds.size} giá trị Ngưỡng AT vào database. Trang Vật tư y tế sẽ tự động cập nhật.`);
+      alert(`Đã lưu thành công ${manualThresholds.size} giá trị Ngưỡng an toàn vào database. Trang Vật tư y tế sẽ tự động cập nhật.`);
     } catch (err: any) {
       alert(`Lỗi: ${err?.response?.data?.detail || err.message || 'Không thể lưu'}`);
     }
@@ -261,11 +261,12 @@ export default function Alerts() {
       <div className="flex items-start justify-between">
         <div>
           <h2 className="text-3xl font-extrabold text-neutral-900">
-            Đề xuất nhập kho
+            Cảnh báo nguy cơ thiếu hụt
           </h2>
           <p className="text-sm text-neutral-500 mt-1">
-            Tính theo công thức: Nhu cầu = Σ(số ca × định mức) × (1 + dự phòng) ·
-            Đề xuất nhập = max(0, nhu cầu + ngưỡng AT - tồn kho)
+            Nhu cầu = Σ(số ca × định mức) × (1 + dự phòng) ·
+            Lượng thiếu hụt cần chuẩn bị = max(0, nhu cầu + ngưỡng an toàn − tồn kho).
+            Ngưỡng an toàn = nhu cầu dự báo cộng dự phòng; hệ thống không đặt hàng, Khoa Dược quyết định cung ứng.
           </p>
         </div>
         {data && (
@@ -355,7 +356,7 @@ export default function Alerts() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <KpiCard
           icon={<AlertTriangle className="w-5 h-5" />}
-          label="Cần nhập"
+          label="Thiếu hụt"
           value={kpis.shortage}
           tone="warning"
           subtitle="vật tư"
@@ -375,8 +376,8 @@ export default function Alerts() {
           subtitle="đơn vị (đã +dự phòng)"
         />
         <KpiCard
-          icon={<ShoppingCart className="w-5 h-5" />}
-          label="Tổng đề xuất nhập"
+          icon={<PackageMinus className="w-5 h-5" />}
+          label="Tổng lượng cần chuẩn bị"
           value={kpis.totalImport}
           tone="primary"
           subtitle="đơn vị"
@@ -443,8 +444,8 @@ export default function Alerts() {
                   <th className="px-4 py-3 font-semibold">Nhóm</th>
                   <th className="px-4 py-3 font-semibold text-right">Nhu cầu cuối</th>
                   <th className="px-4 py-3 font-semibold text-right">Tồn kho</th>
-                  <th className="px-4 py-3 font-semibold text-right">Ngưỡng AT</th>
-                  <th className="px-4 py-3 font-semibold text-right">Đề xuất nhập</th>
+                  <th className="px-4 py-3 font-semibold text-right">Ngưỡng an toàn</th>
+                  <th className="px-4 py-3 font-semibold text-right">Thiếu hụt cần chuẩn bị</th>
                   <th className="px-4 py-3 font-semibold text-center">Trạng thái</th>
                   <th className="px-4 py-3 font-semibold text-center">Thao tác</th>
                 </tr>
@@ -513,7 +514,7 @@ export default function Alerts() {
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
                       >
                         <Edit className="w-3.5 h-3.5" />
-                        Sửa ngưỡng AT
+                        Sửa ngưỡng an toàn
                       </button>
                     </td>
                   </tr>
@@ -567,12 +568,12 @@ export default function Alerts() {
         )}
       </div>
 
-      {/* Modal sửa ngưỡng AT */}
+      {/* Modal sửa ngưỡng an toàn */}
       {editingItem && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
             <h3 className="text-lg font-bold text-neutral-900 mb-4">
-              Sửa ngưỡng AT
+              Sửa ngưỡng an toàn
             </h3>
             
             <div className="space-y-4 mb-6">
@@ -590,7 +591,7 @@ export default function Alerts() {
 
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-1">
-                  Ngưỡng AT hiện tại
+                  Ngưỡng an toàn hiện tại
                 </label>
                 <div className="text-2xl font-bold text-neutral-900">
                   {editingItem.safety_stock.toLocaleString('vi-VN')}
@@ -602,7 +603,7 @@ export default function Alerts() {
 
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-2">
-                  Ngưỡng AT mới
+                  Ngưỡng an toàn mới
                 </label>
                 <input
                   type="number"

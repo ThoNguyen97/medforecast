@@ -1,6 +1,6 @@
 """Supply Recommendations API.
 
-Endpoints để tính nhu cầu thuốc + đề xuất nhập kho theo công thức mục 4-7.
+Endpoints để tính nhu cầu thuốc + lượng thiếu hụt cần chuẩn bị theo công thức mục 4-7.
 """
 import logging
 from datetime import date
@@ -124,7 +124,7 @@ def list_recommendations(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    """Lấy danh sách đề xuất nhập kho đã lưu."""
+    """Lấy danh sách kết quả tính nhu cầu đã lưu."""
     q = db.query(SupplyRecommendation).order_by(
         SupplyRecommendation.forecast_month.desc(),
         SupplyRecommendation.suggested_import.desc(),
@@ -175,7 +175,7 @@ def update_recommendation_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    """Cập nhật trạng thái đề xuất nhập kho."""
+    """Cập nhật trạng thái một kết quả tính nhu cầu."""
     valid = {"pending", "approved", "ordered", "completed"}
     if new_status not in valid:
         raise HTTPException(
@@ -202,7 +202,7 @@ def delete_recommendation(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    """Xóa 1 đề xuất nhập kho."""
+    """Xóa 1 kết quả tính nhu cầu."""
     rec = db.query(SupplyRecommendation).filter(SupplyRecommendation.id == rec_id).first()
     if not rec:
         raise HTTPException(

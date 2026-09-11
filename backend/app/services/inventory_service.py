@@ -209,18 +209,27 @@ class InventoryService:
         return updated_items
     
     def get_low_stock_items(self, threshold_multiplier: float = 1.0) -> List[Inventory]:
+        """Vật tư ĐANG HẾT HÀNG (tồn <= 0).
+
+        Lưu ý phạm vi (sửa 09/09/2026):
+
+        Điều kiện cũ là `current_stock <= safety_stock * threshold_multiplier`.
+        Trong phạm vi DSS, Inventory.safety_stock đã bị vô hiệu hoá — 5.007/5.041
+        dòng có giá trị 0 — nên vế phải luôn bằng 0 và hàm ÂM THẦM thoái hoá
+        thành truy vấn "hết hàng", bất kể `threshold_multiplier` truyền vào là
+        bao nhiêu. Tham số đó không còn tác dụng gì.
+
+        Thay vì để một điều kiện nói dối về ý nghĩa của nó, hàm nay khai đúng
+        việc nó làm. Phân loại "dưới ngưỡng" theo số ngày tồn phủ nhu cầu
+        (DOI = tồn hữu dụng FEFO / nhu cầu trung bình ngày) thuộc tầng cảnh báo
+        DSS — xem app/services/dss_alerts.py.
         """
-        Get inventory items with low stock.
-        
-        Low stock is defined as current_stock <= safety_stock * threshold_multiplier
-        """
-        items = self.db.query(Inventory).options(
-            joinedload(Inventory.supply)
-        ).filter(
-            Inventory.current_stock <= Inventory.safety_stock * threshold_multiplier
-        ).all()
-        
-        return items
+        return (
+            self.db.query(Inventory)
+            .options(joinedload(Inventory.supply))
+            .filter(Inventory.current_stock <= 0)
+            .all()
+        )
     
     def get_expiring_items(self, days_threshold: int = 30) -> List[Inventory]:
         """

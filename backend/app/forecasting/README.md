@@ -45,5 +45,14 @@ Hiệu quả thời tiết (walk-forward group-level, dữ liệu Gia An):
 | J00-J06 | 0.780 | **0.715** | −8.4% |
 | J20-J22 | 0.756 | **0.695** | −8.1% |
 
-→ Thời tiết giảm ~8% sai số. `build_default_ensemble(use_weather=True)` tự thêm
+> **Đã làm rõ 11/09/2026.** Hai con số từng mâu thuẫn (−8% ở đây, −33% trong
+> `KetQua_Backtest_ChonCauHinh.md`) đo HAI THỨ KHÁC NHAU: −33% là
+> `HarmonicPoissonForecaster` ĐỨNG MỘT MÌNH, −8% gần với ensemble. Cả hai đều
+> không đo cấu hình sản xuất. Từ nay `weather_effect()` so đúng ensemble sản
+> xuất có/không thời tiết. Kết quả đo trên VM không có SARIMAX (chưa chính
+> thức): J00-J06 −12,2% MAE, J09-J18 −6,8%, J20-J22 −8,0%. Số chính thức lấy
+> từ `python -m app.forecasting.run_eval` chạy trên máy có statsmodels — xem
+> `ketqua_backtest/thoitiet.csv` + `cau_hinh.json` kèm ngày chạy.
+>
+> Bảng cũ phía trên giữ lại như tư liệu; **không trích vào báo cáo**. `build_default_ensemble(use_weather=True)` tự thêm
 mô hình này; service dùng cho dự báo TỔNG nhóm.

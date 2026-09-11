@@ -12,9 +12,10 @@ without raising an error.
 Routes
 ------
 GET /api/v1/dashboard/overview        – KPI summary (totals, risk counts)
-GET /api/v1/dashboard/supply-demand   – Time-series data for chart
 GET /api/v1/dashboard/risk-status     – Safe / low / critical stock counts
 GET /api/v1/dashboard/critical-alerts – Top unresolved critical alerts
+GET /api/v1/dashboard/v2              – Toàn bộ màn hình Tổng quan (Tuần 3, DSS)
+GET /api/v1/dashboard/v2/forecast     – Ŷ_g ba khối + khoảng (cache theo dấu vân tay)
 """
 
 import json
@@ -24,19 +25,17 @@ from datetime import date, timedelta
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import extract, func, or_
+from sqlalchemy import extract, func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.alert import Alert
-from app.models.disease_case import DiseaseCase
 from app.models.disease_forecast import DiseaseForecast
 from app.models.inventory import Inventory
 from app.models.medical_supply import MedicalSupply
-from app.models.supply_recommendation import SupplyRecommendation
-from app.models.supply_requirement import SupplyRequirement
 from app.models.user import User
+from app.services import dss_dashboard, dss_runner, period_service as ps
 
 logger = logging.getLogger(__name__)
 
@@ -116,100 +115,27 @@ def invalidate_dashboard_cache() -> None:
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _stock_risk_level(current_stock: int, safety_stock: int) -> str:
-    """
-    Classify a single inventory row into a risk level.
-
-    critical  – current stock ≤ 0
-    low       – current stock > 0 but < safety_stock
-    safe      – current stock ≥ safety_stock
-    """
-    if current_stock <= 0:
-        return "critical"
-    if current_stock < safety_stock:
-        return "low"
-    return "safe"
-
-
-def _severity_from_shortage(current_stock: int, safety_stock: int) -> Optional[str]:
-    """Tính mức độ cảnh báo dựa trên tồn kho thực tế.
-
-    Trả về None khi tồn kho đã đủ (>= định mức an toàn) — tức là không còn
-    thiếu hụt và alert nên được tự động đóng (resolved).
-    """
-    if current_stock >= safety_stock:
-        return None  # đủ hàng → không còn cảnh báo
-    shortage = safety_stock - current_stock
-    if current_stock <= 0:
-        return "critical"
-    if safety_stock > 0 and shortage > safety_stock * 0.5:
-        return "high"
-    if safety_stock > 0 and shortage > safety_stock * 0.2:
-        return "medium"
-    return "low"
-
-
-def _sync_alerts_with_inventory(db: Session) -> None:
-    """Đồng bộ các cảnh báo thiếu hụt với tồn kho thực tế (real-time).
-
-    Với mỗi alert thiếu hụt chưa giải quyết:
-    - Lấy tồn kho hiện tại + định mức an toàn mới nhất từ bảng Inventory
-      (gộp theo supply_id phòng trường hợp nhiều dòng kho / lô).
-    - Nếu kho đã đủ → tự động đánh dấu resolved.
-    - Nếu vẫn thiếu → cập nhật lại current_stock, required_stock và severity
-      để Dashboard hiển thị đúng số liệu hiện tại.
-
-    Commit chỉ khi có thay đổi để tránh ghi DB thừa.
-    """
-    open_alerts = (
-        db.query(Alert)
-        .filter(
-            Alert.is_resolved == False,  # noqa: E712
-            Alert.alert_type == "shortage",
-        )
-        .all()
-    )
-    if not open_alerts:
-        return
-
-    # Tồn kho thực tế gộp theo supply_id
-    stock_rows = (
-        db.query(
-            Inventory.supply_id.label("supply_id"),
-            func.coalesce(func.sum(Inventory.current_stock), 0).label("current_stock"),
-            func.coalesce(func.max(Inventory.safety_stock), 0).label("safety_stock"),
-        )
-        .group_by(Inventory.supply_id)
-        .all()
-    )
-    stock_map = {
-        row.supply_id: (int(row.current_stock), int(row.safety_stock))
-        for row in stock_rows
-    }
-
-    changed = False
-    for alert in open_alerts:
-        current_stock, safety_stock = stock_map.get(alert.supply_id, (0, 0))
-        new_severity = _severity_from_shortage(current_stock, safety_stock)
-
-        if new_severity is None:
-            # Kho đã đủ → đóng cảnh báo
-            alert.is_resolved = True
-            changed = True
-            continue
-
-        if (
-            alert.current_stock != current_stock
-            or alert.required_stock != safety_stock
-            or alert.severity != new_severity
-        ):
-            alert.current_stock = current_stock
-            alert.required_stock = safety_stock
-            alert.severity = new_severity
-            changed = True
-
-    if changed:
-        db.commit()
+# ── GỠ Ở G2 ──────────────────────────────────────────────────────────────────
+#
+# Ba hàm đã bị xoá khỏi đây:
+#
+#   _stock_risk_level(current_stock, safety_stock)
+#   _severity_from_shortage(current_stock, safety_stock)
+#   _sync_alerts_with_inventory(db)
+#
+# Cả ba so `current_stock` với `Inventory.safety_stock`. G0 đã cắt đoạn ghi
+# ngược cột đó, và 5.007/5.041 dòng inventory có safety_stock = 0 — nên điều
+# kiện `current_stock >= safety_stock` luôn đúng.
+#
+# Hàm thứ ba là nghiêm trọng nhất: nó GỌI db.commit() trên mỗi request GET và
+# đặt alert.is_resolved = True. Hậu quả đã xảy ra: 47/47 cảnh báo bị đóng, 0
+# còn mở. Một endpoint đọc dữ liệu không được phép ghi dữ liệu.
+#
+# Thay thế: phân mức theo DOI = S_usable / d_daily với ngưỡng thực nghiệm
+# 18/36 ngày (Đ9: trung vị chu kỳ nhập 18 ngày), tính trong dss_alerts và
+# chuyển về hợp đồng JSON cũ trong dss_runner. Không lưu trạng thái, nên
+# không có gì để đóng sai.
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 def _enrich_alert(alert: Alert) -> Dict:
@@ -240,219 +166,98 @@ async def get_dashboard_overview(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Dict:
-    """
-    Return high-level KPI metrics for the dashboard overview panel.
+    """KPI tổng quan.
 
-    Metrics
-    -------
-    - total_supplies         : total distinct medical supplies in the system
-    - total_inventory_value  : sum of (current_stock × unit_price) across all inventory
-    - high_risk_shortages    : count of unresolved critical + high severity alerts
-    - predicted_demand_30d   : sum of forecast predicted_cases for the next 30 days
-    - disease_outbreaks      : count of disease types with cases recorded in the last 7 days
-    - safe_stock_items       : inventory rows with current_stock ≥ safety_stock
-    - low_stock_items        : inventory rows with 0 < current_stock < safety_stock
-    - critical_risk_items    : inventory rows with current_stock ≤ 0
-    - supply_risk_percentage : percentage of items that are low or critical risk
-    """
+    ── G1·DSS ─────────────────────────────────────────────────────────────
+    Ba thay đổi so với bản trước:
+
+    • MẪU SỐ. `total_supplies` nay là DANH MỤC CÒN HOẠT ĐỘNG (~1.900 mã, có
+      xuất trong 3 kỳ gần nhất), không phải toàn bộ 5.041 mã — trong đó gần
+      4/5 là mã đã ngừng dùng. Mọi tỷ lệ phần trăm chia cho mẫu số này.
+
+    • PHÂN MỨC TỒN KHO. Trước đây dựa trên `safety_stock`, cột đã bị vô hiệu
+      hoá ở G0 (nó là dấu vết số lần bấm nút, không phải tồn an toàn), nên
+      phép đếm cũ nay luôn trả 0. Thay bằng đếm theo DOI.
+      Mã không có mẫu số nhu cầu → 'grey', KHÔNG phải 'safe'.
+
+    • Ổ DỊCH. Trước đây đếm `disease_type` có ca trong 7 ngày gần nhất từ
+      `disease_cases` — luôn ra 0 vì dữ liệu bệnh viện trễ 1-2 tháng. Nay là
+      số nhóm ICD có số ca kỳ đã chốt CAO HƠN kỳ liền trước.
+    ─────────────────────────────────────────────────────────────────────── """
     cache_key = "dashboard:overview"
     cached = _cache_get(cache_key)
     if cached:
-        logger.debug("Cache hit: %s", cache_key)
         return cached
 
-    logger.info("Building dashboard overview for user=%s", current_user.username)
+    anchor = ps.get_period_anchor(db)
+    last_closed = anchor["last_closed_period"]
+    cat = ps.catalogue_counts(db)
+    # G2: một nguồn chân lý duy nhất cho mọi con số tồn kho trên dashboard.
+    # `ps.stock_signal_counts` là bản tạm của G1 (không FEFO, đọc thẳng
+    # inventory). `dss_runner.stock_signal` dùng cùng lõi với /risk-status và
+    # /critical-alerts nên ba chỗ không thể lệch nhau nữa.
+    signal = dss_runner.stock_signal(db)
+    blocks = ps.cases_by_block(db, last_closed)
 
-    # 1. Total distinct supplies
-    total_supplies: int = db.query(func.count(MedicalSupply.id)).scalar() or 0
-
-    # 2. Total inventory value — single JOIN query
+    # Giá trị tồn kho — giữ lại cho tương thích giao diện hiện tại.
+    # KHÔNG phải chỉ số y tế và sẽ bỏ ở G5 (xem hợp đồng dashboard v2).
     value_rows = (
-        db.query(
-            Inventory.current_stock,
-            MedicalSupply.unit_price,
-        )
+        db.query(Inventory.current_stock, MedicalSupply.unit_price)
         .join(MedicalSupply, Inventory.supply_id == MedicalSupply.id)
         .all()
     )
-    total_inventory_value: float = sum(
-        float(row.current_stock) * float(row.unit_price)
-        for row in value_rows
-        if row.unit_price is not None
+    total_inventory_value = sum(
+        float(r.current_stock or 0) * float(r.unit_price)
+        for r in value_rows if r.unit_price is not None
     )
 
-    # 3. High-risk shortages (critical + high unresolved alerts)
-    high_risk_shortages: int = (
-        db.query(func.count(Alert.id))
-        .filter(
-            Alert.is_resolved == False,  # noqa: E712
-            Alert.severity.in_(["critical", "high"]),
-        )
-        .scalar()
-        or 0
-    )
-
-    # 4. Predicted demand for the next 30 days (sum of predicted_cases)
-    today = date.today()
-    end_30d = today + timedelta(days=30)
-    predicted_demand_30d: int = (
+    predicted_demand_30d = int(
         db.query(func.coalesce(func.sum(DiseaseForecast.predicted_cases), 0))
         .filter(
-            DiseaseForecast.forecast_date >= today,
-            DiseaseForecast.forecast_date <= end_30d,
+            DiseaseForecast.forecast_date >= date.today(),
+            DiseaseForecast.forecast_date <= date.today() + timedelta(days=30),
         )
-        .scalar()
-        or 0
+        .scalar() or 0
     )
 
-    # 5. Disease outbreaks — distinct disease types with cases in last 7 days
-    week_ago = today - timedelta(days=7)
-    disease_outbreaks: int = (
-        db.query(func.count(func.distinct(DiseaseCase.disease_type)))
-        .filter(DiseaseCase.recorded_at >= week_ago)
-        .scalar()
-        or 0
-    )
+    outbreaks = sum(1 for b in blocks
+                    if (b.get("trend_pct") or 0) > 0 and b["cases_last_closed"] > 0)
 
-    # 6. Risk classification across all inventory rows
-    inventory_rows = (
-        db.query(Inventory.current_stock, Inventory.safety_stock).all()
-    )
-    safe_count = low_count = critical_count = 0
-    for row in inventory_rows:
-        level = _stock_risk_level(row.current_stock, row.safety_stock)
-        if level == "safe":
-            safe_count += 1
-        elif level == "low":
-            low_count += 1
-        else:
-            critical_count += 1
-
-    total_items = safe_count + low_count + critical_count
-    risk_pct: float = (
-        round(100.0 * (low_count + critical_count) / total_items, 2)
-        if total_items > 0
-        else 0.0
-    )
+    # MẪU SỐ. Hai mẫu số khác nhau, đừng trộn:
+    #   active (~1.900 mã) — mẫu số của mọi tỷ lệ tồn kho
+    #   focus  (~555 mã)   — mẫu số của các thẻ DỊCH TỄ: chỉ tập này có tỷ
+    #                        trọng hô hấp ≥ 25%, tức tập mà mô hình dịch tễ
+    #                        thật sự lái được nhu cầu. Dùng active cho thẻ dịch
+    #                        tễ sẽ pha loãng tín hiệu bằng 1.345 mã thuốc bệnh
+    #                        mạn mà dự báo hô hấp không nói gì về chúng.
+    mau_so = cat["active"] or cat["total"] or 1
+    mau_so_dich_te = cat["focus"] or mau_so
+    canh_bao = signal["red"] + signal["amber"] + signal["zero_stock"]
 
     result = {
-        "total_supplies": total_supplies,
+        # ── khoá cũ, giữ nguyên tên để giao diện hiện tại không vỡ ──
+        "total_supplies": cat["active"],
         "total_inventory_value": round(total_inventory_value, 2),
-        "high_risk_shortages": high_risk_shortages,
-        "predicted_demand_30d": int(predicted_demand_30d),
-        "disease_outbreaks": disease_outbreaks,
-        "safe_stock_items": safe_count,
-        "low_stock_items": low_count,
-        "critical_risk_items": critical_count,
-        "supply_risk_percentage": risk_pct,
+        "high_risk_shortages": signal["red"],
+        "predicted_demand_30d": predicted_demand_30d,
+        "disease_outbreaks": outbreaks,
+        "safe_stock_items": signal["green"],
+        "low_stock_items": signal["amber"],
+        "critical_risk_items": signal["red"] + signal["zero_stock"],
+        "supply_risk_percentage": round(100.0 * canh_bao / mau_so, 2),
+        # ── khoá mới ──
+        "last_closed_period": last_closed,
+        "open_period": anchor["open_period"],
+        "catalogue": cat,
+        "catalogue_basis": {
+            "ty_le_ton_kho_mau_so": mau_so,
+            "ty_le_dich_te_mau_so": mau_so_dich_te,
+            "nguon": "v_supply_active / v_supply_focus",
+        },
+        "focus_risk_percentage": round(100.0 * canh_bao / mau_so_dich_te, 2),
+        "stock_signal": signal,
+        "assumptions_note": "Tồn kho tính trên hàng hiện có, chưa trừ hàng đang về.",
     }
-
-    _cache_set(cache_key, result)
-    return result
-
-
-@router.get("/supply-demand")
-async def get_supply_demand_data(
-    days_history: int = Query(30, ge=7, le=90, description="Days of historical data to include"),
-    days_forecast: int = Query(30, ge=7, le=30, description="Days of forecast data to include"),
-    supply_id: Optional[int] = Query(None, description="Filter to a specific supply ID"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> Dict:
-    """
-    Return time-series data for the supply/demand chart.
-
-    The response includes:
-    - A list of date points with actual supply requirement quantities (history)
-    - A list of date points with forecast predicted case counts (future)
-
-    This is suitable for rendering a combined historical + forecast line chart.
-
-    Query Params
-    ------------
-    days_history  : how many past days of actual requirement data to return (default 30)
-    days_forecast : how many future days of forecast data to return (default 30)
-    supply_id     : optional filter to a single supply
-    """
-    cache_key = f"dashboard:supply-demand:{days_history}:{days_forecast}:{supply_id}"
-    cached = _cache_get(cache_key)
-    if cached:
-        logger.debug("Cache hit: %s", cache_key)
-        return cached
-
-    logger.info(
-        "Building supply-demand data for user=%s supply_id=%s",
-        current_user.username,
-        supply_id,
-    )
-
-    today = date.today()
-    history_start = today - timedelta(days=days_history)
-    forecast_end = today + timedelta(days=days_forecast)
-
-    # ── Historical: aggregate supply requirements per day ─────────────────────
-    hist_query = (
-        db.query(
-            SupplyRequirement.requirement_date.label("req_date"),
-            func.sum(SupplyRequirement.required_quantity).label("total_required"),
-        )
-        .filter(
-            SupplyRequirement.requirement_date >= history_start,
-            SupplyRequirement.requirement_date <= today,
-        )
-    )
-    if supply_id is not None:
-        hist_query = hist_query.filter(SupplyRequirement.supply_id == supply_id)
-
-    hist_rows = hist_query.group_by(SupplyRequirement.requirement_date).order_by(
-        SupplyRequirement.requirement_date
-    ).all()
-
-    # ── Forecast: aggregate predicted cases per day ───────────────────────────
-    forecast_query = (
-        db.query(
-            DiseaseForecast.forecast_date.label("fc_date"),
-            func.sum(DiseaseForecast.predicted_cases).label("total_predicted"),
-        )
-        .filter(
-            DiseaseForecast.forecast_date > today,
-            DiseaseForecast.forecast_date <= forecast_end,
-        )
-    )
-    forecast_rows = forecast_query.group_by(DiseaseForecast.forecast_date).order_by(
-        DiseaseForecast.forecast_date
-    ).all()
-
-    # ── Merge into unified data_points list ───────────────────────────────────
-    data_points: List[Dict] = []
-
-    for row in hist_rows:
-        data_points.append(
-            {
-                "date": str(row.req_date),
-                "actual": int(row.total_required),
-                "forecast": None,
-            }
-        )
-
-    for row in forecast_rows:
-        data_points.append(
-            {
-                "date": str(row.fc_date),
-                "actual": None,
-                "forecast": int(row.total_predicted),
-            }
-        )
-
-    result = {
-        "supply_id": supply_id,
-        "days_history": days_history,
-        "days_forecast": days_forecast,
-        "data_points": data_points,
-        "total_historical_points": len(hist_rows),
-        "total_forecast_points": len(forecast_rows),
-    }
-
     _cache_set(cache_key, result)
     return result
 
@@ -462,101 +267,64 @@ async def get_risk_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Dict:
-    """
-    Return a breakdown of inventory items by stock risk level.
+    """Phân bố danh mục theo mức rủi ro tồn kho.
 
-    Risk levels
-    -----------
-    safe     – current_stock ≥ safety_stock
-    low      – 0 < current_stock < safety_stock
-    critical – current_stock ≤ 0
+    ── G2·DSS ─────────────────────────────────────────────────────────────
+    Bản cũ so `current_stock` với `Inventory.safety_stock` — cột đã bị vô
+    hiệu ở G0, 5.007/5.041 dòng bằng 0, nên mọi mã đều ra 'safe'.
 
-    The response also includes per-supply details so the frontend can render
-    a donut chart and a breakdown table.
-    """
+    Bản này phân mức theo SỐ NGÀY ĐÁP ỨNG:
+
+        DOI = S_usable / d_daily
+
+        Đỏ    DOI ≤ 18 ngày   (Đ9: trung vị chu kỳ nhập của bệnh viện)
+        Vàng  DOI ≤ 36 ngày   (hai chu kỳ)
+        Xanh  DOI > 36 ngày
+        Xám   không có mẫu số hoặc không có dữ liệu tồn — KHÔNG phải 'safe'
+
+    Nhãn Xám có khoá riêng `grey_count` / `grey_items`. Dồn nó vào `safe` là
+    điều tệ nhất có thể làm ở đây: hàng nghìn mã chưa có định mức sẽ hiện
+    màu xanh và dashboard trông rất đẹp mà hoàn toàn vô nghĩa.
+
+    Hợp đồng JSON cũ giữ nguyên. Riêng `safety_stock` trong từng mục nay là
+    NGƯỠNG TỒN ỨNG VỚI 18 NGÀY (`d_daily × 18`) — một con số có nghĩa, thay
+    cho cột đã đóng băng.
+    ─────────────────────────────────────────────────────────────────────── """
     cache_key = "dashboard:risk-status"
     cached = _cache_get(cache_key)
     if cached:
         logger.debug("Cache hit: %s", cache_key)
         return cached
 
-    logger.info("Building risk-status for user=%s", current_user.username)
-
-    # Single optimised JOIN — fetch all inventory rows with supply info
-    rows = (
-        db.query(
-            Inventory.id.label("inv_id"),
-            Inventory.current_stock,
-            Inventory.safety_stock,
-            MedicalSupply.id.label("supply_id"),
-            MedicalSupply.name.label("supply_name"),
-            MedicalSupply.category,
-        )
-        .join(MedicalSupply, Inventory.supply_id == MedicalSupply.id)
-        .order_by(MedicalSupply.name)
-        .all()
-    )
-
-    safe_items: List[Dict] = []
-    low_items: List[Dict] = []
-    critical_items: List[Dict] = []
-
-    for row in rows:
-        level = _stock_risk_level(row.current_stock, row.safety_stock)
-        item = {
-            "inventory_id": row.inv_id,
-            "supply_id": row.supply_id,
-            "supply_name": row.supply_name,
-            "category": row.category,
-            "current_stock": row.current_stock,
-            "safety_stock": row.safety_stock,
-            "risk_level": level,
-        }
-        if level == "safe":
-            safe_items.append(item)
-        elif level == "low":
-            low_items.append(item)
-        else:
-            critical_items.append(item)
-
-    total = len(rows)
-
-    result = {
-        "total_items": total,
-        "safe_count": len(safe_items),
-        "low_count": len(low_items),
-        "critical_count": len(critical_items),
-        "safe_percentage": round(100.0 * len(safe_items) / total, 2) if total else 0.0,
-        "low_percentage": round(100.0 * len(low_items) / total, 2) if total else 0.0,
-        "critical_percentage": round(100.0 * len(critical_items) / total, 2) if total else 0.0,
-        # Detailed lists (useful for table rendering)
-        "safe_items": safe_items,
-        "low_items": low_items,
-        "critical_items": critical_items,
-    }
-
+    result = dss_runner.risk_status_payload(db)
     _cache_set(cache_key, result)
     return result
 
 
 @router.get("/critical-alerts")
 async def get_critical_alerts_dashboard(
-    limit: int = Query(10, ge=1, le=50, description="Maximum number of alerts to return"),
+    limit: int = Query(10, ge=1, le=50, description="Số cảnh báo tối đa trả về"),
     refresh: bool = Query(False, description="Bỏ qua cache, tính lại từ dữ liệu mới nhất"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Dict:
-    """
-    Trả về danh sách vật tư đang thiếu hụt cho dashboard.
+    """Danh sách vật tư nguy cấp theo DOI. CHỈ ĐỌC.
 
-    Nguồn dữ liệu lấy thẳng từ bảng Inventory + MedicalSupply, dùng cùng
-    quy tắc với /inventory ở UI:
-      - "critical" (Nguy hiểm) : safety_stock > 0 và (current_stock <= 0
-                                  hoặc current_stock < 30% safety_stock)
-      - "high" (Cần nhập)      : safety_stock > 0 và current_stock < safety_stock
-                                  (nhưng chưa critical)
-    Chỉ trả về 2 mức trên, sắp xếp theo mức độ nguy hiểm giảm dần.
-    """
+    ── G2·DSS ─────────────────────────────────────────────────────────────
+    Bản cũ gọi `_sync_alerts_with_inventory(db)` rồi mới đọc — tức một
+    endpoint GET có tác dụng phụ GHI dữ liệu, và chính nó đã đóng sạch
+    47/47 cảnh báo. Hàm đó đã bị gỡ.
+
+    Danh sách ở đây được TÍNH mỗi lần gọi từ DOI, không lưu trạng thái, nên
+    không có gì để mà đóng sai. Endpoint này KHÔNG ghi vào bảng `alerts`.
+
+    Chỉ trả mã Đỏ và Vàng. Xám không phải "sắp hết" mà là "chưa đo được" —
+    trộn vào đây sẽ chôn vùi cảnh báo thật.
+
+        severity = "critical"  DOI ≤ 6 ngày   (dưới 1/3 ngưỡng đỏ)
+        severity = "high"      6 < DOI ≤ 18
+        severity = "medium"    18 < DOI ≤ 36
+    ─────────────────────────────────────────────────────────────────────── """
     cache_key = f"dashboard:critical-alerts:{limit}"
     if not refresh:
         cached = _cache_get(cache_key)
@@ -564,207 +332,90 @@ async def get_critical_alerts_dashboard(
             logger.debug("Cache hit: %s", cache_key)
             return cached
 
-    logger.info(
-        "Building critical-alerts dashboard for user=%s limit=%d",
-        current_user.username,
-        limit,
-    )
-
-    # Đồng bộ trạng thái bảng Alert với tồn kho thực tế (auto-resolve / cập nhật
-    # severity). Giữ lại để các nơi khác đang dùng bảng Alert vẫn nhất quán.
-    _sync_alerts_with_inventory(db)
-
-    # Lấy toàn bộ kho có safety_stock > 0 và current_stock dưới ngưỡng
-    rows = (
-        db.query(
-            Inventory.id.label("inv_id"),
-            Inventory.supply_id.label("supply_id"),
-            Inventory.current_stock.label("current_stock"),
-            Inventory.safety_stock.label("safety_stock"),
-            MedicalSupply.name.label("supply_name"),
-        )
-        .join(MedicalSupply, Inventory.supply_id == MedicalSupply.id)
-        .filter(
-            Inventory.safety_stock > 0,
-            Inventory.current_stock < Inventory.safety_stock,
-        )
-        .all()
-    )
-
-    items: List[Dict] = []
-    for row in rows:
-        cs = int(row.current_stock or 0)
-        ss = int(row.safety_stock or 0)
-        if cs <= 0 or cs < ss * 0.3:
-            severity = "critical"
-        else:
-            severity = "high"
-        items.append(
-            {
-                "id": row.inv_id,
-                "supply_id": row.supply_id,
-                "supply_name": row.supply_name,
-                "alert_type": "low_stock",
-                "severity": severity,
-                "current_stock": cs,
-                "required_stock": ss,
-                "shortage_date": None,
-                "message": None,
-                "is_resolved": False,
-                "created_at": None,
-            }
-        )
-
-    # Sắp xếp giống thứ tự trên trang /inventory: critical trước high,
-    # trong cùng nhóm thì theo id tăng dần (đúng thứ tự bảng danh sách kho).
-    severity_rank = {"critical": 0, "high": 1}
-    items.sort(key=lambda x: (severity_rank.get(x["severity"], 9), x["id"]))
-
-    # Đếm số mục theo từng mức độ
-    counts = {"critical": 0, "high": 0, "medium": 0}
-    for it in items:
-        counts[it["severity"]] = counts.get(it["severity"], 0) + 1
-
-    # Áp limit
-    alerts = items[:limit]
-
-    result = {
-        "alerts": alerts,
-        "total_returned": len(alerts),
-        "limit": limit,
-        "severity_summary": counts,
-    }
-
+    result = dss_runner.critical_alerts_payload(db, limit=limit)
     _cache_set(cache_key, result)
     return result
 
 
 # ── Smart Medical Dashboard Summary ──────────────────────────────────────────
-
-def _classify_risk(case_trend_pct: float, shortage_count: int) -> str:
-    """Đánh giá mức nguy cơ chung dựa trên xu hướng ca và thiếu hụt vật tư."""
-    if case_trend_pct >= 15 and shortage_count >= 5:
-        return "Cao"
-    if case_trend_pct >= 5 or shortage_count >= 2:
-        return "Trung bình"
-    return "Thấp"
-
-
 @router.get("/summary")
 async def get_dashboard_summary(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Dict:
-    """KPI tổng hợp cho Dashboard theo Smart Medical System spec.
+    """KPI tổng hợp cho Dashboard.
 
-    Trả về:
-    - total_cases_current: tổng số ca tháng hiện tại
-    - cases_trend_pct: % thay đổi so với tháng trước
-    - predicted_cases_next_month: số ca dự báo tháng tới
-    - predicted_trend_pct: % thay đổi so với hiện tại
-    - shortage_supplies_count: số vật tư cảnh báo / nguy hiểm
-    - overall_risk: 'Thấp' | 'Trung bình' | 'Cao'
-    """
-    today = date.today()
-    # Neo "tháng hiện tại" vào THÁNG GẦN NHẤT CÓ DỮ LIỆU thay vì tháng lịch:
-    # dữ liệu bệnh viện luôn trễ 1-2 tháng, nếu neo tháng lịch thì đầu tháng
-    # dashboard sẽ hiện "Tổng số ca = 0" gây hiểu nhầm hệ thống không có dữ liệu.
-    _latest_rec = db.query(func.max(DiseaseCase.recorded_at)).scalar()
-    if _latest_rec is not None:
-        today = _latest_rec.date() if hasattr(_latest_rec, "date") else _latest_rec
-    first_of_this_month = today.replace(day=1)
-    if first_of_this_month.month == 1:
-        first_of_last_month = first_of_this_month.replace(year=first_of_this_month.year - 1, month=12)
-    else:
-        first_of_last_month = first_of_this_month.replace(month=first_of_this_month.month - 1)
+    ── G1·DSS ─────────────────────────────────────────────────────────────
+    Bản cũ neo "tháng hiện tại" vào `max(DiseaseCase.recorded_at)`, tức KỲ
+    ĐANG MỞ. Tháng 9/2026 mới có 3 ca trong khi tháng 8 có 341 ca, nên
 
-    # 1. Tổng ca tháng này
-    total_current = (
-        db.query(func.coalesce(func.sum(DiseaseCase.case_count), 0))
-        .filter(DiseaseCase.recorded_at >= first_of_this_month)
-        .scalar()
-        or 0
-    )
-    total_last_month = (
-        db.query(func.coalesce(func.sum(DiseaseCase.case_count), 0))
-        .filter(
-            DiseaseCase.recorded_at >= first_of_last_month,
-            DiseaseCase.recorded_at < first_of_this_month,
-        )
-        .scalar()
-        or 0
-    )
-    cases_trend_pct = (
-        round(100.0 * (total_current - total_last_month) / total_last_month, 1)
-        if total_last_month > 0
-        else 0.0
-    )
+        predicted_trend_pct = (198 − 3) / 3 = 6500%
 
-    # 2. Số ca dự báo — CỘNG các dòng THEO TỈNH của tháng đó.
-    #    Không cộng dòng location=NULL: dòng đó chính là tổng các tỉnh, gộp
-    #    vào sẽ đếm gấp đôi. Trước đây thẻ này chỉ đọc dòng location=NULL nên
-    #    đứng yên ở 0 khi người dùng chỉ ghi nhận dự báo theo tỉnh.
-    def _sum_forecast(y: int, m: int) -> int:
-        return (
+    và con số đó đi thẳng vào `_classify_risk(6500, 17)` → luôn trả "Cao".
+
+    Bản này neo vào KỲ ĐÃ CHỐT gần nhất (`is_complete = 1`) lấy từ
+    `mart_monthly_cases_by_block`, và mọi số ca đều đọc từ mart đó — không
+    còn chạm vào bảng `disease_cases`.
+
+    Kỳ đang mở vẫn trả về, nhưng ở trường riêng `open_period_cases` kèm nhãn
+    "chưa chốt", và KHÔNG tham gia bất kỳ phép so sánh nào.
+    ─────────────────────────────────────────────────────────────────────── """
+    anchor = ps.get_period_anchor(db)
+    last_closed = anchor["last_closed_period"]
+    prev_closed = anchor["prev_closed_period"]
+    open_period = anchor["open_period"]
+
+    total_current = ps.cases_in_period(db, last_closed)
+    total_prev = ps.cases_in_period(db, prev_closed)
+    cases_trend = ps.trend_pct(db, last_closed, prev_closed)
+
+    # Dự báo cho kỳ kế tiếp kỳ đã chốt.
+    # Chỉ cộng các dòng CÓ location: dòng location = NULL chính là tổng các
+    # tỉnh, gộp vào sẽ đếm gấp đôi.
+    next_period = ps.shift_period(last_closed, 1)
+    predicted_next = 0
+    if next_period:
+        y, mo = int(next_period[:4]), int(next_period[5:7])
+        predicted_next = int(
             db.query(func.coalesce(func.sum(DiseaseForecast.predicted_cases), 0))
             .filter(
-                extract('year', DiseaseForecast.forecast_date) == y,
-                extract('month', DiseaseForecast.forecast_date) == m,
+                extract("year", DiseaseForecast.forecast_date) == y,
+                extract("month", DiseaseForecast.forecast_date) == mo,
                 DiseaseForecast.location.isnot(None),
             )
-            .scalar()
-            or 0
+            .scalar() or 0
         )
-
-    # "Tháng tới" = tháng kế tiếp sau tháng neo dữ liệu
-    if today.month == 12:
-        _nxt_y, _nxt_m = today.year + 1, 1
-    else:
-        _nxt_y, _nxt_m = today.year, today.month + 1
-    predicted_next = _sum_forecast(_nxt_y, _nxt_m)
-    if not predicted_next:
-        # Fallback: chưa có dự báo cho tháng kế tiếp → dùng tháng dự báo mới nhất đã lưu
-        _latest_fc = (
-            db.query(func.max(DiseaseForecast.forecast_date))
-            .filter(DiseaseForecast.location.isnot(None))
-            .scalar()
-        )
-        if _latest_fc is not None:
-            predicted_next = _sum_forecast(_latest_fc.year, _latest_fc.month)
-    
-    predicted_trend_pct = (
+    predicted_trend = (
         round(100.0 * (predicted_next - total_current) / total_current, 1)
-        if total_current > 0
-        else 0.0
+        if total_current > 0 else 0.0
     )
 
-    # 3. Số vật tư thiếu hụt (đồng bộ với logic "Cần nhập gấp" ở UI Inventory):
-    #    Chỉ tính các vật tư đã có ngưỡng AT > 0 (đang được theo dõi).
-    #    Trong số đó, "nguy hiểm" khi tồn <= 0 hoặc tồn < 30% AT.
-    shortage_count = (
-        db.query(func.count(Inventory.id))
-        .filter(
-            Inventory.safety_stock > 0,
-            or_(
-                Inventory.current_stock <= 0,
-                Inventory.current_stock < Inventory.safety_stock * 0.3,
-            ),
-        )
-        .scalar()
-        or 0
-    )
-
-    # 4. Mức nguy cơ chung
-    overall_risk = _classify_risk(predicted_trend_pct, shortage_count)
+    signal = dss_runner.stock_signal(db)
+    cat = ps.catalogue_counts(db)
+    risk = ps.assess_overall_risk(cases_trend, signal["red"], signal["amber"])
 
     return {
-        "total_cases_current": int(total_current),
-        "cases_trend_pct": cases_trend_pct,
-        "predicted_cases_next_month": int(predicted_next),
-        "predicted_trend_pct": predicted_trend_pct,
-        "shortage_supplies_count": int(shortage_count),
-        "overall_risk": overall_risk,
-        "as_of": today.isoformat(),
+        # ── khoá cũ, giữ nguyên tên ──
+        "total_cases_current": total_current,
+        "cases_trend_pct": cases_trend,
+        "predicted_cases_next_month": predicted_next,
+        "predicted_trend_pct": predicted_trend,
+        "shortage_supplies_count": signal["red"],
+        "overall_risk": risk["level"],
+        "as_of": last_closed,
+        # ── khoá mới ──
+        "last_closed_period": last_closed,
+        "prev_closed_period": prev_closed,
+        "open_period": open_period,
+        "open_period_cases": ps.cases_in_period(db, open_period),
+        "open_period_note": "Kỳ chưa chốt — không tính vào xu hướng.",
+        "total_cases_prev": total_prev,
+        "forecast_period": next_period,
+        "blocks": ps.cases_by_block(db, last_closed),
+        "catalogue": cat,
+        "stock_signal": signal,
+        "overall_risk_basis": risk["basis"],
+        "overall_risk_is_provisional": risk["is_provisional"],
     }
 
 
@@ -774,88 +425,124 @@ async def get_case_trend(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Dict:
-    """Xu hướng ca bệnh theo tháng cho năm nay vs năm trước."""
-    today = date.today()
-    # Neo chuỗi vào tháng gần nhất CÓ dữ liệu — tránh đuôi biểu đồ tụt về 0
-    # chỉ vì các tháng lịch mới nhất chưa có số liệu (dữ liệu luôn trễ 1-2 tháng).
-    _latest_rec = db.query(func.max(DiseaseCase.recorded_at)).scalar()
-    if _latest_rec is not None:
-        today = _latest_rec.date() if hasattr(_latest_rec, "date") else _latest_rec
-    series_this_year: list[dict] = []
-    series_last_year: list[dict] = []
+    """Xu hướng ca bệnh theo tháng, năm nay so với năm trước.
 
-    for i in range(months - 1, -1, -1):
-        # Compute month-start by going back i months from current month
-        year = today.year
-        month = today.month - i
-        while month <= 0:
-            month += 12
-            year -= 1
-        start = date(year, month, 1)
-        end = date(year + (1 if month == 12 else 0), (month % 12) + 1, 1) - timedelta(days=1)
+    ── G1·DSS ─────────────────────────────────────────────────────────────
+    Đọc từ `mart_monthly_cases_by_block` (region = 'TOAN_QUOC'), kết thúc ở
+    KỲ ĐÃ CHỐT gần nhất. Bản cũ đọc `disease_cases` và neo vào
+    `max(recorded_at)`, nên cột cuối biểu đồ luôn tụt gần 0 vì đó là kỳ đang
+    thu thập dở.
 
-        this_total = (
-            db.query(func.coalesce(func.sum(DiseaseCase.case_count), 0))
-            .filter(DiseaseCase.recorded_at >= start, DiseaseCase.recorded_at <= end)
-            .scalar()
-            or 0
-        )
-        last_total = (
-            db.query(func.coalesce(func.sum(DiseaseCase.case_count), 0))
-            .filter(
-                DiseaseCase.recorded_at >= start.replace(year=start.year - 1),
-                DiseaseCase.recorded_at <= end.replace(year=end.year - 1),
-            )
-            .scalar()
-            or 0
-        )
-        label = f"T{month}"
-        series_this_year.append({"month": label, "value": int(this_total)})
-        series_last_year.append({"month": label, "value": int(last_total)})
+    Số ca ở mức NHÓM đã được đếm DISTINCT bên HIS. Không cộng từ mã con: một
+    lượt mang J01 và J06 (cùng thuộc J00-J06) sẽ bị đếm hai lần.
+    ─────────────────────────────────────────────────────────────────────── """
+    anchor = ps.get_period_anchor(db)
+    last_closed = anchor["last_closed_period"]
+    if not last_closed:
+        return {"this_year": [], "last_year": [], "last_closed_period": None}
+
+    series = ps.case_series(db, n_periods=months, end_period=last_closed)
+    this_year, last_year = [], []
+    for row in series:
+        period = row["period"]
+        label = f"T{int(period[5:7])}"
+        this_year.append({"month": label, "period": period,
+                          "value": row["cases"], "is_complete": row["is_complete"]})
+        last_year.append({"month": label,
+                          "period": ps.shift_period(period, -12),
+                          "value": ps.cases_in_period(db, ps.shift_period(period, -12))})
 
     return {
-        "this_year": series_this_year,
-        "last_year": series_last_year,
+        "this_year": this_year,
+        "last_year": last_year,
+        "last_closed_period": last_closed,
+        "open_period": anchor["open_period"],
+        "source": "mart_monthly_cases_by_block",
     }
 
 
-@router.get("/demand-vs-stock")
-async def get_demand_vs_stock(
-    top_n: int = Query(5, ge=1, le=20),
+@router.get("/care-level")
+async def get_care_level_mix(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> List[Dict]:
-    """Top N vật tư có nhu cầu cao nhất, kèm tồn kho hiện tại.
+) -> Dict:
+    """Tỷ trọng phân cấp chăm sóc p̂(g,c) — biểu đồ Tầng 2.
 
-    Lấy cùng nguồn dữ liệu với trang Đề xuất nhập kho (/alerts):
-    dùng SupplyRecommendationService.calculate_for_month cho tháng hiện tại
-    (đã nhân buffer 15%). Sắp xếp theo predicted_need_total giảm dần.
+    ── G2·DSS ─────────────────────────────────────────────────────────────
+    Endpoint MỚI, thêm vào chứ không thay gì cả, nên không thể làm vỡ giao
+    diện hiện tại.
+
+    Trả kèm `chan_doan_dinh_muc`: chừng nào `disease_supply_norms` còn cùng
+    một `quantity_per_case` ở cả ba mức nặng thì biểu đồ này là MÔ TẢ DỮ
+    LIỆU, không phải một yếu tố làm dự báo chính xác hơn. Giao diện phải
+    đọc cờ đó và nói đúng như vậy.
+
+    Cửa sổ tính: 12 kỳ trượt từ 2025-04 (Đ11 phát hiện đứt gãy chế độ ghi
+    nhận đầu 2025 — cấp 2 đi từ 0,12% lên 50,7%).
+    ─────────────────────────────────────────────────────────────────────── """
+    cache_key = "dashboard:care-level"
+    cached = _cache_get(cache_key)
+    if cached:
+        return cached
+    result = dss_runner.care_level_payload(db)
+    _cache_set(cache_key, result)
+    return result
+
+
+# ── Dashboard v2 (Tuần 3 · 11/09/2026) ───────────────────────────────────────
+#
+# Hai endpoint thay cho bốn endpoint cũ (summary / case-trend / demand-vs-stock
+# / critical-alerts) mà trang Dashboard đang gọi. Bốn endpoint cũ GIỮ NGUYÊN
+# cho tới khi các trang khác thôi dùng — chúng vẫn đúng, chỉ là mỗi cái một
+# mốc thời gian, một cách đếm. v2 đọc một lần, một mốc, một cách đếm.
+#
+# Không đi qua cache Redis: v2 đã tự cache phần đắt (dự báo) trong SQLite
+# theo dấu vân tay dữ liệu; phần còn lại là vài truy vấn nhỏ.
+
+@router.get("/v2")
+def get_dashboard_v2(
+    focus: bool = Query(True, description="Tập trọng tâm (tỷ trọng hô hấp ≥ 25%) hay toàn danh mục"),
+    level: Optional[str] = Query(None, description="Lọc bảng cảnh báo: red | amber | green | grey; bỏ trống = Đỏ + Vàng"),
+    limit: int = Query(8, ge=1, le=50),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Dict:
+    """Mọi thứ trang Tổng quan cần, trừ việc khớp mô hình dự báo.
+
+    Nếu dự báo kỳ tới đã có trong cache (xem `/v2/forecast`) thì Tầng 2 chạy
+    và bảng cảnh báo có cột `d_forecast` / `delta_need`; chưa có thì hai cột
+    ấy để None và `demand.ready = false` — giao diện phải nói "đang tính",
+    không được hiện 0.
     """
-    from app.services.supply_recommendation_service import SupplyRecommendationService
-
-    today = date.today()
-    forecast_month = today.replace(day=1)
-
-    service = SupplyRecommendationService(db)
     try:
-        agg = service.calculate_for_month(forecast_month=forecast_month)
-    except Exception as exc:  # noqa: BLE001 — service nuốt lỗi từng bệnh nên hiếm khi ra
-        logger.warning("demand-vs-stock fallback do lỗi tính nhu cầu: %s", exc)
-        return []
+        return dss_dashboard.overview_payload(db, focus=focus, level=level, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
-    items = sorted(
-        agg.get("items", []),
-        key=lambda x: x.get("predicted_need_total", 0),
-        reverse=True,
-    )[:top_n]
 
-    return [
-        {
-            "supply_id": it["supply_id"],
-            "supply_name": it.get("ten_hoat_chat") or it.get("supply_code"),
-            "unit": it.get("unit"),
-            "demand": int(it.get("predicted_need_total", 0)),
-            "stock": int(it.get("current_stock", 0)),
-        }
-        for it in items
-    ]
+@router.get("/v2/forecast")
+def get_dashboard_v2_forecast(
+    force: bool = Query(False, description="Bỏ cache, khớp lại mô hình"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Dict:
+    """Ŷ_g cho ba khối bằng ensemble PRODUCTION_CONFIG (cùng trang Kế hoạch).
+
+    Lần đầu cho một bộ dữ liệu có thể mất vài chục giây (dựng khoảng thực
+    nghiệm cần ~25 lần khớp mỗi khối). Kết quả lưu `dss_forecast_cache`, khoá
+    theo dấu vân tay (chuỗi ca + thời tiết + cấu hình) nên đồng bộ xong là
+    khoá tự đổi, không cần xoá cache tay.
+    """
+    return dss_dashboard.forecast_payload(db, compute=True, force=force)
+
+
+@router.get("/v2/forecast/history")
+def get_dashboard_v2_forecast_history(
+    limit: int = Query(60, ge=1, le=500),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Dict:
+    """Sổ theo dõi mô hình trong vận hành (Tuần 4c): mỗi lần app khớp mô hình
+    là một dòng; kỳ đích chốt thì tự điền thực tế và sai số. Khác backtest —
+    đây là con số màn hình đã hiện vào thời điểm đó."""
+    return dss_dashboard.forecast_history(db, limit=limit)

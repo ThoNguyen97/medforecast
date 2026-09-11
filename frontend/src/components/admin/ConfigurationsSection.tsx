@@ -68,7 +68,7 @@ function SafetyRateCard() {
             Hệ số dự phòng (Safety Stock)
           </h3>
           <p className="text-xs text-neutral-500 mt-0.5 max-w-md">
-            Tỷ lệ dự phòng cộng thêm vào nhu cầu khi tính số lượng đề xuất nhập kho.
+            Tỷ lệ dự phòng cộng thêm vào nhu cầu khi tính lượng thiếu hụt cần chuẩn bị.
             Mặc định 15%.
           </p>
         </div>

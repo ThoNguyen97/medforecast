@@ -1,0 +1,22 @@
+﻿nhom,thanh_vien,muc,dong_gop_pct_buoc,so_lan_rot,vi_du_ly_do
+J00-J06,seasonal_trend,nhóm,100.0,0,
+J00-J06,poisson_trend,nhóm,100.0,0,
+J00-J06,harmonic_poisson_weather,nhóm,100.0,0,
+J00-J06,ets,nhóm,100.0,0,
+J00-J06,sarimax_weather,nhóm,97.1,0,
+J00-J06,sarimax,mã,81.5,88,"fit: chuỗi 23 tháng < 26, quá ngắn cho SARIMAX mùa 12"
+J00-J06,ets,mã,84.0,76,"fit: chuỗi 23 tháng < 24, quá ngắn cho ETS mùa 12"
+J09-J18,seasonal_trend,nhóm,100.0,0,
+J09-J18,poisson_trend,nhóm,100.0,0,
+J09-J18,harmonic_poisson_weather,nhóm,100.0,0,
+J09-J18,ets,nhóm,100.0,0,
+J09-J18,sarimax_weather,nhóm,97.1,0,
+J09-J18,sarimax,mã,27.5,493,"fit: chuỗi 0 tháng < 26, quá ngắn cho SARIMAX mùa 12"
+J09-J18,ets,mã,30.4,473,"fit: chuỗi 0 tháng < 24, quá ngắn cho ETS mùa 12"
+J20-J22,seasonal_trend,nhóm,100.0,0,
+J20-J22,poisson_trend,nhóm,100.0,0,
+J20-J22,harmonic_poisson_weather,nhóm,100.0,0,
+J20-J22,ets,nhóm,100.0,0,
+J20-J22,sarimax_weather,nhóm,97.0,0,
+J20-J22,sarimax,mã,32.3,136,"fit: chuỗi 24 tháng < 26, quá ngắn cho SARIMAX mùa 12"
+J20-J22,ets,mã,33.3,134,"fit: chuỗi 1 tháng < 24, quá ngắn cho ETS mùa 12"

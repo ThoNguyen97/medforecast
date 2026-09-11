@@ -35,7 +35,7 @@ describe('Sidebar', () => {
   it('renders navigation links', () => {
     useAuthStore.setState({ user: adminUser });
     renderSidebar();
-    expect(screen.getByText('Dashboard')).toBeInTheDocument();
+    expect(screen.getByText('Tổng quan')).toBeInTheDocument();
     expect(screen.getByText('Tồn kho')).toBeInTheDocument();
     expect(screen.getByText('Dự báo')).toBeInTheDocument();
     expect(screen.getByText('Cảnh báo')).toBeInTheDocument();

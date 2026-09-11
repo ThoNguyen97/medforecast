@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Download, Upload, FileDown, Plus, Loader2, X, RefreshCw } from 'lucide-react';
+import { Download, Upload, FileDown, Plus, Loader2, X } from 'lucide-react';
 import { useUIStore } from '../store/uiStore';
 import { useInventory } from '../hooks/useInventory';
 import api from '../services/api';
@@ -22,7 +22,7 @@ export default function Inventory() {
   const { setPageTitle } = useUIStore();
 
   useEffect(() => {
-    setPageTitle('Quản lý vật tư y tế & Kho vận');
+    setPageTitle('Vật tư y tế');
   }, [setPageTitle]);
 
   return <InventoryContent />;
@@ -54,14 +54,6 @@ function InventoryContent() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingItem, setEditingItem] = useState<InventoryRow | null>(null);
   const [deletingItem, setDeletingItem] = useState<InventoryRow | null>(null);
-  const [syncingSafety, setSyncingSafety] = useState(false);
-  const [syncResult, setSyncResult] = useState<{
-    forecast_month: string;
-    buffer_rate: number;
-    updated: number;
-    skipped: number;
-    message: string;
-  } | null>(null);
 
   const { data: inventory = [], isLoading, refetch } = useInventory({ limit: 2000 });
 
@@ -266,33 +258,6 @@ function InventoryContent() {
     }
   };
 
-  const handleSyncSafetyStock = async () => {
-    if (syncingSafety) return;
-    const confirm = window.confirm(
-      'Cập nhật ngưỡng an toàn cho tất cả vật tư từ kết quả dự báo gần nhất?\n\n' +
-      'Hành động này sẽ ghi đè các giá trị ngưỡng AT hiện tại.'
-    );
-    if (!confirm) return;
-
-    try {
-      setSyncingSafety(true);
-      const res = await api.post('/inventory/sync-safety-stock', null, {
-        params: {
-          buffer_rate: 15,
-        },
-      });
-      setSyncResult(res.data);
-      refetch();
-    } catch (err: any) {
-      alert(
-        'Lỗi cập nhật ngưỡng AT: ' +
-          (err?.response?.data?.detail || err.message || 'không xác định'),
-      );
-    } finally {
-      setSyncingSafety(false);
-    }
-  };
-
   return (
     <div className="space-y-5">
       {/* Page header */}
@@ -302,7 +267,7 @@ function InventoryContent() {
             Quản lý vật tư y tế & Kho vận
           </h2>
           <p className="text-sm text-neutral-500 mt-1">
-            Tổng quan tình trạng kho, cảnh báo vật tư và đơn hàng chờ nhập.
+            Tổng quan tình trạng kho và cảnh báo vật tư theo số ngày tồn phủ nhu cầu.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2.5">
@@ -317,19 +282,6 @@ function InventoryContent() {
               if (e.target) e.target.value = '';
             }}
           />
-          <ActionButton
-            variant="outline"
-            icon={
-              syncingSafety ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <RefreshCw className="w-4 h-4" />
-              )
-            }
-            onClick={handleSyncSafetyStock}
-          >
-            {syncingSafety ? 'Đang cập nhật...' : 'Cập nhật ngưỡng AT từ dự báo'}
-          </ActionButton>
           <ActionButton
             variant="outline"
             icon={
@@ -517,61 +469,6 @@ function InventoryContent() {
         </div>
       )}
 
-      {/* Sync safety stock result modal */}
-      {syncResult && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">Cập nhật ngưỡng AT</h3>
-              <button
-                onClick={() => setSyncResult(null)}
-                className="p-1 rounded hover:bg-neutral-100"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="space-y-3 mb-4">
-              <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
-                <div className="text-xs text-blue-600 mb-1">Tháng dự báo</div>
-                <div className="font-semibold text-blue-900">
-                  {new Date(syncResult.forecast_month).toLocaleDateString('vi-VN', {
-                    month: 'long',
-                    year: 'numeric',
-                  })}
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-3">
-                  <p className="text-xs text-emerald-600 mb-1">Đã cập nhật</p>
-                  <p className="text-2xl font-bold text-emerald-700 tabular-nums">
-                    {syncResult.updated}
-                  </p>
-                </div>
-                <div className="rounded-lg border border-amber-100 bg-amber-50 p-3">
-                  <p className="text-xs text-amber-600 mb-1">Bỏ qua</p>
-                  <p className="text-2xl font-bold text-amber-700 tabular-nums">
-                    {syncResult.skipped}
-                  </p>
-                </div>
-              </div>
-              <div className="text-sm text-neutral-600 bg-neutral-50 border border-neutral-100 rounded-lg px-3 py-2">
-                <strong>% Dự phòng:</strong> {syncResult.buffer_rate}%
-              </div>
-            </div>
-            <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2 mb-4">
-              ✓ {syncResult.message}
-            </div>
-            <div className="flex justify-end">
-              <button
-                onClick={() => setSyncResult(null)}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
-              >
-                Đóng
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -647,7 +544,6 @@ function AddSupplyDialog({
     current_stock: 0,
     safety_stock: 0,
     expiry_date: '',
-    lead_time_days: 0,
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -660,7 +556,7 @@ function AddSupplyDialog({
       return;
     }
     if (vals.current_stock < 0 || vals.safety_stock < 0) {
-      setError('Tồn kho và ngưỡng AT phải >= 0');
+      setError('Tồn kho và ngưỡng an toàn phải >= 0');
       return;
     }
     try {
@@ -670,15 +566,14 @@ function AddSupplyDialog({
         name: vals.name.trim(),
         category: vals.category,
         unit: vals.unit,
-        lead_time_days: vals.lead_time_days || null,
       });
       // Step 2: tạo Inventory record qua batch-update / inventory direct
       // Ở đây dùng /inventory/import giả lập 1 dòng để có cả expiry_date
       const csv =
         'supply_code,supply_name,category,unit,current_stock,safety_stock,' +
-        'expiry_date,supplier,lead_time_days\n' +
+        'expiry_date,supplier\n' +
         `,${vals.name.trim()},${vals.category},${vals.unit},${vals.current_stock},` +
-        `${vals.safety_stock},${vals.expiry_date},,${vals.lead_time_days}\n`;
+        `${vals.safety_stock},${vals.expiry_date},\n`;
       const blob = new Blob([csv], { type: 'text/csv' });
       const fd = new FormData();
       fd.append('file', blob, 'add_one.csv');
@@ -773,17 +668,6 @@ function AddSupplyDialog({
                 type="date"
                 value={vals.expiry_date}
                 onChange={(e) => setVals({ ...vals, expiry_date: e.target.value })}
-                className={inputClass}
-              />
-            </Field>
-            <Field label="Lead time (ngày)">
-              <input
-                type="number"
-                min={0}
-                value={vals.lead_time_days}
-                onChange={(e) =>
-                  setVals({ ...vals, lead_time_days: Math.max(0, Number(e.target.value)) })
-                }
                 className={inputClass}
               />
             </Field>

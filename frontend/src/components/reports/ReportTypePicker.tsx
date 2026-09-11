@@ -2,7 +2,6 @@ import {
   Activity,
   TrendingUp,
   Boxes,
-  ShoppingCart,
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
@@ -11,7 +10,6 @@ export type ReportKind =
   | 'forecast'
   | 'inventory'
   | 'shortage'
-  | 'procurement'
   | 'accuracy';
 
 export interface ReportTypeMeta {
@@ -43,13 +41,6 @@ export const REPORT_TYPES: ReportTypeMeta[] = [
     description: 'Danh sách vật tư, ngưỡng an toàn và trạng thái.',
     icon: Boxes,
     accent: 'emerald',
-  },
-  {
-    key: 'procurement',
-    title: 'Đề xuất nhập kho',
-    description: 'Danh sách vật tư cần nhập kèm lý do đề xuất.',
-    icon: ShoppingCart,
-    accent: 'violet',
   },
 ];
 

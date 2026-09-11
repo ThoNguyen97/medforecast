@@ -20,6 +20,8 @@ class MedicalSupply(Base):
     # Thông tin bổ sung
     category = Column(String(100), index=True)  # medicine, medical_supply
     unit_price = Column(Numeric(10, 2))
+    # Hai cột mua sắm (MOQ, lead time) — GIỮ trong DB để không phải migrate,
+    # nhưng đã gỡ khỏi schema API và giao diện (phạm vi DSS, Tuần 3 11/09/2026).
     minimum_order_quantity = Column(Integer)
     lead_time_days = Column(Integer)
     storage_capacity = Column(Integer)

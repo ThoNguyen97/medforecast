@@ -1,0 +1,33 @@
+﻿nhom,bien_the,n_buoc,MAE,RelMAE,ME,MPE_pct,sMAPE_pct,WAPE_pct,do_phu_pct,he_so_lech_tb,trong_so_cuoi
+J00-J06,mean,68.0,39.08,0.755,8.982,7.06,31.949,30.718,88.333,1.0,"{""seasonal_trend"": 0.25, ""poisson_trend"": 0.25, ""harmonic_poisson_weather"": 0.25, ""sarimax_weather"": 0.25}"
+J00-J06,inv_mae,68.0,27.567,0.533,2.325,1.827,24.115,21.668,88.333,1.0,"{""seasonal_trend"": 0.28, ""poisson_trend"": 0.184, ""harmonic_poisson_weather"": 0.249, ""sarimax_weather"": 0.288}"
+J00-J06,mean+bias,68.0,38.203,0.738,4.772,3.751,32.233,30.029,88.333,0.961,"{""seasonal_trend"": 0.25, ""poisson_trend"": 0.25, ""harmonic_poisson_weather"": 0.25, ""sarimax_weather"": 0.25}"
+J00-J06,inv_mae+bias,68.0,28.443,0.55,-0.354,-0.278,24.945,22.357,88.333,0.974,"{""seasonal_trend"": 0.28, ""poisson_trend"": 0.184, ""harmonic_poisson_weather"": 0.249, ""sarimax_weather"": 0.288}"
+J00-J06,mean+ets,68.0,33.826,0.654,7.31,5.746,28.107,26.588,86.667,1.0,"{""seasonal_trend"": 0.2, ""poisson_trend"": 0.2, ""harmonic_poisson_weather"": 0.2, ""sarimax_weather"": 0.2, ""ets"": 0.2}"
+J00-J06,inv_mae+ets,68.0,26.099,0.504,1.76,1.383,22.768,20.515,85.0,1.0,"{""seasonal_trend"": 0.216, ""poisson_trend"": 0.142, ""harmonic_poisson_weather"": 0.192, ""sarimax_weather"": 0.222, ""ets"": 0.228}"
+J00-J06,mean+bias+ets,68.0,33.923,0.656,4.928,3.873,28.798,26.664,88.333,0.973,"{""seasonal_trend"": 0.2, ""poisson_trend"": 0.2, ""harmonic_poisson_weather"": 0.2, ""sarimax_weather"": 0.2, ""ets"": 0.2}"
+J00-J06,inv_mae+bias+ets,68.0,26.695,0.516,-0.69,-0.543,23.346,20.983,86.667,0.977,"{""seasonal_trend"": 0.216, ""poisson_trend"": 0.142, ""harmonic_poisson_weather"": 0.192, ""sarimax_weather"": 0.222, ""ets"": 0.228}"
+J09-J18,mean,68.0,30.83,0.594,-15.135,-14.493,33.197,29.523,68.333,1.0,"{""seasonal_trend"": 0.25, ""poisson_trend"": 0.25, ""harmonic_poisson_weather"": 0.25, ""sarimax_weather"": 0.25}"
+J09-J18,inv_mae,68.0,22.906,0.441,-11.213,-10.738,26.098,21.935,76.667,1.0,"{""seasonal_trend"": 0.106, ""poisson_trend"": 0.199, ""harmonic_poisson_weather"": 0.142, ""sarimax_weather"": 0.553}"
+J09-J18,mean+bias,68.0,24.476,0.472,-7.014,-6.717,28.532,23.439,76.667,1.046,"{""seasonal_trend"": 0.25, ""poisson_trend"": 0.25, ""harmonic_poisson_weather"": 0.25, ""sarimax_weather"": 0.25}"
+J09-J18,inv_mae+bias,68.0,22.131,0.426,-3.232,-3.095,25.165,21.193,76.667,1.046,"{""seasonal_trend"": 0.106, ""poisson_trend"": 0.199, ""harmonic_poisson_weather"": 0.142, ""sarimax_weather"": 0.553}"
+J09-J18,mean+ets,68.0,26.412,0.509,-12.38,-11.855,29.721,25.292,73.333,1.0,"{""seasonal_trend"": 0.2, ""poisson_trend"": 0.2, ""harmonic_poisson_weather"": 0.2, ""sarimax_weather"": 0.2, ""ets"": 0.2}"
+J09-J18,inv_mae+ets,68.0,20.117,0.388,-8.085,-7.742,24.229,19.264,80.0,1.0,"{""seasonal_trend"": 0.064, ""poisson_trend"": 0.12, ""harmonic_poisson_weather"": 0.085, ""sarimax_weather"": 0.332, ""ets"": 0.399}"
+J09-J18,mean+bias+ets,68.0,22.11,0.426,-6.341,-6.073,26.643,21.173,78.333,1.027,"{""seasonal_trend"": 0.2, ""poisson_trend"": 0.2, ""harmonic_poisson_weather"": 0.2, ""sarimax_weather"": 0.2, ""ets"": 0.2}"
+J09-J18,inv_mae+bias+ets,68.0,19.559,0.377,-3.095,-2.964,23.718,18.73,80.0,1.023,"{""seasonal_trend"": 0.064, ""poisson_trend"": 0.12, ""harmonic_poisson_weather"": 0.085, ""sarimax_weather"": 0.332, ""ets"": 0.399}"
+J20-J22,mean,67.0,20.997,0.688,7.148,13.057,43.643,38.353,84.746,1.0,"{""seasonal_trend"": 0.25, ""poisson_trend"": 0.25, ""harmonic_poisson_weather"": 0.25, ""sarimax_weather"": 0.25}"
+J20-J22,inv_mae,67.0,18.642,0.611,3.502,6.396,39.222,34.052,86.441,1.0,"{""seasonal_trend"": 0.182, ""poisson_trend"": 0.166, ""harmonic_poisson_weather"": 0.323, ""sarimax_weather"": 0.328}"
+J20-J22,mean+bias,67.0,19.219,0.63,4.198,7.668,40.036,35.105,84.746,0.933,"{""seasonal_trend"": 0.25, ""poisson_trend"": 0.25, ""harmonic_poisson_weather"": 0.25, ""sarimax_weather"": 0.25}"
+J20-J22,inv_mae+bias,67.0,17.433,0.571,2.634,4.811,36.93,31.843,84.746,0.958,"{""seasonal_trend"": 0.182, ""poisson_trend"": 0.166, ""harmonic_poisson_weather"": 0.323, ""sarimax_weather"": 0.328}"
+J20-J22,mean+ets,67.0,18.807,0.616,6.043,11.037,39.85,34.353,86.441,1.0,"{""seasonal_trend"": 0.2, ""poisson_trend"": 0.2, ""harmonic_poisson_weather"": 0.2, ""sarimax_weather"": 0.2, ""ets"": 0.2}"
+J20-J22,inv_mae+ets,67.0,17.057,0.559,2.686,4.906,36.332,31.156,84.746,1.0,"{""seasonal_trend"": 0.137, ""poisson_trend"": 0.125, ""harmonic_poisson_weather"": 0.243, ""sarimax_weather"": 0.246, ""ets"": 0.25}"
+J20-J22,mean+bias+ets,67.0,17.316,0.568,3.583,6.545,37.496,31.629,83.051,0.936,"{""seasonal_trend"": 0.2, ""poisson_trend"": 0.2, ""harmonic_poisson_weather"": 0.2, ""sarimax_weather"": 0.2, ""ets"": 0.2}"
+J20-J22,inv_mae+bias+ets,67.0,16.503,0.541,2.263,4.134,35.765,30.144,84.746,0.962,"{""seasonal_trend"": 0.137, ""poisson_trend"": 0.125, ""harmonic_poisson_weather"": 0.243, ""sarimax_weather"": 0.246, ""ets"": 0.25}"
+TỔNG HỢP,inv_mae,,,0.528,,-0.838,,,83.814,,
+TỔNG HỢP,inv_mae+bias,,,0.516,,0.479,,,83.249,,
+TỔNG HỢP,inv_mae+bias+ets,,,0.478,,0.209,,,83.804,,
+TỔNG HỢP,inv_mae+ets,,,0.484,,-0.484,,,83.249,,
+TỔNG HỢP,mean,,,0.679,,1.875,,,80.471,,
+TỔNG HỢP,mean+bias,,,0.613,,1.567,,,83.249,,
+TỔNG HỢP,mean+bias+ets,,,0.55,,1.448,,,83.239,,
+TỔNG HỢP,mean+ets,,,0.593,,1.643,,,82.147,,

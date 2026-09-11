@@ -1,18 +1,21 @@
-"""Celery task — Tự động suy luận tỷ lệ severity từ dữ liệu lịch sử (mục 5.2).
+"""Tự động suy luận tỷ lệ severity từ dữ liệu lịch sử (mục 5.2).
 
-Chạy theo 2 cách:
-1. Celery beat schedule (định kỳ hằng đêm).
-2. Trigger thủ công sau khi import CSV disease_cases (dispatch qua .delay()
-   trong endpoint, hoặc sync fallback nếu broker không sẵn).
+Chạy ĐỒNG BỘ, ngay trong request đã kích hoạt nó (hiện chỉ có một nơi:
+endpoint import CSV disease_cases).
 
-Mỗi lần chạy ghi 1 dòng vào ``system_logs`` để admin có thể audit lại.
+Lịch sử: bản đầu bọc hàm này trong một Celery task và chỉ chạy đồng bộ khi
+"broker không sẵn". Thực tế broker CHƯA BAO GIỜ sẵn — không có service
+worker nào trong docker-compose và không nơi nào gọi .delay() ngoài chính
+file này — nên nhánh đồng bộ là nhánh duy nhất từng chạy, còn nhánh async
+chỉ tồn tại trên giấy. Gỡ Celery ngày 09/09/2026 (xem _archive/dich_vu_chet/).
+
+Mỗi lần chạy ghi 1 dòng vào ``system_logs`` để admin audit lại.
 """
 from __future__ import annotations
 
 import logging
 from typing import Any, Dict, Optional
 
-from app.celery_app import celery_app
 from app.database import SessionLocal
 from app.models.system_log import SystemLog
 from app.services.severity_inference_service import SeverityInferenceService
@@ -95,62 +98,17 @@ def _run_recompute(force: bool, trigger: str, updated_by: Optional[str]) -> Dict
         db.close()
 
 
-@celery_app.task(name="recompute_severity_rates", bind=True)
-def recompute_severity_rates_task(
-    self,
-    force: bool = False,
-    trigger: str = "scheduled",
-    updated_by: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Celery task — chạy `_run_recompute` trong worker."""
-    self.update_state(state="STARTED", meta={"trigger": trigger, "force": force})
-    return _run_recompute(force=force, trigger=trigger, updated_by=updated_by)
-
-
 def dispatch_recompute(
     force: bool = False,
     trigger: str = "csv_import",
     updated_by: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Helper — dispatch task qua Celery, sync fallback nếu broker không sẵn.
+    """Chạy lại phép suy luận severity, đồng bộ.
 
-    Dùng trong các endpoint API muốn chạy auto-recompute mà không chặn response.
-    Nếu Celery broker không có (vd dev local), sẽ chạy sync ngay luôn.
+    Giữ nguyên tên và chữ ký cũ để nơi gọi (api/v1/disease_cases.py) không
+    phải đổi. Khoá "mode" trong kết quả cũng giữ giá trị "sync_fallback" để
+    giao diện hiện có đọc được như trước.
     """
-    # Bước 1: probe broker — nếu không kết nối được thì chạy sync luôn để demo
-    # vẫn hoạt động khi không có Redis/worker.
-    try:
-        with celery_app.connection_or_acquire() as conn:
-            conn.ensure_connection(max_retries=1, timeout=1.0)
-        broker_alive = True
-    except Exception as exc:
-        logger.info(
-            "Celery broker unreachable (%s) — running severity recompute synchronously.",
-            exc,
-        )
-        broker_alive = False
-
-    if not broker_alive:
-        result = _run_recompute(force=force, trigger=trigger, updated_by=updated_by)
-        result["mode"] = "sync_fallback"
-        return result
-
-    # Bước 2: broker OK → dispatch async
-    try:
-        async_result = recompute_severity_rates_task.delay(
-            force=force, trigger=trigger, updated_by=updated_by,
-        )
-        return {
-            "mode": "async",
-            "task_id": async_result.id,
-            "trigger": trigger,
-            "force": force,
-        }
-    except Exception as exc:
-        logger.warning(
-            "Celery dispatch failed (%s) — running severity recompute synchronously.",
-            exc,
-        )
-        result = _run_recompute(force=force, trigger=trigger, updated_by=updated_by)
-        result["mode"] = "sync_fallback"
-        return result
+    result = _run_recompute(force=force, trigger=trigger, updated_by=updated_by)
+    result["mode"] = "sync_fallback"
+    return result

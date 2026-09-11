@@ -18,7 +18,7 @@ export function useSyncStatus() {
 export function useRunSync() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (full = false) => syncService.run(full),
+    mutationFn: (full?: boolean) => syncService.run(full ?? false),
     onSuccess: () => {
       // dữ liệu vừa cập nhật → làm mới dashboard, tồn kho, dự báo, trạng thái
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });

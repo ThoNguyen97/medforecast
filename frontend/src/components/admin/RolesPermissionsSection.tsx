@@ -56,7 +56,7 @@ const FEATURES: {
       },
       {
         key: 'alerts',
-        label: 'Xem cảnh báo & tạo kế hoạch nhập kho',
+        label: 'Xem cảnh báo & lập kế hoạch cung ứng',
         perms: {
           Administrator: true,
           Pharmacist: false,
@@ -67,7 +67,7 @@ const FEATURES: {
       },
       {
         key: 'approve-plan',
-        label: 'Duyệt kế hoạch nhập kho',
+        label: 'Duyệt kế hoạch cung ứng',
         perms: {
           Administrator: true,
           Pharmacist: false,

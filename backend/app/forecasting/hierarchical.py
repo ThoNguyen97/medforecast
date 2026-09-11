@@ -1,4 +1,11 @@
-"""Các hướng hòa giải phân cấp: bottom-up, top-down (cố định/động), MinT-OLS."""
+"""Các hướng hòa giải phân cấp: bottom-up, top-down (cố định/động), hoà giải OLS.
+
+M5 (11/09/2026): hàm reconcile_ols trước đây được gọi là "MinT" trong bảng
+kết quả. Không đúng — MinT (Wickramasuriya, Hyndman & Athanasopoulos 2019)
+đòi ước lượng ma trận hiệp phương sai sai số W (thường có co rút); ở đây
+W = I, tức hoà giải OLS (Hyndman et al. 2011). Khoá API "mint" giữ nguyên để
+frontend không vỡ; mọi NHÃN hiển thị và bảng báo cáo phải ghi "Hoà giải OLS".
+"""
 from __future__ import annotations
 from typing import Dict, List
 import numpy as np
@@ -24,7 +31,10 @@ def ewma_shares(hist_group: pd.DataFrame, hist_codes: Dict[str, pd.DataFrame],
 
 def reconcile_ols(codes: List[str], base_group: float,
                   base_codes: Dict[str, float]) -> Dict[str, float]:
-    """Hòa giải MinT-OLS: dùng cả dự báo nhóm lẫn từng mã.
+    """Hoà giải OLS (W = I): dùng cả dự báo nhóm lẫn từng mã.
+
+    Lưu ý: np.maximum(·, 0) ở cuối cắt giá trị âm và do đó PHÁ tính nhất
+    quán — tổng dự báo mã không còn bằng dự báo nhóm. Nêu trong hạn chế.
 
     S (n+1 x n): hàng đầu = tổng, còn lại = ma trận đơn vị.
     bottom = (Sᵀ S)⁻¹ Sᵀ · [base_group, base_codes...]  (W = I).

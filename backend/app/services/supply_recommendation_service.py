@@ -1,6 +1,6 @@
 """Supply Recommendation Service.
 
-Triển khai logic tính nhu cầu thuốc và đề xuất nhập kho theo yêu cầu mục 4-7:
+Triển khai logic tính nhu cầu thuốc và lượng thiếu hụt cần chuẩn bị theo yêu cầu mục 4-7:
 
 - Mục 4: Định mức thuốc/vật tư theo bệnh và mức độ (disease_supply_norm)
 - Mục 5: Phân bổ số ca theo mức độ Nhẹ/Trung bình/Nặng (severity_rate)
@@ -48,8 +48,8 @@ def phan_muc_canh_bao(
       XANH — tồn ≥ ngưỡng an toàn.
       XÁM  — không đủ dữ liệu để kết luận (chưa có bản ghi tồn kho) → hiển thị
              thay vì im lặng, vì "không biết" khác với "đủ".
-    Vì sao không gộp Đỏ/Vàng làm một: hành động khác nhau — Đỏ phải đặt NGAY
-    (trong lead time), Vàng chỉ cần đưa vào kỳ đặt hàng kế tiếp.
+    Vì sao không gộp Đỏ/Vàng làm một: hành động khác nhau — Đỏ phải chuẩn bị
+    bổ sung NGAY, Vàng chỉ cần đưa vào kỳ bổ sung kế tiếp.
     """
     n_truoc = float(need_before_buffer or 0)
     n_at = float(predicted_need or 0)
@@ -67,27 +67,27 @@ def phan_muc_canh_bao(
             "level": "red", "level_label": "Đỏ",
             "reason": (f"Tồn {ton:,.0f} {unit} thấp hơn nhu cầu chưa tính dự phòng "
                        f"{n_truoc:,.0f} {unit} — không còn khoảng đệm."),
-            "action": (f"Đặt hàng ngay {de_xuat:,.0f} {unit}, ưu tiên trong "
-                       "thời gian cung ứng gần nhất."),
+            "action": (f"Cần chuẩn bị bổ sung ngay {de_xuat:,.0f} {unit}; "
+                       "báo Khoa Dược ưu tiên cấp phát."),
         }
     if ton < n_at:
         return {
             "level": "yellow", "level_label": "Vàng",
             "reason": (f"Tồn {ton:,.0f} {unit} đủ nhu cầu cơ bản {n_truoc:,.0f} "
                        f"nhưng dưới ngưỡng an toàn {n_at:,.0f} {unit}."),
-            "action": (f"Đưa {de_xuat:,.0f} {unit} vào kỳ đặt hàng kế tiếp; "
+            "action": (f"Đưa {de_xuat:,.0f} {unit} vào kỳ bổ sung kế tiếp; "
                        "theo dõi sát số ca thực tế."),
         }
     return {
         "level": "green", "level_label": "Xanh",
         "reason": (f"Tồn {ton:,.0f} {unit} cao hơn ngưỡng an toàn "
                    f"{n_at:,.0f} {unit}."),
-        "action": "Không cần nhập; theo dõi định kỳ theo lịch đồng bộ.",
+        "action": "Không cần bổ sung; theo dõi định kỳ theo lịch đồng bộ.",
     }
 
 
 class SupplyRecommendationService:
-    """Service tính nhu cầu thuốc và đề xuất nhập kho."""
+    """Service tính nhu cầu thuốc và lượng thiếu hụt cần chuẩn bị."""
 
     def __init__(self, db: Session):
         self.db = db
@@ -255,7 +255,7 @@ class SupplyRecommendationService:
                                     supply.unit or "", suggested_import),
             })
 
-        # Sort theo suggested_import giảm dần (cần nhập nhiều nhất lên đầu)
+        # Sort theo suggested_import giảm dần (thiếu nhiều nhất lên đầu)
         items.sort(key=lambda x: x["suggested_import"], reverse=True)
 
         return {

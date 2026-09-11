@@ -21,10 +21,47 @@ from sqlalchemy.orm import Session
 
 from app.data_pipeline.icd_hierarchy import IcdHierarchy
 from app.data_pipeline.connectors import FileConnector, SqlServerConnector
+from app.data_pipeline import dss_loader
 from app.data_pipeline.pipeline import DataPipeline
 from app.services import sync_config_service
 
 logger = logging.getLogger(__name__)
+
+
+def _ban_ghi_json(df) -> list:
+    """DataFrame → list[dict] mà FastAPI/trình duyệt nuốt được.
+
+    pandas trả numpy.int64 (jsonable_encoder không hiểu → HTTP 500) và NaN cho
+    NULL (json.dumps ghi `NaN`, trình duyệt từ chối parse → giao diện báo
+    "Đồng bộ thất bại" dù backend đã đồng bộ xong). Ép về int/float/str/None.
+    """
+    if df is None or getattr(df, "empty", True):
+        return []
+    out = []
+    for rec in df.to_dict("records"):
+        d = {}
+        for k, v in rec.items():
+            if v is None:
+                d[k] = None
+            elif hasattr(v, "item"):                      # numpy scalar
+                v = v.item()
+                if isinstance(v, float):
+                    v = None if v != v else (int(v) if v.is_integer() else v)
+                d[k] = v
+            elif isinstance(v, float):
+                d[k] = None if v != v else (int(v) if v.is_integer() else v)
+            else:
+                d[k] = v
+        out.append(d)
+    return out
+
+
+def _ngan_gon(exc: Exception) -> str:
+    """Rút thông điệp pyodbc dài dòng về một câu: giữ phần sau '[SQL Server]'."""
+    m = str(exc)
+    if "[SQL Server]" in m:
+        m = m.split("[SQL Server]")[-1]
+    return m.strip().rstrip("')\"").strip()[:160]
 
 
 def _build_pipeline(db: Optional[Session] = None) -> DataPipeline:
@@ -65,18 +102,103 @@ class SyncService:
         self.db = db
 
     def run_sync(self, full: bool = False) -> dict:
-        """Chạy một lần đồng bộ. incremental theo watermark (mặc định)."""
-        result = _build_pipeline(self.db).run(incremental=not full)
+        """Chạy một lần đồng bộ — BA nửa, nửa nào hỏng không chặn nửa khác.
+
+        1. Luồng cũ (CaBenh/TonKho → stg/dim/fact/mart) — DataPipeline.run.
+        2. Bốn luồng DSS (TieuHaoTong, CaBenhPhanCap, TieuHaoPhanCap, TonKhoLo)
+           — dss_loader.load_all. 11/09/2026: trước đây CHỈ nạp được qua CLI
+           scripts/run_dss_load.py; nút Đồng bộ trên giao diện không đụng tới,
+           nên fact_usage_total / fact_inventory_lot đứng yên trong khi thủ tục
+           PROD đã đẩy số mới xuống STA — Dashboard DSS chạy trên số cũ mà
+           không có dấu hiệu nào.
+        3. Làm mới bảng nghiệp vụ cũ (disease_cases, inventory) từ fact/mart.
+        """
+        pipeline = _build_pipeline(self.db)
+        result = pipeline.run(incremental=not full)
         result["mode"] = "full" if full else "incremental"
-        # Nửa sau của "Đồng bộ": các trang cũ (Dịch tễ, Tồn kho, Dashboard) đọc
-        # bảng nghiệp vụ chứ không đọc mart — phải làm mới cả chúng, nếu không
-        # bấm Đồng bộ chỉ cập nhật được các trang dự báo.
+
+        # 2) bốn luồng DSS — đầu ra Phase 0 / G1 của hai thủ tục PROD
+        try:
+            dss = dss_loader.load_all(self.db, pipeline.connector, full=full)
+            result["dss_flows"] = dss["flows"]
+            result["dss_ok"] = dss["ok"]
+            result["dss_failed"] = dss["failed"]
+            if dss["failed"]:
+                logger.warning("Đồng bộ DSS: %d/%d luồng lỗi — %s", dss["failed"],
+                               len(dss["flows"]),
+                               "; ".join(f"{f['flow']}: {f.get('message','')[:80]}"
+                                         for f in dss["flows"] if f["status"] == "failed"))
+        except Exception as exc:                          # noqa: BLE001
+            self.db.rollback()
+            logger.exception("Nạp luồng DSS thất bại")
+            result["dss_error"] = str(exc)[:300]
+
+        # 3) nửa sau: các trang cũ (Dịch tễ, Tồn kho, Dashboard) đọc bảng nghiệp
+        # vụ chứ không đọc mart — phải làm mới cả chúng.
         try:
             result.update(self._lam_moi_bang_nghiep_vu())
         except Exception as exc:
             logger.exception("Làm mới bảng nghiệp vụ thất bại")
             result["legacy_refresh_error"] = str(exc)[:300]
+
+        # trạng thái PROD→STA kèm theo, để giao diện thấy dữ liệu "mới" tới đâu
+        result["sta"] = self.trang_thai_sta(pipeline.connector)
+
+        # Tuần 4c: kỳ vừa chốt → điền thực tế cho sổ theo dõi dự báo
+        try:
+            from app.services import dss_dashboard
+            result["forecast_runs_verified"] = dss_dashboard.fill_actuals(self.db)
+        except Exception as exc:                          # noqa: BLE001
+            logger.warning("fill_actuals sau đồng bộ lỗi: %s", exc)
         return result
+
+    # ── trạng thái PROD → STA ──────────────────────────────────────────
+    @staticmethod
+    def trang_thai_sta(connector) -> dict:
+        """Đọc MF_Watermark + MF_SyncLog trên STA — thứ hai thủ tục PROD ghi rất
+        tử tế (ok/failed, thông điệp có số dòng, bất biến) nhưng backend chưa
+        từng đọc (11/09/2026). Không có bước này, job PROD lỗi ba ngày thì màn
+        hình vẫn hiện số ba ngày trước với nhãn "đã đồng bộ hôm nay".
+
+        Trả {"available": bool, "watermarks": [...], "last_pushes": [...],
+             "warning": str | None}. Chỉ có ý nghĩa với SqlServerConnector;
+        FileConnector trả available=False.
+        """
+        out = {"available": False, "watermarks": [], "last_pushes": [], "warning": None}
+        if not isinstance(connector, SqlServerConnector):
+            return out
+        loi = []
+        wm = lg = None
+        try:
+            wm = connector._read(                          # noqa: SLF001
+                "SELECT TenLuong, CONVERT(varchar(10), MocDaDay, 120) AS MocDaDay, "
+                "       CONVERT(varchar(19), LanChayCuoi, 120) AS LanChayCuoi "
+                "FROM dbo.MF_Watermark ORDER BY TenLuong", {})
+        except Exception as exc:                          # noqa: BLE001
+            loi.append(f"MF_Watermark: {_ngan_gon(exc)}")
+        try:
+            lg = connector._read(                          # noqa: SLF001
+                "SELECT TOP 8 CONVERT(varchar(19), BatDau, 120) AS BatDau, "
+                "       CONVERT(varchar(19), KetThuc, 120) AS KetThuc, "
+                "       TrangThai, SoDongCaBenh, TongSoCa, LEFT(ThongDiep, 400) AS ThongDiep "
+                "FROM dbo.MF_SyncLog ORDER BY Id DESC", {})
+        except Exception as exc:                          # noqa: BLE001
+            loi.append(f"MF_SyncLog: {_ngan_gon(exc)}")
+
+        out["available"] = wm is not None or lg is not None
+        out["watermarks"] = _ban_ghi_json(wm)
+        out["last_pushes"] = _ban_ghi_json(lg)
+        # cảnh báo ngắn cho giao diện — ưu tiên lỗi đẩy thật hơn lỗi quyền đọc
+        failed = [r for r in out["last_pushes"] if str(r.get("TrangThai", "")).lower() == "failed"]
+        if out["last_pushes"] and str(out["last_pushes"][0].get("TrangThai", "")).lower() != "ok":
+            out["warning"] = ("Lần đẩy PROD→STA gần nhất KHÔNG thành công: "
+                              + str(out["last_pushes"][0].get("ThongDiep", ""))[:200])
+        elif failed:
+            out["warning"] = f"{len(failed)}/{len(out['last_pushes'])} lần đẩy gần đây thất bại — xem nhật ký."
+        elif loi:
+            out["warning"] = ("Thiếu quyền đọc trên STA (" + "; ".join(loi)
+                              + "). Chạy sql_his/phase0/G1_05_STA_quyen_trang_thai.sql.")
+        return out
 
     def _lam_moi_bang_nghiep_vu(self) -> dict:
         """Đổ dữ liệu từ tầng pipeline (fact/mart) sang các bảng nghiệp vụ cũ.
@@ -94,7 +216,7 @@ class SyncService:
 
         Cách làm: disease_cases XOÁ-RỒI-CHÈN toàn bộ từ fact_disease_case (nguồn
         chân lý duy nhất, chạy lại không nhân đôi); medical_supplies/inventory
-        thì UPSERT theo supply_code — giữ nguyên safety_stock, giá, lead time
+        thì UPSERT theo supply_code — giữ nguyên safety_stock, giá
         người dùng đã nhập tay.
         """
         from datetime import date, datetime
@@ -223,4 +345,18 @@ class SyncService:
             hist = []
         out["history"] = [{"source": r[0], "last_period": r[1], "rows_ingested": r[2],
                            "status": r[3], "run_at": str(r[4])} for r in (hist or [])]
+
+        # Bốn bảng fact DSS: có/không, kỳ mới nhất — để biết nút Đồng bộ đã
+        # thực sự nạp đầu ra thủ tục chưa.
+        out["dss_tables"] = {}
+        for t, k in (("fact_usage_total", "period"), ("fact_cases_by_care_level", "period"),
+                     ("fact_usage_by_care_level", "period"), ("fact_inventory_lot", "snapshot_date")):
+            r = q1(f"SELECT COUNT(*), MAX({k}) FROM {t}")
+            out["dss_tables"][t] = {"rows": int(r[0] or 0), "latest": r[1]} if r else None
+
+        # Trạng thái PROD→STA (mở kết nối STA — chỉ khi có cấu hình SQL Server)
+        try:
+            out["sta"] = self.trang_thai_sta(_build_pipeline(self.db).connector)
+        except Exception as exc:                          # noqa: BLE001
+            out["sta"] = {"available": False, "warning": str(exc)[:160]}
         return out
