@@ -1020,7 +1020,7 @@ def analyze_forecast(
 
 
 @router.post("/saved")
-async def load_saved_forecast(
+def load_saved_forecast(
     payload: AnalyzeRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -1034,7 +1034,8 @@ async def load_saved_forecast(
     payload.chi_tai_ban_da_luu = True
     payload.save = False
     payload.overwrite = False
-    return await analyze_forecast(payload, db, current_user)
+    # analyze_forecast là hàm đồng bộ (Tuần 1) — `await` một dict là TypeError → 500.
+    return analyze_forecast(payload, db, current_user)
 
 
 @router.get("/history")
