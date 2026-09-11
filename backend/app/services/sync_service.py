@@ -28,6 +28,34 @@ from app.services import sync_config_service
 logger = logging.getLogger(__name__)
 
 
+def _ban_ghi_json(df) -> list:
+    """DataFrame → list[dict] mà FastAPI/trình duyệt nuốt được.
+
+    pandas trả numpy.int64 (jsonable_encoder không hiểu → HTTP 500) và NaN cho
+    NULL (json.dumps ghi `NaN`, trình duyệt từ chối parse → giao diện báo
+    "Đồng bộ thất bại" dù backend đã đồng bộ xong). Ép về int/float/str/None.
+    """
+    if df is None or getattr(df, "empty", True):
+        return []
+    out = []
+    for rec in df.to_dict("records"):
+        d = {}
+        for k, v in rec.items():
+            if v is None:
+                d[k] = None
+            elif hasattr(v, "item"):                      # numpy scalar
+                v = v.item()
+                if isinstance(v, float):
+                    v = None if v != v else (int(v) if v.is_integer() else v)
+                d[k] = v
+            elif isinstance(v, float):
+                d[k] = None if v != v else (int(v) if v.is_integer() else v)
+            else:
+                d[k] = v
+        out.append(d)
+    return out
+
+
 def _ngan_gon(exc: Exception) -> str:
     """Rút thông điệp pyodbc dài dòng về một câu: giữ phần sau '[SQL Server]'."""
     m = str(exc)
@@ -151,8 +179,8 @@ class SyncService:
             loi.append(f"MF_SyncLog: {_ngan_gon(exc)}")
 
         out["available"] = wm is not None or lg is not None
-        out["watermarks"] = wm.to_dict("records") if wm is not None else []
-        out["last_pushes"] = lg.to_dict("records") if lg is not None else []
+        out["watermarks"] = _ban_ghi_json(wm)
+        out["last_pushes"] = _ban_ghi_json(lg)
         # cảnh báo ngắn cho giao diện — ưu tiên lỗi đẩy thật hơn lỗi quyền đọc
         failed = [r for r in out["last_pushes"] if str(r.get("TrangThai", "")).lower() == "failed"]
         if out["last_pushes"] and str(out["last_pushes"][0].get("TrangThai", "")).lower() != "ok":
