@@ -209,7 +209,7 @@ class SyncService:
 
         Cách làm: disease_cases XOÁ-RỒI-CHÈN toàn bộ từ fact_disease_case (nguồn
         chân lý duy nhất, chạy lại không nhân đôi); medical_supplies/inventory
-        thì UPSERT theo supply_code — giữ nguyên safety_stock, giá, lead time
+        thì UPSERT theo supply_code — giữ nguyên safety_stock, giá
         người dùng đã nhập tay.
         """
         from datetime import date, datetime

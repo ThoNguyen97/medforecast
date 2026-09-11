@@ -68,12 +68,11 @@ export interface AuditLogsResponse {
 }
 
 // Grouped config sections (convenience types for the Settings UI)
-export type ConfigSection = 'thresholds' | 'conversion-ratios' | 'lead-times' | 'unit-prices' | 'history';
+export type ConfigSection = 'thresholds' | 'conversion-ratios' | 'unit-prices' | 'history';
 
 export const CONFIG_SECTION_LABELS: Record<ConfigSection, string> = {
   thresholds: 'Ngưỡng cảnh báo thiếu hụt',
   'conversion-ratios': 'Tỷ lệ quy đổi',
-  'lead-times': 'Thời gian đặt hàng',
   'unit-prices': 'Đơn giá vật tư',
   history: 'Lịch sử thay đổi',
 };

@@ -13,7 +13,7 @@ Ensemble ở app/forecasting/models.py (SeasonalTrend + Poisson + Harmonic-thờ
 -tiết + SARIMAX) học xu hướng + mùa vụ + biến ngoại sinh trên TOÀN chuỗi, đã
 kiểm walk-forward 66–67 bước trên dữ liệu HIS thật: MASE mức nhóm 0,51–0,65,
 thời tiết giảm 28–33% MAE cho hai nhóm nhạy thời tiết. Cùng engine với trang
-Kế hoạch nhập kho — hai màn hình hết cảnh mỗi nơi một số.
+Kế hoạch cung ứng — hai màn hình hết cảnh mỗi nơi một số.
 
 CHỐNG RÒ RỈ THỜI GIAN: khi tháng đích nằm trong quá khứ (người dùng chọn để
 đối chiếu), mô hình CHỈ học trên các tháng trước tháng đích — dự báo "như thể

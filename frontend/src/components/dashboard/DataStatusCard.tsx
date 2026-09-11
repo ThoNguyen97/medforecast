@@ -78,7 +78,7 @@ export default function DataStatusCard({ status }: { status: DataStatusSection }
       <div className="flex items-center gap-2 pt-1">
         <button
           type="button"
-          onClick={() => runSync.mutate()}
+          onClick={() => runSync.mutate(false)}
           disabled={runSync.isPending}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-100 text-blue-700 text-xs font-medium hover:bg-blue-100 disabled:opacity-60"
         >

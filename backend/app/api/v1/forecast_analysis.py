@@ -643,7 +643,7 @@ def analyze_forecast(
         # hai tựa vào trung bình nhiều năm nên bị dịch chuyển mức nền kéo tụt
         # (đo thật trên T6/2026: dự báo 65 ca cho tháng thực tế ~110 — hụt ~40%).
         # Ensemble học xu hướng + mùa vụ + thời tiết trên toàn chuỗi, CÙNG engine
-        # với trang Kế hoạch nhập kho — hai màn hình thống nhất một con số.
+        # với trang Kế hoạch cung ứng — hai màn hình thống nhất một con số.
         def _accuracy_tu_ensemble(a):
             return {
                 "mae": a["mae"], "rmse": a["mae"],  # rmse không đo ở bản nhanh

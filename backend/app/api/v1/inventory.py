@@ -89,12 +89,12 @@ async def download_inventory_template():
     from fastapi.responses import StreamingResponse
 
     sample = (
-        "supply_code,drug_code,ten_hoat_chat,unit,group_name,category,current_stock,safety_stock,expiry_date,lead_time_days\n"
-        "VT001,A2A210200000133,Paracetamol,Viên,Thuốc hạ sốt giảm đau,medicine,8500,2000,2027-06-30,7\n"
-        "VT002,A2C816100000074,Natri clorid,Chai,Dung dịch/dịch truyền,medicine,420,500,2026-12-31,10\n"
-        "VT003,A2C715800000009,N-acetylcysteine,Gói,Thuốc long đờm,medicine,3200,1000,2027-09-30,7\n"
-        "VT004,A2A300000000058,Fexofenadin,Viên,Kháng histamin,medicine,2400,500,2027-03-31,7\n"
-        "VT005,A2A610720000036,Amoxicilin + acid clavulanic,Viên,Kháng sinh uống,medicine,2400,1500,2026-12-31,7\n"
+        "supply_code,drug_code,ten_hoat_chat,unit,group_name,category,current_stock,safety_stock,expiry_date\n"
+        "VT001,A2A210200000133,Paracetamol,Viên,Thuốc hạ sốt giảm đau,medicine,8500,2000,2027-06-30\n"
+        "VT002,A2C816100000074,Natri clorid,Chai,Dung dịch/dịch truyền,medicine,420,500,2026-12-31\n"
+        "VT003,A2C715800000009,N-acetylcysteine,Gói,Thuốc long đờm,medicine,3200,1000,2027-09-30\n"
+        "VT004,A2A300000000058,Fexofenadin,Viên,Kháng histamin,medicine,2400,500,2027-03-31\n"
+        "VT005,A2A610720000036,Amoxicilin + acid clavulanic,Viên,Kháng sinh uống,medicine,2400,1500,2026-12-31\n"
     )
     return StreamingResponse(
         iter([sample]),
@@ -122,128 +122,6 @@ async def _export_inventory_excel(
 ) -> Any:
     """Xuất báo cáo tồn kho ra file Excel (.xlsx) — spec 6.6."""
     return _do_inventory_export(db)
-
-
-@router.post("/sync-safety-stock")
-async def sync_safety_stock_from_forecast(
-    forecast_month: Optional[str] = Query(
-        None, description="Tháng dự báo (YYYY-MM-DD), để trống = tháng gần nhất"
-    ),
-    buffer_rate: float = Query(15.0, ge=0, le=100, description="% dự phòng"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_inventory_manager_or_admin),
-) -> Any:
-    """
-    Cập nhật ngưỡng an toàn (safety_stock) trong inventory từ kết quả dự báo.
-    
-    Logic:
-    1. Lấy kết quả dự báo từ supply_recommendations cho tháng chỉ định
-    2. Tính safety_stock = need_before_buffer × (1 + buffer_rate/100)  (= Nhu cầu cuối)
-    3. Cập nhật inventory.safety_stock cho các vật tư tương ứng
-    
-    Returns:
-        - updated: số vật tư đã cập nhật
-        - skipped: số vật tư bỏ qua (không có dự báo)
-    """
-    from datetime import datetime as _dt
-    from app.models.supply_recommendation import SupplyRecommendation
-
-    # Parse forecast_month
-    if forecast_month:
-        try:
-            target_month = _dt.fromisoformat(forecast_month).date()
-        except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail="forecast_month phải có định dạng YYYY-MM-DD",
-            )
-    else:
-        # Lấy tháng gần nhất có dữ liệu
-        latest = (
-            db.query(SupplyRecommendation.forecast_month)
-            .order_by(SupplyRecommendation.forecast_month.desc())
-            .first()
-        )
-        if not latest:
-            raise HTTPException(
-                status_code=404,
-                detail="Không tìm thấy dữ liệu dự báo nào. Vui lòng chạy phân tích dự báo trước.",
-            )
-        target_month = latest[0]
-
-    # Lấy tất cả recommendations cho tháng đó
-    recommendations = (
-        db.query(SupplyRecommendation)
-        .filter(SupplyRecommendation.forecast_month == target_month)
-        .all()
-    )
-
-    if not recommendations:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Không tìm thấy dữ liệu dự báo cho tháng {target_month}",
-        )
-
-    # Group theo supply_id và tính tổng need_before_buffer
-    supply_needs: dict[int, float] = {}
-    for rec in recommendations:
-        sid = rec.supply_id
-        if sid not in supply_needs:
-            supply_needs[sid] = 0
-        supply_needs[sid] += rec.need_before_buffer
-
-    # Cập nhật inventory.safety_stock
-    # GHI ĐÈ TẤT CẢ giá trị với Ngưỡng AT tính từ dự báo
-    updated = 0
-    skipped = 0
-    from app.models.inventory import Inventory as InventoryModel
-
-    for supply_id, need_before_buffer in supply_needs.items():
-        # Ngưỡng AT = Nhu cầu cuối = nhu cầu trước dự phòng × (1 + % dự phòng).
-        inv = (
-            db.query(InventoryModel)
-            .filter(InventoryModel.supply_id == supply_id)
-            .first()
-        )
-        if not inv:
-            skipped += 1
-            continue
-
-        # ── G0 · DSS — ĐÃ CẮT VÒNG LẶP TỰ THAM CHIẾU ───────────────
-        # Trước đây:  safety_stock = nhu cầu × (1 + 15%)  rồi ghi
-        # ngược vào inventory, và lần chạy sau lại đọc chính nó ra
-        # làm đầu vào. Mỗi lần bấm "phân tích" nhân thêm 1,15 lần.
-        #
-        # Phạm vi DSS không dùng safety_stock. Cảnh báo tính bằng
-        #     DOI = tồn hữu dụng (FEFO) / nhu cầu trung bình ngày
-        # và được sinh ở tầng cảnh báo (xem G4 trong lộ trình).
-        #
-        # KHÔNG khôi phục dòng ghi ngược ở đây.
-        skipped += 1
-        continue
-
-    try:
-        db.commit()
-    except Exception as exc:
-        db.rollback()
-        logger.error(f"Failed to sync safety stock: {exc}")
-        raise HTTPException(
-            status_code=500,
-            detail="Không thể cập nhật ngưỡng an toàn",
-        )
-
-    logger.info(
-        f"Synced safety_stock from forecast {target_month}: "
-        f"updated={updated}, skipped={skipped} by user={current_user.username}"
-    )
-
-    return {
-        "forecast_month": target_month.isoformat(),
-        "buffer_rate": buffer_rate,
-        "updated": updated,
-        "skipped": skipped,
-        "message": f"Đã cập nhật ngưỡng an toàn cho {updated} vật tư từ dự báo tháng {target_month.strftime('%m/%Y')}",
-    }
 
 
 @router.get("/{inventory_id}", response_model=InventoryResponse)
@@ -455,15 +333,8 @@ async def _do_inventory_import(file: "UploadFile", db: Session, current_user: Us
 
         if cur_stock < 0 or saf_stock < 0:
             skipped += 1
-            errors.append({"row": idx, "reason": "Tồn kho / ngưỡng AT không được âm"})
+            errors.append({"row": idx, "reason": "Tồn kho / ngưỡng an toàn không được âm"})
             continue
-
-        try:
-            lead_time = int(
-                float((row.get("lead_time_days") or "").strip() or 0)
-            )
-        except ValueError:
-            lead_time = None
 
         expiry_str = (row.get("expiry_date") or "").strip()
         expiry_date = None
@@ -512,7 +383,6 @@ async def _do_inventory_import(file: "UploadFile", db: Session, current_user: Us
                 unit=unit,
                 group_name=group_name,
                 category=category,
-                lead_time_days=lead_time,
             )
             db.add(supply)
             db.flush()
@@ -524,8 +394,6 @@ async def _do_inventory_import(file: "UploadFile", db: Session, current_user: Us
                 supply.unit = unit
             if group_name and group_name != "Khác":
                 supply.group_name = group_name
-            if lead_time is not None:
-                supply.lead_time_days = lead_time
 
         # 2. Tìm/Tạo Inventory record
         inv = (
@@ -591,7 +459,6 @@ def _do_inventory_export(db: Session) -> Any:
             MedicalSupply.group_name,
             MedicalSupply.category,
             MedicalSupply.unit,
-            MedicalSupply.lead_time_days,
         )
         .join(MedicalSupply, MedicalSupply.id == InventoryModel.supply_id)
         .order_by(MedicalSupply.supply_code)
@@ -618,10 +485,9 @@ def _do_inventory_export(db: Session) -> Any:
         "Loại",
         "ĐVT",
         "Tồn kho",
-        "Ngưỡng AT",
+        "Ngưỡng an toàn",
         "Trạng thái",
         "Hạn dùng",
-        "Lead time (ngày)",
     ]
 
     header_fill = PatternFill(start_color="1F4E79", end_color="1F4E79", fill_type="solid")
@@ -655,16 +521,16 @@ def _do_inventory_export(db: Session) -> Any:
     status_color = {
         "Bình thường": "16A34A",
         "Dưới ngưỡng": "D97706",
-        "Cần nhập gấp": "DC2626",
+        "Nguy cấp": "DC2626",
     }
 
     for r_idx, r in enumerate(rows, start=2):
         cur = r.current_stock or 0
         saf = r.safety_stock or 0
         if cur <= 0:
-            status_text = "Cần nhập gấp"
+            status_text = "Nguy cấp"
         elif saf > 0 and cur < saf * 0.3:
-            status_text = "Cần nhập gấp"
+            status_text = "Nguy cấp"
         elif cur <= saf:
             status_text = "Dưới ngưỡng"
         else:
@@ -686,9 +552,8 @@ def _do_inventory_export(db: Session) -> Any:
             column=8,
             value=r.expiry_date.strftime("%d/%m/%Y") if r.expiry_date else "",
         )
-        ws.cell(row=r_idx, column=9, value=r.lead_time_days or "")
 
-    widths = [12, 38, 14, 8, 10, 10, 16, 12, 14]
+    widths = [12, 38, 14, 8, 10, 10, 16, 12]
     for col_num, w in enumerate(widths, 1):
         ws.column_dimensions[get_column_letter(col_num)].width = w
 

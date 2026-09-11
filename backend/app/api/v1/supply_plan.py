@@ -1,4 +1,4 @@
-"""API đề xuất nhập kho từ dự báo phân cấp (có mức an toàn + lead time).
+"""API kế hoạch cung ứng từ dự báo phân cấp (mức an toàn theo khoảng bất định).
 
   GET /api/v1/supply-plan/{block}?method=top_down_dynamic
 """

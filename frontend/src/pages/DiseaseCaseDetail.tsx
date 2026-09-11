@@ -68,7 +68,7 @@ export default function DiseaseCaseDetail() {
   const itemsPerPage = 10;
 
   useEffect(() => {
-    setPageTitle('Chi Tiết Sử Dụng Thuốc');
+    setPageTitle('Chi tiết sử dụng thuốc');
     if (!caseId) return;
     setLoading(true);
     api

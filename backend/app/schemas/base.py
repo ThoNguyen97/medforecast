@@ -121,8 +121,6 @@ class MedicalSupplyBase(BaseModel):
     group_name: str = Field(..., description="Nhóm thuốc/vật tư")
     category: Optional[str] = None
     unit_price: Optional[float] = None
-    minimum_order_quantity: Optional[int] = None
-    lead_time_days: Optional[int] = None
     storage_capacity: Optional[int] = None
     description: Optional[str] = None
 
@@ -139,8 +137,6 @@ class MedicalSupplyUpdate(BaseModel):
     group_name: Optional[str] = None
     category: Optional[str] = None
     unit_price: Optional[float] = None
-    minimum_order_quantity: Optional[int] = None
-    lead_time_days: Optional[int] = None
     storage_capacity: Optional[int] = None
     description: Optional[str] = None
 

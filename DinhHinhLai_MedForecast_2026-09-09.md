@@ -222,6 +222,20 @@ _archive/
 
 Bốn endpoint cũ `summary / case-trend / demand-vs-stock / critical-alerts` giữ nguyên cho tới khi Reports/Alerts thôi gọi.
 
+**Nhật ký Tuần 3 · 11/09/2026 — 3.1–3.6 xong**
+
+| # | Đã làm |
+|---|---|
+| 3.1 | `supply_recommendation_service`: "Đặt hàng ngay" → "Cần chuẩn bị bổ sung ngay", "kỳ đặt hàng kế tiếp" → "kỳ bổ sung kế tiếp", "Không cần nhập" → "Không cần bổ sung". `supply_planning_service` bỏ `lead_time_days` khỏi SELECT và items (khoá `suggested_import` giữ tên, nghĩa = Δ thiếu hụt) |
+| 3.2 | `Alerts.tsx` tiêu đề "Cảnh báo nguy cơ thiếu hụt", cột "Thiếu hụt cần chuẩn bị", KPI "Thiếu hụt"/"Tổng lượng cần chuẩn bị", icon giỏ hàng → PackageMinus. `SupplyPlanning.tsx` "Kế hoạch cung ứng", bỏ cột Lead. `ReportTypePicker` bỏ thẻ procurement; `Reports.tsx` bỏ query/preview/xuất Excel procurement (~110 dòng, kéo theo cả sessionStorage ngưỡng tay). `Inventory.tsx` bỏ ô Lead time, bỏ nút + modal "Cập nhật ngưỡng AT từ dự báo". `types/config.ts` bỏ mục `lead-times`; `types/inventory.ts` bỏ `lead_time_days`, `minimum_order_quantity`. Schema Pydantic `MedicalSupply*` bỏ hai trường đó (cột DB giữ, không migrate); CSV mẫu và Excel xuất kho bỏ cột lead time |
+| 3.3 | Một nhãn: **"Ngưỡng an toàn"** ở Alerts, Inventory, Reports, Excel (hết "Ngưỡng AT"/"Mức an toàn" lẫn lộn); giải nghĩa một lần ở đầu trang Cảnh báo. Trạng thái `critical` đổi "Cần nhập gấp" → **"Nguy cấp"** (frontend + PDF/Excel backend) |
+| 3.4 | Sidebar: "Dashboard" → "Tổng quan", "Cảnh báo tồn kho" → "Cảnh báo thiếu hụt", thêm **"Kế hoạch cung ứng"** (`/supply-plan`); tiêu đề trang Dữ liệu bệnh / Thời tiết / Vật tư / Quản trị khớp nhãn menu |
+| 3.5 | `reports.py`: xoá `_build_procurement_data`, `_render_procurement_pdf`, `_render_procurement_excel` và nhánh không tới được (thay bằng HTTP 400 tường minh) — 115 dòng |
+| 3.6 | Xoá `POST /inventory/sync-safety-stock` (121 dòng) và toàn bộ UI gọi nó |
+| + | Sửa nhân tiện: `Weather.tsx` gọi `setDistricts` không tồn tại (ReferenceError lúc chạy); kiểu `LucideIcon` cho Sidebar; `useRunSync` nhận `boolean` — **`tsc --noEmit` mã nguồn (ngoài test) = 0 lỗi**, trước đó 56 |
+
+Còn lại của Tuần 3: 3.7 đóng gói bộ dữ liệu, 3.8 từ điển dữ liệu + datasheet.
+
 ### TUẦN 4 — Bằng chứng huấn luyện và đối chứng mô hình
 *Đây là tuần trả lời trực tiếp câu hỏi của thầy về "model train" và "tính ứng dụng".*
 

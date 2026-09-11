@@ -11,7 +11,6 @@ import {
 import {
   syncService,
   type ConnectionTestResult,
-  type HisConnectionConfig,
   type HisConnectionInput,
 } from '../../services/syncService';
 import { cn } from '../../utils/cn';

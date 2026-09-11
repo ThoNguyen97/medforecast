@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Calendar,
   MapPin,
-  Building2,
   Search,
   Download,
   Upload,
@@ -23,7 +22,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
 } from 'recharts';
 import { SERIES, INK, gridProps, tooltipStyle } from '../utils/chartTheme';
 import { useUIStore } from '../store/uiStore';
@@ -109,7 +107,7 @@ export default function Weather() {
   } | null>(null);
 
   useEffect(() => {
-    setPageTitle('Quản Lý Dữ Liệu Thời Tiết');
+    setPageTitle('Dữ liệu thời tiết');
     loadData();
     loadDistinctValues();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -144,7 +142,6 @@ export default function Weather() {
         })),
       ]);
 
-      const adminNames: string[] = (adminRes.data || []).map((r: any) => r.name);
       const adminProvinces: string[] = Array.from(
         new Set(
           (adminRes.data || [])
@@ -154,7 +151,6 @@ export default function Weather() {
       );
 
       const dbProvinces: string[] = distinctRes.data?.provinces ?? [];
-      const dbDistricts: string[] = distinctRes.data?.districts ?? [];
       const dbCascade: Record<string, string[]> =
         distinctRes.data?.province_districts ?? {};
 
@@ -171,16 +167,8 @@ export default function Weather() {
       if (merged.includes('Toàn thành phố')) final.unshift('Toàn thành phố');
       setProvinces(final);
 
-      // Cho dropdown khi chưa chọn tỉnh — gộp tất cả admin districts + DB
-      const mergedDistricts = Array.from(
-        new Set([...adminNames, ...dbDistricts]),
-      ).filter(Boolean);
-      mergedDistricts.sort((a, b) => {
-        if (a === 'Toàn thành phố') return -1;
-        if (b === 'Toàn thành phố') return 1;
-        return a.localeCompare(b, 'vi');
-      });
-      setDistricts(mergedDistricts);
+      // (Tuần 3) Bỏ danh sách quận gộp: state `districts` không tồn tại —
+      // `setDistricts` là ReferenceError lúc chạy, làm bước nạp danh mục dừng giữa chừng.
 
       // Chuẩn hoá key cascade để khớp value dropdown (master)
       const normCascade: Record<string, string[]> = {};

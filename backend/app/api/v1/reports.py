@@ -483,7 +483,7 @@ class ExportReportRequest(BaseModel):
 
     report_type: str
     """One of: consumption, forecast-accuracy, inventory-turnover, dashboard-summary,
-    epidemic, forecast, inventory, shortage, procurement."""
+    epidemic, forecast, inventory, shortage."""
 
     format: str = "pdf"
     """Export format: 'pdf' or 'excel' (default 'pdf')."""
@@ -510,7 +510,6 @@ async def export_report(
     - ``forecast``            – Dự báo ca bệnh
     - ``inventory``           – Tồn kho vật tư
     - ``shortage``            – Thiếu hụt vật tư
-    - ``procurement``         – Đề xuất nhập kho
     - ``forecast-accuracy``   – Độ chính xác dự báo (alias 'accuracy')
 
     Legacy types vẫn được hỗ trợ:
@@ -524,8 +523,7 @@ async def export_report(
         "forecast",
         "inventory",
         "shortage",
-        # "procurement" — gỡ ở G0 (phạm vi DSS). Khung trình bày
-        # PDF/Excel bên dưới giữ lại làm nền cho báo cáo DOI ở G5.
+        # "procurement" — gỡ ở G0 (phạm vi DSS); mã dựng báo cáo đã xoá ở Tuần 3.
         "forecast-accuracy",
         # Legacy types
         "consumption",
@@ -618,13 +616,9 @@ async def export_report(
             else _render_shortage_excel(data, start, end)
         )
 
-    # procurement
-    data = await _build_procurement_data(db, start, end, payload.disease_type)
-    return (
-        _render_procurement_pdf(data, start, end)
-        if payload.format == "pdf"
-        else _render_procurement_excel(data, start, end)
-    )
+    # Không tới được: SUPPORTED_TYPES đã chặn từ đầu hàm. Giữ 400 để tường minh.
+    raise HTTPException(status_code=400,
+                        detail=f"Loại báo cáo không hỗ trợ: {payload.report_type}")
 
 
 # ── Internal data-fetching helpers (reused by export) ────────────────────────
@@ -1358,7 +1352,7 @@ def _render_dashboard_summary_pdf(data: Dict) -> Response:
     # 4. Alerts table
     story.append(Paragraph("<b>IV. Cảnh báo thiếu hụt vật tư (Top 5)</b>", styles["Heading2"]))
     if data["alerts"]:
-        severity_label = {"critical": "Nguy hiểm", "high": "Cần nhập", "medium": "Cảnh báo"}
+        severity_label = {"critical": "Nguy hiểm", "high": "Thiếu hụt", "medium": "Cảnh báo"}
         a_data = [["Vật tư", "Tồn hiện tại", "Định mức", "Trạng thái"]]
         for a in data["alerts"]:
             a_data.append([
@@ -1547,7 +1541,7 @@ async def _build_inventory_data(
         elif saf <= 0:
             status_text = "Chưa xác định ngưỡng"
         elif cur < saf * 0.3:
-            status_text = "Cần nhập gấp"
+            status_text = "Nguy cấp"
         elif cur <= saf:
             status_text = "Dưới ngưỡng"
         else:
@@ -1567,7 +1561,7 @@ async def _build_inventory_data(
         "items": items,
         "summary": {
             "total": len(items),
-            "critical": sum(1 for x in items if x["status"] == "Cần nhập gấp"),
+            "critical": sum(1 for x in items if x["status"] == "Nguy cấp"),
             "low": sum(1 for x in items if x["status"] == "Dưới ngưỡng"),
             "safe": sum(1 for x in items if x["status"] == "Bình thường"),
         },
@@ -1632,72 +1626,6 @@ async def _build_shortage_data(
     }
 
 
-async def _build_procurement_data(
-    db: Session,
-    start: date,
-    end: date,
-    disease_type: Optional[str],
-) -> Dict:
-    """Báo cáo Đề xuất nhập kho: vật tư cần nhập + lý do.
-    
-    Sử dụng service mới (supply_recommendation_service) thay vì logic cũ.
-    """
-    from app.services.supply_recommendation_service import SupplyRecommendationService
-    
-    # Tính toán đề xuất nhập kho cho tháng hiện tại
-    service = SupplyRecommendationService(db)
-    current_month = start  # Sử dụng start date làm forecast month
-    
-    try:
-        result = service.calculate_for_month(
-            forecast_month=current_month,
-            location=None,  # Toàn quốc
-            buffer_rate=15.0,  # Mặc định 15%
-        )
-    except Exception as e:
-        logger.error(f"Failed to calculate procurement: {e}")
-        return {"items": [], "summary": {"total": 0, "total_order": 0}, "safety_rate": 0.15}
-    
-    # Chỉ lấy các vật tư cần nhập (suggested_import > 0)
-    items = []
-    for item in result.get("items", []):
-        if item.get("suggested_import", 0) <= 0:
-            continue
-            
-        # Xác định lý do cần nhập
-        demand = item.get("predicted_need_total", 0)
-        stock = item.get("current_stock", 0)
-        ratio = (stock / demand) if demand > 0 else 1
-        
-        if ratio < 0.1:
-            reason = "Tồn < 10% nhu cầu — nguy hiểm"
-        elif ratio < 0.25:
-            reason = "Tồn 10–25% nhu cầu — cảnh báo"
-        else:
-            reason = "Bù dự phòng theo chính sách"
-        
-        items.append({
-            "supply_code": item.get("supply_code", ""),
-            "supply_name": item.get("ten_hoat_chat", ""),
-            "category": item.get("group_name", ""),
-            "unit": item.get("unit", ""),
-            "demand": demand,
-            "stock": stock,
-            "recommended": item.get("suggested_import", 0),
-            "reason": reason,
-        })
-    
-    # Sắp xếp theo đề xuất nhập giảm dần
-    items.sort(key=lambda x: -x["recommended"])
-    
-    return {
-        "items": items,
-        "summary": {
-            "total": len(items),
-            "total_order": sum(x["recommended"] for x in items),
-        },
-        "safety_rate": result.get("buffer_rate", 15.0),
-    }
 
 
 def _ascii_filename(s: str) -> str:
@@ -1732,7 +1660,7 @@ def _vi_category(key: str) -> str:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# PDF Renderers cho 5 loại mới (epidemic / forecast / inventory / shortage / procurement)
+# PDF Renderers cho 4 loại (epidemic / forecast / inventory / shortage)
 # ═══════════════════════════════════════════════════════════════════════════
 
 
@@ -1889,7 +1817,7 @@ def _render_inventory_pdf(data: Dict) -> Response:
             f"<b>Tổng vật tư:</b> {s['total']:,} | "
             f"<b>An toàn:</b> {s['safe']:,} | "
             f"<b>Dưới ngưỡng:</b> {s['low']:,} | "
-            f"<b>Cần nhập gấp:</b> {s['critical']:,}"
+            f"<b>Nguy cấp:</b> {s['critical']:,}"
         ],
     )
 
@@ -1920,34 +1848,6 @@ def _render_shortage_pdf(data: Dict, start: date, end: date) -> Response:
     )
 
 
-def _render_procurement_pdf(data: Dict, start: date, end: date) -> Response:
-    rows = [
-        [
-            it["supply_code"],
-            it["supply_name"],
-            it["category"],
-            it["unit"],
-            f"{it['demand']:,}",
-            f"{it['stock']:,}",
-            f"{it['recommended']:,}",
-            it["reason"],
-        ]
-        for it in data["items"]
-    ]
-    s = data["summary"]
-    rate_pct = round(data.get("safety_rate", 0.15) * 100)
-    return _generic_pdf(
-        title="Báo cáo Đề xuất Nhập kho",
-        period_label=f"{start.strftime('%d/%m/%Y')} - {end.strftime('%d/%m/%Y')}",
-        headers=["Mã VT", "Tên vật tư", "Loại", "ĐVT", "Nhu cầu", "Tồn kho", "SL nhập", "Lý do"],
-        rows=rows,
-        col_widths_cm=[2, 4.5, 2.2, 1.5, 2, 2, 2.2, 5],
-        summary_lines=[
-            f"<b>Số vật tư đề xuất nhập:</b> {s['total']:,} | "
-            f"<b>Tổng SL đề xuất:</b> {s['total_order']:,} | "
-            f"<b>Hệ số dự phòng:</b> {rate_pct}%"
-        ],
-    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -2110,27 +2010,6 @@ def _render_shortage_excel(data: Dict, start: date, end: date) -> Response:
     )
 
 
-def _render_procurement_excel(data: Dict, start: date, end: date) -> Response:
-    rows = [
-        [
-            it["supply_code"],
-            it["supply_name"],
-            it["category"],
-            it["unit"],
-            it["demand"],
-            it["stock"],
-            it["recommended"],
-        ]
-        for it in data["items"]
-    ]
-    return _generic_excel(
-        sheet_title="Đề xuất nhập kho",
-        headers=["Mã vật tư", "Tên vật tư", "Loại", "ĐVT", "Nhu cầu dự báo", "Tồn hiện tại", "SL đề xuất nhập"],
-        rows=rows,
-        column_widths=[18, 40, 16, 10, 16, 16, 18],
-        filename_prefix="de_xuat_nhap_kho",
-        title_line=None,  # Không có dòng tiêu đề
-    )
 
 
 # ── Excel cho 4 loại legacy ─────────────────────────────────────────────────
@@ -2284,7 +2163,7 @@ def _render_dashboard_summary_excel(data: Dict) -> Response:
         cell.fill = header_fill
         cell.font = header_font
     row += 1
-    severity_label = {"critical": "Nguy hiểm", "high": "Cần nhập", "medium": "Cảnh báo"}
+    severity_label = {"critical": "Nguy hiểm", "high": "Thiếu hụt", "medium": "Cảnh báo"}
     for a in data["alerts"]:
         ws.cell(row=row, column=1, value=a["supply_name"])
         ws.cell(row=row, column=2, value=a["current_stock"])

@@ -1,10 +1,13 @@
-"""Đề xuất nhập kho từ dự báo phân cấp — có mức an toàn (theo khoảng bất định)
-và lead time.
+"""Kế hoạch cung ứng từ dự báo phân cấp — mức an toàn lấy theo khoảng bất định.
 
 Luồng: dự báo số ca từng mã (điểm + cận trên) → phân bổ mức độ (severity_rates)
 → nhân định mức thuốc (disease_supply_norms) → nhu cầu; dùng CẬN TRÊN làm mức an
-toàn → so tồn kho (mart_inventory) → đề xuất nhập. Kèm lead_time_days để biết thời
-điểm đặt hàng.
+toàn → so tồn kho (mart_inventory) → LƯỢNG THIẾU HỤT CẦN CHUẨN BỊ.
+
+Phạm vi DSS (Tuần 3, 11/09/2026): không còn lead time, không còn thời điểm
+đặt hàng — hệ thống chỉ báo thiếu bao nhiêu, quyết định cung ứng là của Khoa Dược.
+Khoá `suggested_import` giữ tên để giao diện không vỡ; nghĩa là Δ = max(0, mức
+an toàn − tồn).
 """
 from __future__ import annotations
 from typing import Dict, List, Optional
@@ -45,7 +48,7 @@ class SupplyPlanningService:
         params = {f"c{i}": c for i, c in enumerate(icds)}
         return self._rows(
             f"SELECT n.icd_code, n.severity, n.quantity_per_case, s.supply_code, "
-            f"s.drug_code, s.ten_hoat_chat, s.unit, s.group_name, s.lead_time_days "
+            f"s.drug_code, s.ten_hoat_chat, s.unit, s.group_name "
             f"FROM disease_supply_norms n JOIN medical_supplies s ON s.id = n.supply_id "
             f"WHERE n.icd_code IN ({ph})", params)
 
@@ -88,7 +91,7 @@ class SupplyPlanningService:
 
         # gộp theo vật tư: nhu cầu điểm + nhu cầu an toàn (cận trên)
         agg: Dict[str, dict] = {}
-        for (icd, severity, qty, scode, dcode, sname, unit, grp, lead) in norms:
+        for (icd, severity, qty, scode, dcode, sname, unit, grp) in norms:
             rate_map = sev.get(icd) or sev.get(block)
             if not rate_map or severity not in SEVERITIES:
                 continue
@@ -107,7 +110,7 @@ class SupplyPlanningService:
             key = dc if dc.lower() not in ("", "nan", "none") else scode
             it = agg.setdefault(key, {
                 "supply_code": dcode or scode, "name": sname, "unit": unit,
-                "group_name": grp, "lead_time_days": int(lead or 0),
+                "group_name": grp,
                 "demand_point": 0.0, "demand_safety": 0.0})
             it["demand_point"] += demand_point
             it["demand_safety"] += demand_safe
@@ -117,10 +120,10 @@ class SupplyPlanningService:
             need_point = round(it["demand_point"])
             need_safety = round(it["demand_safety"])   # đã gồm dự phòng bất định
             cur = stock.get(key, 0)
-            suggest = max(0, need_safety - cur)
+            suggest = max(0, need_safety - cur)     # lượng thiếu hụt cần chuẩn bị
             items.append({
                 "supply_code": it["supply_code"], "name": it["name"], "unit": it["unit"],
-                "group_name": it["group_name"], "lead_time_days": it["lead_time_days"],
+                "group_name": it["group_name"],
                 "demand_forecast": need_point,
                 "safety_level": need_safety,       # mức an toàn (từ cận trên dự báo)
                 "current_stock": cur,

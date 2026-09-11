@@ -53,7 +53,7 @@ export default function ThresholdsAndRatiosSection() {
 
 // ── Định mức vật tư cho từng bệnh ──────────────────────────────────────────
 
-function ConversionRatiosCard() {
+export function ConversionRatiosCard() {
   const { data: ratios, isLoading } = useConversionRatios();
   const updateMut = useUpdateConversionRatios();
   const [saved, setSaved] = useState(false);

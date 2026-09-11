@@ -21,7 +21,7 @@ export default function SupplyPlanning() {
   const [block, setBlock] = useState<string>('');
   const [method, setMethod] = useState<string>('top_down_dynamic');
 
-  useEffect(() => setPageTitle('Kế hoạch nhập kho'), [setPageTitle]);
+  useEffect(() => setPageTitle('Kế hoạch cung ứng'), [setPageTitle]);
 
   const { data: blocks } = useQuery({
     queryKey: ['forecast-hier', 'blocks'],
@@ -47,9 +47,9 @@ export default function SupplyPlanning() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-3xl font-extrabold text-neutral-900">Kế hoạch nhập kho</h2>
+          <h2 className="text-3xl font-extrabold text-neutral-900">Kế hoạch cung ứng</h2>
           <p className="text-sm text-neutral-500 mt-1">
-            Dự báo phân cấp theo nhóm bệnh → đề xuất nhập vật tư (có mức an toàn)
+            Dự báo phân cấp theo nhóm bệnh → lượng thiếu hụt cần chuẩn bị (mức an toàn theo khoảng dự báo)
           </p>
         </div>
         <button
@@ -135,19 +135,19 @@ export default function SupplyPlanning() {
             </div>
             {plan.data && (
               <div className="mt-3 text-sm text-neutral-600">
-                {plan.data.n_shortage}/{plan.data.n_supplies} vật tư cần nhập thêm
+                {plan.data.n_shortage}/{plan.data.n_supplies} vật tư thiếu hụt so với mức an toàn
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* Bảng đề xuất nhập kho */}
+      {/* Bảng thiếu hụt cần chuẩn bị */}
       {!loading && plan.data && (
         <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
           <div className="flex items-center gap-2 px-5 py-4 border-b border-neutral-100">
             <Package className="w-5 h-5 text-blue-600" />
-            <h3 className="font-semibold text-neutral-900">Đề xuất nhập kho</h3>
+            <h3 className="font-semibold text-neutral-900">Thiếu hụt cần chuẩn bị</h3>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -157,8 +157,7 @@ export default function SupplyPlanning() {
                   <th className="text-right px-4 py-2 font-medium">Nhu cầu</th>
                   <th className="text-right px-4 py-2 font-medium">Mức an toàn</th>
                   <th className="text-right px-4 py-2 font-medium">Tồn kho</th>
-                  <th className="text-right px-4 py-2 font-medium">Đề xuất nhập</th>
-                  <th className="text-right px-4 py-2 font-medium">Lead (ngày)</th>
+                  <th className="text-right px-4 py-2 font-medium">Thiếu hụt cần chuẩn bị</th>
                   <th className="text-center px-4 py-2 font-medium">Trạng thái</th>
                 </tr>
               </thead>
@@ -173,11 +172,10 @@ export default function SupplyPlanning() {
                     <td className="px-4 py-2 text-right text-neutral-800 font-medium">{it.safety_level}</td>
                     <td className="px-4 py-2 text-right text-neutral-600">{it.current_stock}</td>
                     <td className="px-4 py-2 text-right font-semibold text-neutral-900">{it.suggested_import}</td>
-                    <td className="px-4 py-2 text-right text-neutral-500">{it.lead_time_days}</td>
                     <td className="px-4 py-2 text-center">
                       {it.status === 'shortage' ? (
                         <span className="inline-flex items-center gap-1 text-red-600 text-xs font-medium">
-                          <AlertTriangle className="w-3.5 h-3.5" /> Cần nhập
+                          <AlertTriangle className="w-3.5 h-3.5" /> Thiếu hụt
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 text-green-600 text-xs font-medium">

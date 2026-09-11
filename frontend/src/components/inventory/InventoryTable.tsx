@@ -68,7 +68,7 @@ export default function InventoryTable({
               <th className="text-left px-5 py-3 font-semibold">Loại</th>
               <th className="text-left px-5 py-3 font-semibold">ĐVT</th>
               <th className="text-right px-5 py-3 font-semibold">Tồn kho</th>
-              <th className="text-right px-5 py-3 font-semibold">Ngưỡng AT</th>
+              <th className="text-right px-5 py-3 font-semibold">Ngưỡng an toàn</th>
               {showMild && (
                 <th className="text-center px-3 py-3 font-semibold">
                   <span className="inline-flex items-center px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded text-[10px]">Nhẹ</span>

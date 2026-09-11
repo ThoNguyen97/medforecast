@@ -30,7 +30,7 @@ export const useUIStore = create<UIStore>()(
     (set) => ({
       isSidebarOpen: true,
       isSidebarCollapsed: false,
-      pageTitle: 'Dashboard',
+      pageTitle: 'Tổng quan',
       isGlobalLoading: false,
       unreadNotificationsCount: 0,
 

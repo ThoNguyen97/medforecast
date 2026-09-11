@@ -108,8 +108,6 @@ class MedicalSupplyService:
             "category": supply.category,
             "unit": supply.unit,
             "unit_price": float(supply.unit_price) if supply.unit_price else None,
-            "minimum_order_quantity": supply.minimum_order_quantity,
-            "lead_time_days": supply.lead_time_days,
             "storage_capacity": supply.storage_capacity,
             "description": supply.description
         }

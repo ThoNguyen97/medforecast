@@ -19,7 +19,7 @@ const STATUS_CFG: Record<
     dot: 'bg-amber-500',
   },
   critical: {
-    label: 'CẦN NHẬP GẤP',
+    label: 'NGUY CẤP',
     bg: 'bg-red-50',
     text: 'text-red-700',
     dot: 'bg-red-500',
@@ -50,13 +50,13 @@ export function classifyStatus(
   currentStock: number,
   safetyStock: number,
 ): InventoryStatus {
-  // Chưa thiết lập ngưỡng AT (= 0) → coi như chưa quản lý ngưỡng,
+  // Chưa thiết lập ngưỡng an toàn (= 0) → coi như chưa quản lý ngưỡng,
   // không đánh dấu nguy hiểm. Logic này khớp với /alerts: khi
   // safety_stock = 0 và không có nhu cầu dự báo thì suggested_import = 0,
-  // tức không cần nhập.
+  // tức không thiếu.
   if (safetyStock <= 0) return 'normal';
 
-  // Có AT mà tồn = 0 hoặc dưới 30% AT → cần nhập gấp.
+  // Có ngưỡng mà tồn = 0 hoặc dưới 30% ngưỡng → nguy cấp.
   if (currentStock <= 0) return 'critical';
   if (currentStock < safetyStock * 0.3) return 'critical';
   // Tồn dưới ngưỡng nhưng chưa nguy hiểm.

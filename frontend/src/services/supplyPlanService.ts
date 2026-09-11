@@ -5,7 +5,6 @@ export interface SupplyPlanItem {
   name: string;
   unit: string;
   group_name: string;
-  lead_time_days: number;
   demand_forecast: number;
   safety_level: number;
   current_stock: number;
