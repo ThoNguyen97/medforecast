@@ -111,6 +111,7 @@ def walk_forward_block(db_path: str, block: str,
     snaive_g, group_pred, group_actual = [], [], []
     members_hist: List[List[str]] = []
     failed_count: Dict[str, int] = {}
+    failed_why: Dict[str, str] = {}
     # M9: độ phủ khoảng dự báo nhóm
     rel_resid: List[float] = []
     cov_hits, cov_total, widths = 0, 0, []
@@ -126,9 +127,17 @@ def walk_forward_block(db_path: str, block: str,
         ens_g = _ens(hist_g, cfg).fit(hist_g)
         base_group = ens_g.predict(tgt_month)
         members_hist.append(list(ens_g.members_used))
-        for nm in ens_g.members_failed:
+        for nm, why in ens_g.members_failed.items():
             failed_count[nm] = failed_count.get(nm, 0) + 1
-        base_codes = {c: _ens(hist_c[c], cfg).fit(hist_c[c]).predict(tgt_month) for c in codes}
+            failed_why.setdefault(nm, why)
+        base_codes = {}
+        for c in codes:
+            e_c = _ens(hist_c[c], cfg).fit(hist_c[c])
+            base_codes[c] = e_c.predict(tgt_month)
+            for nm, why in e_c.members_failed.items():
+                key = f"{nm} (mức mã)"
+                failed_count[key] = failed_count.get(key, 0) + 1
+                failed_why.setdefault(key, why)
 
         # khoảng dự báo nhóm từ phần dư tương đối của các bước TRƯỚC t
         actual_g = float(group["cases"].iloc[t])
@@ -193,6 +202,8 @@ def walk_forward_block(db_path: str, block: str,
         "config": cfg.as_record(),
         "members_used_pct": {nm: round(v / n_steps * 100, 1) for nm, v in used_counts.items()} if n_steps else {},
         "members_failed_count": failed_count,
+        "members_failed_example": failed_why,
+        "n_code_fits": n_steps * len(codes),
     }
     return res
 

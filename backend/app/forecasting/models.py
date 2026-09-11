@@ -332,8 +332,18 @@ class Ensemble:
         self.members_used: List[str] = []
         self.members_failed: Dict[str, str] = {}
 
+    # Dự báo của một thành viên vượt quá PLAUSIBLE_FACTOR × max lịch sử thì bị
+    # coi là rớt (ghi lý do), không đưa vào trung bình. 11/09/2026: SARIMAX
+    # không hội tụ cho 10^7 ở J20-J22 và 10^45 ở mã thưa J09-J18 — một giá trị
+    # như vậy lọt vào np.mean là phá cả ensemble. Đây chính là "hạ trọng số
+    # mô hình tồi" mà tài liệu cũ tưởng đã có; giờ mới có thật, và minh bạch.
+    PLAUSIBLE_FACTOR = 5.0
+
     def fit(self, df):
         self.members_failed = {}
+        y = df["cases"].to_numpy(float) if "cases" in df else np.array([0.0])
+        self._y_max = float(np.nanmax(y)) if len(y) else 0.0
+        self._plausible_max = max(self.PLAUSIBLE_FACTOR * self._y_max, 10.0)
         for m in self.members:
             m.fitted = False
             try:
@@ -355,6 +365,8 @@ class Ensemble:
                 v = float(m.predict(next_month))
                 if not np.isfinite(v):
                     raise ValueError(f"giá trị không hữu hạn: {v}")
+                if v > self._plausible_max:
+                    raise ValueError(f"phi lý: {v:.0f} > {self.PLAUSIBLE_FACTOR:.0f}× max lịch sử ({self._y_max:.0f})")
                 vals.append(v); used.append(nm)
             except Exception as exc:                          # noqa: BLE001
                 self.members_failed[nm] = f"predict: {exc}"

@@ -39,6 +39,10 @@ CHI_SO = ["MAE", "RMSE", "RelMAE", "ME", "MPE_pct", "sMAPE_pct", "WAPE_pct"]
 
 
 def _tat_canh_bao():
+    # Từng lần một thành viên rớt đã được ĐẾM vào thanhvien.csv — không cần
+    # in hàng chục dòng warning giống nhau ra màn hình nữa.
+    import logging
+    logging.getLogger("app.forecasting.models").setLevel(logging.ERROR)
     """Chỉ lọc trong CLI cho dễ đọc — KHÔNG lọc trong app. ConvergenceWarning là
     SARIMAX báo không hội tụ trên chuỗi thưa; giờ nó đã được ghi vào cột
     members_failed nên không cần đọc từng dòng cảnh báo nữa."""
@@ -95,8 +99,14 @@ def main():
                           "do_phu_pct": g.get("coverage_pct"), "do_phu_n": g.get("coverage_n"),
                           "be_rong_tuong_doi": g.get("interval_width_rel")})
         for nm, pct in meta["members_used_pct"].items():
-            rows_tv.append({"nhom": b, "thanh_vien": nm, "dong_gop_pct_buoc": pct,
-                            "so_lan_rot": meta["members_failed_count"].get(nm, 0)})
+            rows_tv.append({"nhom": b, "thanh_vien": nm, "muc": "nhóm", "dong_gop_pct_buoc": pct,
+                            "so_lan_rot": meta["members_failed_count"].get(nm, 0),
+                            "vi_du_ly_do": meta["members_failed_example"].get(nm, "")})
+        for nm, cnt in meta["members_failed_count"].items():
+            if nm.endswith("(mức mã)"):
+                rows_tv.append({"nhom": b, "thanh_vien": nm.replace(" (mức mã)", ""), "muc": "mã",
+                                "dong_gop_pct_buoc": round(100 - cnt / meta["n_code_fits"] * 100, 1),
+                                "so_lan_rot": cnt, "vi_du_ly_do": meta["members_failed_example"].get(nm, "")})
 
     df_pc = pd.DataFrame(rows_pc)
     tong = (df_pc.groupby("phuong_an")[CHI_SO].mean()
@@ -127,7 +137,9 @@ def main():
     }, ensure_ascii=False, indent=2), encoding="utf-8")
 
     # ── in ra màn hình ─────────────────────────────────────────────────
-    pd.set_option("display.width", 140)
+    pd.set_option("display.width", 160)
+    pd.set_option("display.float_format", lambda x: f"{x:,.3f}")
+    pd.set_option("display.max_colwidth", 60)
     print("\n=== PHÂN CẤP — mức MÃ, walk-forward 1 bước ===")
     print(df_pc.round(3).to_string(index=False))
     print("\n=== MỨC NHÓM + độ phủ khoảng dự báo ===")

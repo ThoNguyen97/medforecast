@@ -20,6 +20,7 @@ import pandas as pd
 
 WCOLS = ["temp", "humidity", "rainfall"]
 BURN_IN = 13   # s + d = 12 + 1
+MIN_OBS = 26   # ≥ 2 chu kỳ mùa + sai phân
 
 
 class SarimaxForecaster:
@@ -40,15 +41,28 @@ class SarimaxForecaster:
         return "sarimax_weather" if self._used_exog else "sarimax"
 
     def _exog(self, df: pd.DataFrame) -> Optional[np.ndarray]:
+        """Thời tiết trễ 1 tháng, CHUẨN HOÁ z-score theo cửa sổ huấn luyện.
+
+        11/09/2026: bản cũ đưa exog THÔ (mưa hàng trăm mm) vào SARIMAX với
+        enforce_stationarity=False. Khi fit không hội tụ, hệ số exog phình ra,
+        và vì mô hình ở thang log nên exp() biến nó thành 10^7 (J20-J22) —
+        backtest cũ không thấy vì chưa từng cho SARIMAX dùng thời tiết.
+        Chuẩn hoá đưa mọi cột về cùng thang O(1); mean/std lưu lại để áp cho
+        hàng dự báo.
+        """
         if not (self.use_weather and all(c in df.columns for c in WCOLS)):
             return None
         if df[WCOLS].notna().sum().min() < 12:
             return None                                   # chưa đủ thời tiết
         cols = []
+        self._ex_mu, self._ex_sd = [], []
         for c in WCOLS:
             v = pd.to_numeric(df[c], errors="coerce").shift(self.weather_lag)
-            v = v.fillna(v.mean() if v.notna().any() else 0.0)
-            cols.append(v.to_numpy(float))
+            v = v.fillna(v.mean() if v.notna().any() else 0.0).to_numpy(float)
+            mu, sd = float(v.mean()), float(v.std())
+            sd = sd if sd > 0 else 1.0
+            self._ex_mu.append(mu); self._ex_sd.append(sd)
+            cols.append((v - mu) / sd)
         return np.column_stack(cols)
 
     def fit(self, df: pd.DataFrame):
@@ -57,6 +71,10 @@ class SarimaxForecaster:
         try:
             from statsmodels.tsa.statespace.sarimax import SARIMAX  # lazy
             y = np.log1p(df["cases"].to_numpy(float))
+            if len(y) < MIN_OBS:
+                # statsmodels ném IndexError khó hiểu ("0-dimensional") trên
+                # chuỗi ngắn hơn ~2 chu kỳ mùa; nói thẳng lý do để Ensemble ghi.
+                raise ValueError(f"chuỗi {len(y)} tháng < {MIN_OBS}, quá ngắn cho SARIMAX mùa 12")
             exog = self._exog(df)
             self._used_exog = exog is not None
             self._last_exog = exog[-1:] if exog is not None else None
