@@ -31,6 +31,30 @@ Muốn máy mới giống hệt máy đang làm việc thì chép `backend\data\
 và `backend\.env` sang — nhưng chỉ làm vậy giữa hai thư mục của **cùng một người**;
 DB chứa dữ liệu bệnh viện, không gửi ra ngoài.
 
+## 0.1) Máy ĐÃ chạy trước đó, nhưng mã nguồn vừa đổi bảng
+
+DB không nằm trong git nên mỗi máy giữ lược đồ riêng. Khi khởi động, backend gọi
+`Base.metadata.create_all`: lệnh đó **tạo bảng còn thiếu nhưng không bao giờ thêm
+cột** vào bảng đã có — và không báo lỗi. Backend vẫn lên, đến khi màn hình nào
+chạm cột mới thì chết với `no such column: ...`.
+
+Sau mỗi lần `git pull` có thay đổi model, chạy:
+
+```powershell
+cd <thư-mục-repo>\backend
+venv\Scripts\activate
+python -m scripts.nang_cap_db              # xem sẽ đổi gì (chạy khô)
+python -m scripts.nang_cap_db --ap-dung    # thực thi, tự sao lưu DB trước
+```
+
+Script so `Base.metadata` với lược đồ thật trong SQLite: tạo bảng còn thiếu, sinh
+`ALTER TABLE ... ADD COLUMN` cho cột còn thiếu, và **chỉ báo cáo** những việc
+SQLite không làm an toàn được (xoá cột, đổi kiểu, cột `NOT NULL` không có giá trị
+mặc định) để xử lý tay. Chạy lại nhiều lần vô hại.
+
+Nếu máy đó không có dữ liệu HIS cần giữ thì đơn giản hơn: xoá
+`backend\data\medforecast.db` rồi chạy lại `python scripts\khoi_tao_moi.py`.
+
 ## 1) Backend (FastAPI)
 ```powershell
 cd D:\Personnal\LienThong\CDTN\webyte\webyte\backend
