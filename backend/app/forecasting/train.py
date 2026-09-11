@@ -123,8 +123,11 @@ def train(data_dir: str, out_dir: str, cfg=PRODUCTION_CONFIG, quiet: bool = Fals
 
 
 def main(argv=None):
-    warnings.filterwarnings("ignore")
-    import logging; logging.getLogger("app.forecasting.models").setLevel(logging.ERROR)
+    # Cùng cách với run_eval: ConvergenceWarning của SARIMAX trên chuỗi thưa đã
+    # được ĐẾM vào members_failed/thanhvien — không cần in hàng trăm dòng.
+    from .run_eval import _tat_canh_bao
+    _tat_canh_bao()
+    warnings.simplefilter("ignore")
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--data", default="dataset/v1", help="thư mục dataset (nhom_thang.csv, ma_thang.csv, ty_trong_co_dinh.csv)")
     ap.add_argument("--out", default="models/v1", help="thư mục ghi model_v1.json / .pkl")

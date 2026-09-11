@@ -55,7 +55,10 @@ def predict_from_artifact(pkl_path: str, block: str | None = None) -> dict:
 
 
 def main(argv=None):
-    import warnings; warnings.filterwarnings("ignore")
+    import warnings
+    from .run_eval import _tat_canh_bao
+    _tat_canh_bao()
+    warnings.simplefilter("ignore")
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--model", default="models/v1/model_v1.pkl")
     ap.add_argument("--block", default=None)
