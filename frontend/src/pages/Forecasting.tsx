@@ -69,7 +69,11 @@ export default function Forecasting() {
       // ignore
     }
     return {
-      disease: 'dengue_fever',
+      // Khối ICD đầu tiên trong phạm vi hô hấp. KHÔNG để mã ngoài phạm vi
+      // (trước đây là 'dengue_fever'): effect "Auto-pick disease" bên dưới có
+      // chữa lại sau khi danh mục về, nhưng nếu bấm Phân tích trước khi danh
+      // mục kịp tải thì vẫn gửi lên một mã không có dữ liệu.
+      disease: 'J00-J06',
       province: 'all',
       month: defaultMonth,
     };

@@ -77,8 +77,11 @@ export const CONFIG_SECTION_LABELS: Record<ConfigSection, string> = {
   history: 'Lịch sử thay đổi',
 };
 
+// Phạm vi đồ án là ba KHỐI ICD-10 hô hấp — khớp app/utils/icd_groups.py phía
+// backend. Danh sách cũ (sốt xuất huyết / cúm mùa) đã ngoài phạm vi: để lại sẽ
+// cho người dùng chọn một mã mà mọi truy vấn phía sau không có dữ liệu.
 export const DISEASE_TYPE_OPTIONS = [
-  { value: 'dengue_fever', label: 'Sốt xuất huyết' },
-  { value: 'seasonal_flu', label: 'Cúm mùa' },
-  { value: 'respiratory_disease', label: 'Bệnh hô hấp' },
+  { value: 'J00-J06', label: 'Nhiễm khuẩn hô hấp trên (J00-J06)' },
+  { value: 'J09-J18', label: 'Viêm phổi, cúm (J09-J18)' },
+  { value: 'J20-J22', label: 'Nhiễm khuẩn hô hấp dưới cấp (J20-J22)' },
 ] as const;

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Download, Upload, FileDown, Plus, Loader2, X } from 'lucide-react';
 import { useUIStore } from '../store/uiStore';
+import { useAuthStore } from '../store/authStore';
 import { useInventory } from '../hooks/useInventory';
 import api from '../services/api';
 import { SUPPLY_CATEGORY_LABELS } from '../utils/constants';
@@ -20,6 +21,12 @@ const PAGE_SIZE = 10;
 /** Module 6 — Quản lý Vật tư Y tế & Kho vận */
 export default function Inventory() {
   const { setPageTitle } = useUIStore();
+  // Nhập tồn kho / thêm vật tư đi qua POST /inventory/import, mà endpoint đó
+  // yêu cầu get_inventory_manager_or_admin. Trước đây nút hiện cho mọi vai trò
+  // nên tài khoản Dược bấm vào chỉ nhận 403.
+  const { user } = useAuthStore();
+  const duocSuaKho =
+    user?.role === 'Administrator' || user?.role === 'Inventory_Manager';
 
   useEffect(() => {
     setPageTitle('Vật tư y tế');
@@ -302,26 +309,30 @@ function InventoryContent() {
           >
             Tải template mẫu
           </ActionButton>
-          <ActionButton
-            variant="outline"
-            icon={
-              importing ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Upload className="w-4 h-4" />
-              )
-            }
-            onClick={() => fileInputRef.current?.click()}
-          >
-            {importing ? 'Đang import...' : 'Import tồn kho đầu kỳ'}
-          </ActionButton>
-          <ActionButton
-            variant="primary"
-            icon={<Plus className="w-4 h-4" />}
-            onClick={() => setShowAddForm(true)}
-          >
-            Thêm vật tư mới
-          </ActionButton>
+          {duocSuaKho && (
+            <ActionButton
+              variant="outline"
+              icon={
+                importing ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Upload className="w-4 h-4" />
+                )
+              }
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {importing ? 'Đang import...' : 'Import tồn kho đầu kỳ'}
+            </ActionButton>
+          )}
+          {duocSuaKho && (
+            <ActionButton
+              variant="primary"
+              icon={<Plus className="w-4 h-4" />}
+              onClick={() => setShowAddForm(true)}
+            >
+              Thêm vật tư mới
+            </ActionButton>
+          )}
         </div>
       </div>
 
@@ -561,25 +572,48 @@ function AddSupplyDialog({
     }
     try {
       setSubmitting(true);
-      // Step 1: tạo MedicalSupply
-      await api.post('/supplies/', {
-        name: vals.name.trim(),
-        category: vals.category,
-        unit: vals.unit,
-      });
-      // Step 2: tạo Inventory record qua batch-update / inventory direct
-      // Ở đây dùng /inventory/import giả lập 1 dòng để có cả expiry_date
+      // MỘT lệnh duy nhất: POST /inventory/import tự tạo MedicalSupply nếu chưa
+      // có (sinh supply_code dạng VT_AUTO_... khi để trống) rồi tạo luôn dòng
+      // tồn kho kèm hạn dùng.
+      // KHÔNG gọi POST /supplies/ nữa: schema MedicalSupplyCreate bắt buộc
+      // supply_code, drug_code, ten_hoat_chat, group_name và không có trường
+      // 'name', nên lệnh cũ luôn 422; endpoint đó còn đòi quyền Administrator
+      // trong khi màn hình này mở cho cả Inventory_Manager.
+      const oCsv = (v: string | number) => {
+        const t = String(v ?? '');
+        return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+      };
       const csv =
-        'supply_code,supply_name,category,unit,current_stock,safety_stock,' +
-        'expiry_date,supplier\n' +
-        `,${vals.name.trim()},${vals.category},${vals.unit},${vals.current_stock},` +
-        `${vals.safety_stock},${vals.expiry_date},\n`;
+        'supply_code,drug_code,ten_hoat_chat,unit,group_name,category,' +
+        'current_stock,safety_stock,expiry_date\n' +
+        [
+          '',
+          '',
+          oCsv(vals.name.trim()),
+          oCsv(vals.unit),
+          oCsv(SUPPLY_CATEGORY_LABELS[vals.category] ?? vals.category),
+          oCsv(vals.category),
+          vals.current_stock,
+          vals.safety_stock,
+          vals.expiry_date,
+        ].join(',') + '\n';
       const blob = new Blob([csv], { type: 'text/csv' });
       const fd = new FormData();
       fd.append('file', blob, 'add_one.csv');
-      await api.post('/inventory/import', fd, {
+      const res = await api.post('/inventory/import', fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
+      // Endpoint trả 200 kèm danh sách dòng bị bỏ qua chứ không ném lỗi — nếu
+      // không kiểm thì hộp thoại đóng lại như thể đã thêm xong.
+      const kq = res?.data ?? {};
+      if (((kq.imported ?? 0) + (kq.updated ?? 0)) === 0) {
+        setError(
+          kq.errors?.[0]?.reason
+            ? `Không thêm được: ${kq.errors[0].reason}`
+            : 'Không thêm được vật tư — máy chủ không nhận dòng nào.',
+        );
+        return;
+      }
       onSaved();
     } catch (err: any) {
       setError(

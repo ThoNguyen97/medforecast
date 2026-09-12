@@ -411,7 +411,7 @@ function DiseaseFormDialog({
             value={vals.key}
             onChange={(e) => setVals({ ...vals, key: e.target.value })}
             className={inputClass + (isEdit ? ' bg-neutral-50 text-neutral-500' : '')}
-            placeholder="dengue_fever"
+            placeholder="J00-J06"
           />
         </Field>
         <Field label="Tên hiển thị" required>

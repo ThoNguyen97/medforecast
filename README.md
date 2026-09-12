@@ -30,7 +30,8 @@ Hệ thống AI/ML dự báo nhu cầu vật tư y tế dựa trên dữ liệu 
 
 - 🤖 **Dự báo nhu cầu**: ensemble 4 mô hình thống kê + dự báo phân cấp
   top-down động (EWMA), đánh giá bằng walk-forward mở rộng cửa sổ
-  (RelMAE mức mã 0,659 — thắng seasonal-naive ~34%, cấu hình sản xuất 11/09/2026)
+  (RelMAE mức mã **0,500** — thắng seasonal-naive 50 %, cấu hình sản xuất M12,
+  11/09/2026 chiều; xem `docs/KetQua_Backtest_ChonCauHinh.md` mục 0)
 - 📊 **Real-time Dashboard**: Stitch design với metrics và charts
 - 🚨 **Smart Alerts**: Cảnh báo thiếu hụt vật tư tự động
 - 📦 **Inventory Management**: Quản lý tồn kho thời gian thực
@@ -57,18 +58,20 @@ cd webyte
 ```bash
 cd backend
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
-# Create database and run migrations
-alembic upgrade head
+# Tạo .env + bảng + tài khoản admin + nạp bộ dữ liệu dataset/v1 (một lệnh)
+python scripts/khoi_tao_moi.py
 
-# Create initial admin user
-python scripts/seed_data.py
-
-# Run development server
+# Chạy server
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
+
+> `alembic` trong repo chỉ là bộ khung, **không dùng** — đừng chạy
+> `alembic upgrade head`. Bảng được tạo bởi `Base.metadata.create_all` lúc khởi
+> động; máy đã chạy trước đó mà mã nguồn vừa đổi bảng thì dùng
+> `python -m scripts.nang_cap_db --ap-dung` (xem `RUN_LOCAL.md` mục 0.1).
 
 Backend will be available at: http://localhost:8000
 API Documentation: http://localhost:8000/docs
@@ -86,82 +89,23 @@ Frontend will be available at: http://localhost:3000
 
 **That's it!** No Docker, no Redis needed. Everything runs with SQLite.
 
-## Chạy bằng Docker (dev)
+## Triển khai (Docker)
 
-Chạy cả 3 service (Postgres + backend + frontend) bằng `docker-compose.dev.yml`.
-Mọi lệnh chạy tại **thư mục gốc repo** (nơi chứa `docker-compose.dev.yml`).
+**Hiện tại repo KHÔNG có `docker-compose.yml`.** Theo quyết định phạm vi đồ án
+(xem `docs/DinhHinhLai_MedForecast_2026-09-09.md`, Quyết định 2), hệ chạy trên
+**SQLite một tệp**, nhánh Postgres + compose đã chuyển vào `_archive/postgres/`
+để tham khảo, không còn được bảo trì và không đảm bảo chạy được.
 
-### Chuẩn bị
-1. Cài & mở **Docker Desktop** (đợi icon báo *Engine running*).
-2. Tạo file `.env` ở gốc repo (copy từ `.env.example`) — bắt buộc có `SECRET_KEY`
-   và `POSTGRES_PASSWORD`, thiếu là compose báo lỗi ngay.
-   ```powershell
-   Copy-Item .env.example .env
-   ```
+Cách chạy được kiểm thử thật:
 
-### Build & khởi động
-```powershell
-# Lần đầu, hoặc sau khi sửa Dockerfile / requirements.txt
-docker compose -f docker-compose.dev.yml up -d --build
+| Tình huống | Làm gì |
+|---|---|
+| Máy mới vừa `git clone` | `RUN_LOCAL.md` mục 0 — `python scripts/khoi_tao_moi.py` |
+| Máy đã chạy, mã nguồn vừa đổi bảng | `RUN_LOCAL.md` mục 0.1 — `python -m scripts.nang_cap_db --ap-dung` |
+| Chạy hằng ngày (2 terminal) | `RUN_LOCAL.md` mục 1 và 2 |
 
-# Các lần sau (image đã build sẵn)
-docker compose -f docker-compose.dev.yml up -d
-
-# Chỉ build, không chạy
-docker compose -f docker-compose.dev.yml build
-
-# Build lại sạch, bỏ cache (khi build lỗi lạ)
-docker compose -f docker-compose.dev.yml build --no-cache
-```
-
-### Seed dữ liệu (lần đầu — tạo user admin)
-```powershell
-docker compose -f docker-compose.dev.yml exec backend python scripts/seed_data.py
-```
-
-### Truy cập
-- Frontend: http://localhost:5173 (đăng nhập `admin` / `admin123`)
-- API docs: http://localhost:8000/docs
-- Postgres: `localhost:5432` (db `medforecast`, user `medforecast`)
-
-### Theo dõi
-```powershell
-docker compose -f docker-compose.dev.yml ps              # trạng thái 3 service
-docker compose -f docker-compose.dev.yml logs -f         # log tất cả
-docker compose -f docker-compose.dev.yml logs -f backend # log riêng backend
-```
-
-### Dừng / dọn
-```powershell
-docker compose -f docker-compose.dev.yml stop            # dừng, giữ container
-docker compose -f docker-compose.dev.yml down            # xóa container, GIỮ data (volume pgdata)
-docker compose -f docker-compose.dev.yml down -v         # xóa luôn data DB + node_modules ⚠️
-docker compose -f docker-compose.dev.yml restart backend
-```
-
-### Vào trong container
-```powershell
-docker compose -f docker-compose.dev.yml exec backend bash
-docker compose -f docker-compose.dev.yml exec db psql -U medforecast -d medforecast
-```
-
-### Khi nào cần build lại?
-Compose dev đã mount `./backend` và `./frontend` vào container nên **sửa code là tự
-reload** (uvicorn `--reload`, Vite HMR) — không cần build lại. Chỉ build lại khi:
-- Sửa `backend/Dockerfile` hoặc `backend/requirements.txt` → `up -d --build`
-- Thêm package npm mới → `restart frontend` là đủ (service này chạy `npm install` mỗi lần start)
-
-### Lỗi thường gặp
-- **`docker : The term 'docker' is not recognized`** — PATH của terminal chưa có Docker
-  CLI (thường do VSCode được mở trước khi cài Docker). Nạp lại PATH cho phiên hiện tại:
-  ```powershell
-  $env:Path = [Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [Environment]::GetEnvironmentVariable("Path","User")
-  ```
-  Cách dứt điểm: thoát **hẳn** VSCode (File → Exit) rồi mở lại.
-- **`SECRET_KEY is required`** — thiếu `.env` ở gốc, hoặc đang chạy sai thư mục.
-- **`port is already allocated`** (5432 / 8000 / 5173) — đang có backend/frontend chạy
-  tay (theo `RUN_LOCAL.md`) chiếm cổng → tắt tiến trình đó trước.
-- **`Cannot connect to the Docker daemon`** — Docker Desktop chưa khởi động xong.
+`backend/Dockerfile` vẫn còn và build được ảnh backend đơn lẻ, nhưng chưa có
+compose/hướng dẫn đi kèm nên **không phải đường chạy chính thức** của đồ án.
 
 ## Project Structure
 
@@ -187,9 +131,12 @@ webyte/
 │   │   └── store/          # State management
 │   └── package.json
 ├── data/                   # Data files and SQLite database
-├── docker-compose.yml      # Production
-├── docker-compose.dev.yml  # Development (Postgres + backend + frontend)
-├── .env.example            # Mẫu biến môi trường cho Docker
+├── dataset/v1/             # Bộ huấn luyện công bố (CSV + manifest + datasheet)
+├── docs/                   # Tài liệu đồ án (xem docs/README.md)
+├── sql_his/                # Mã T-SQL phía bệnh viện (PROD → STA)
+├── _archive/               # Mã đã gỡ khỏi phạm vi, giữ để tra cứu
+├── RUN_LOCAL.md            # Chạy trên máy cá nhân
+├── DEPLOY.md               # Triển khai pilot (SQLite một tệp)
 └── README.md
 ```
 

@@ -1,7 +1,9 @@
 # Đánh giá tổng thể: chuyển toàn hệ thống sang góc nhìn NHÓM ICD
 
 Ngày rà soát: 09/08/2026 — sau khi toàn tuyến HIS → STA → app chạy bằng dữ
-liệu thật (23.429 ca, 20 mã, 3 nhóm).
+liệu thật (23.429 ca, 20 mã, 3 nhóm — số đếm tại 09/08/2026; sau các lần đồng
+bộ tiếp theo, số chốt hiện nay là 23.653 ca, xem
+`KetQua_Backtest_ChonCauHinh.md` mục 0.3).
 
 ## Nguyên tắc chốt (bám đề cương)
 

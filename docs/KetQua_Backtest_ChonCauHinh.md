@@ -47,6 +47,16 @@ chặn [1/1,5; 1,5], chỉ tính từ quá khứ. Độ nhạy w=12/24, p=1/2, s
 
 ### 0.3 · Kết quả chính thức với cấu hình M12
 
+**Quy mô dữ liệu đã chốt (đếm lại 12/09/2026):** **23.653 lượt** ở các kỳ đã
+chốt — J00-J06 11.514 · J09-J18 7.754 · J20-J22 4.385; 92 tháng (2019-01 →
+2026-08), kỳ 2026-09 đang mở nên bị loại. Đây là con số đếm ở **mức khối**
+(`COUNT(DISTINCT` lượt tiếp nhận`)` cho mỗi khối) và là con số phải trích vào
+báo cáo. Đếm ở mức mã ra 23.713 vì một lượt có hai mã ICD **cùng khối** được
+tính hai lần ở mức mã — chênh lệch này chỉ xuất hiện từ kỳ 2026-06, khi chẩn
+đoán phụ bắt đầu được ghi. Hệ quả phương pháp: **cộng dồn bottom-up từ mã lên
+khối sẽ vượt số thật**, đây là một lập luận nữa cho top-down ngoài lý do chuỗi
+thưa. Khớp `dataset/v1/nhom_thang.csv` và `ma_thang.csv`.
+
 **Mức MÃ (4 hướng phân cấp):**
 
 | Nhóm | Bottom-up | TD cố định | **TD động (EWMA)** | Hoà giải OLS |
@@ -55,6 +65,18 @@ chặn [1/1,5; 1,5], chỉ tính từ quá khứ. Độ nhạy w=12/24, p=1/2, s
 | J09-J18 (10 mã) | 0,546 | 0,439 | **0,413** | 0,569 |
 | J20-J22 (3 mã) | 0,617 | 0,542 | **0,541** | 0,587 |
 | **Tổng hợp** | 0,605 | 0,547 | **0,500** | 0,592 |
+
+> **Cảnh báo về cột "TD cố định":** tỷ trọng cố định lấy từ
+> `mart_icd_share_in_block`, được tính trên **toàn lịch sử**
+> (`app/data_pipeline/pipeline.py:402`) rồi dùng lại ở mọi bước walk-forward
+> (`app/forecasting/evaluate.py:92,173`) — nghĩa là dự báo mã năm 2021 đã dùng tỷ
+> trọng ước lượng từ dữ liệu tới 2026-09. Cột này vì vậy **được ưu ái**, con số
+> thật của nó sẽ tệ hơn 0,547; khoảng cách thực với top-down động còn lớn hơn
+> bảng đang in. Phương án **được chọn** (TD động EWMA) không có vấn đề này: nó
+> dùng `ewma_shares(hist_g, hist_c)` chỉ từ quá khứ
+> (`app/forecasting/hierarchical.py:15-29`), nên **0,500 / 0,516 / 0,377 / 0,541
+> là số walk-forward trung thực**. Sửa cột TD cố định cho đúng là việc của hướng
+> phát triển; nó không đổi kết luận vì phương án cố định đã bị loại.
 
 MPE TD động: −2,0 / −5,7 / +4,0 % · sMAPE 33,7 % · WAPE 28,3 %. Top-down thắng
 bottom-up rõ hơn trước vì Ŷ_g giờ tốt hơn nhiều còn mức mã vẫn trung bình đều
@@ -220,11 +242,15 @@ Smearing nhân với hệ số ≥ 1 nên chỉ giúp nơi đang hụt (J09-J18)
 đang thừa. Bật theo nhóm là tinh chỉnh trên tập kiểm định — không làm. Ghi
 vào hướng phát triển cùng với dò λ theo nhóm.
 
-## 6. Số đưa vào tóm tắt báo cáo (thay cho bản 09/08)
+## 6. Số của bản TRƯỚC M12 — KHÔNG trích vào báo cáo
+
+> Mục này giữ để so sánh trước/sau M12. Số đưa vào luận văn nằm ở **mục 0.3**
+> (RelMAE mức mã 0,500). Con số lượt khám dưới đây là số đếm tại 11/09 sáng.
 
 - Dự báo mức mã tốt hơn seasonal-naive **~34%** (RelMAE 0,659 tổng hợp, top-down
   động, cấu hình sản xuất, 68 bước walk-forward/nhóm trên 92 tháng dữ liệu HIS
-  thật, 23.429 lượt khám).
+  thật, 23.429 lượt khám — số đếm tại thời điểm đó; số chốt hiện nay là
+  23.653, xem mục 0.3).
 - Mức nhóm: RelMAE 0,60–0,76 tuỳ nhóm; khoảng dự báo 90% phủ thật 85–88% ở hai
   nhóm, 68% ở nhóm có dịch chuyển mức nền.
 - Lệch có dấu: hụt −14% ở J09-J18, thừa +7…+13% ở hai nhóm còn lại — đo được
@@ -335,7 +361,8 @@ khác chi phối (tuổi, bệnh nền, quy mô tiếp nhận). Đây cũng là 
   cửa sổ đầy đủ, TD động 0,608 / bottom-up 0,602).
 - Dự báo TỔNG nhóm: MASE 0,51–0,65 tuỳ nhóm.
 - 4 phương án phân cấp × 3 cửa sổ × 3 nhóm = 36 cấu hình đã kiểm bằng
-  walk-forward trên 92 tháng dữ liệu HIS thật (23.429 lượt khám).
+  walk-forward trên 92 tháng dữ liệu HIS thật (23.429 lượt khám tại 09/08;
+  số chốt hiện nay 23.653 — mục 0.3).
 
 ### Ghi chú kỹ thuật
 

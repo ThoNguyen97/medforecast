@@ -16,10 +16,10 @@ const mockData: ForecastAccuracyReport = {
     { model: 'xgboost', avg_mae: 1.2, avg_rmse: 1.8, avg_mape: 4.5, sample_count: 10 },
     { model: 'prophet', avg_mae: 1.8, avg_rmse: 2.3, avg_mape: 6.5, sample_count: 10 },
   ],
-  filters: { disease_type: 'dengue_fever' },
+  filters: { disease_type: 'J20' },
   time_series: [
-    { date: '2024-01-15', mae: 1.5, rmse: 2.0, mape: 5.5, model: 'xgboost', disease_type: 'dengue_fever' },
-    { date: '2024-01-20', mae: 1.2, rmse: 1.8, mape: 4.8, model: 'xgboost', disease_type: 'dengue_fever' },
+    { date: '2024-01-15', mae: 1.5, rmse: 2.0, mape: 5.5, model: 'xgboost', disease_type: 'J20' },
+    { date: '2024-01-20', mae: 1.2, rmse: 1.8, mape: 4.8, model: 'xgboost', disease_type: 'J20' },
   ],
 };
 
@@ -59,7 +59,8 @@ describe('PerformanceTable', () => {
 
   it('shows disease type filter indicator', () => {
     render(<PerformanceTable data={mockData} isLoading={false} />);
-    // disease_type filter "dengue_fever" should appear as a badge
-    expect(screen.getByText(/Sốt xuất huyết/)).toBeInTheDocument();
+    // disease_type filter "J20" hiện ra dưới dạng badge, tra nhãn qua
+    // DISEASE_TYPE_LABELS (utils/constants) — bảng này chỉ có mã hô hấp.
+    expect(screen.getByText(/Viêm phế quản cấp/)).toBeInTheDocument();
   });
 });
