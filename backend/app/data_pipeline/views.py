@@ -96,17 +96,22 @@ HAVING  SUM(so_luong_toan_vien) > 0
 """
 
 # ── Tỷ trọng phân cấp chăm sóc theo khối — đầu vào định mức thực nghiệm ──────
+# MỖI tham chiếu system_config phải bọc COALESCE. Không có dòng 'dss.care_level'
+# thì các truy vấn con trả NULL, và `LIMIT NULL` làm SQLite ném
+# "IntegrityError: datatype mismatch" — nổ ở chỗ SELECT view chứ không phải chỗ
+# tạo view, nên cả trang Tổng quan trả 500 trên một DB vừa dựng lại (12/09/2026).
+# `dam_bao_cau_hinh()` bên dưới gieo sẵn dòng đó; COALESCE là lớp chặn thứ hai.
 V_CARE_LEVEL_SHARE = """
 CREATE VIEW v_care_level_share AS
 WITH cua_so AS (
     SELECT MAX(p) AS p_max, MIN(p) AS p_min FROM (
         SELECT DISTINCT period AS p
         FROM   fact_cases_by_care_level
-        WHERE  period >= (SELECT json_extract(config_value, '$.min_period')
-                          FROM system_config WHERE config_key = 'dss.care_level')
+        WHERE  period >= COALESCE((SELECT json_extract(config_value, '$.min_period')
+                                   FROM system_config WHERE config_key = 'dss.care_level'), '2025-04')
         ORDER BY period DESC
-        LIMIT  (SELECT json_extract(config_value, '$.window_periods')
-                FROM system_config WHERE config_key = 'dss.care_level')
+        LIMIT  COALESCE((SELECT json_extract(config_value, '$.window_periods')
+                         FROM system_config WHERE config_key = 'dss.care_level'), 12)
     )
 )
 SELECT  f.block_code,
@@ -117,13 +122,70 @@ SELECT  f.block_code,
         COUNT(DISTINCT f.period)                                       AS so_ky,
         MIN(f.period)                                                  AS tu_ky,
         MAX(f.period)                                                  AS den_ky,
-        CASE WHEN SUM(f.cases) < (SELECT json_extract(config_value, '$.min_cases_per_bucket')
-                                  FROM system_config WHERE config_key = 'dss.care_level')
+        CASE WHEN SUM(f.cases) < COALESCE((SELECT json_extract(config_value, '$.min_cases_per_bucket')
+                                           FROM system_config WHERE config_key = 'dss.care_level'), 30)
              THEN 1 ELSE 0 END                                         AS mau_qua_nho
 FROM    fact_cases_by_care_level f, cua_so c
 WHERE   f.period >= c.p_min AND f.period <= c.p_max
 GROUP BY f.block_code, f.ro
 """
+
+# ── Cấu hình DSS mặc định ────────────────────────────────────────────────────
+# Hai dòng này là TOÀN BỘ núm vặn của Tầng 2 và Tầng 3. Chúng vốn do
+# sql_his/phase0/G1_04 chèn, nhưng script đó chạy tay — DB dựng bằng
+# khoi_tao_moi.py không có chúng, và v_care_level_share chết ngay lần SELECT
+# đầu tiên. Gieo ở đây để một DB mới tự đủ; giá trị khớp THRESHOLDS_DEFAULT
+# (dss_alerts) và CARE_LEVEL_DEFAULT (dss_demand). Chỉ chèn khi THIẾU — không
+# bao giờ ghi đè giá trị người dùng đã sửa ở Quản trị → Tham số DSS.
+CAU_HINH_MAC_DINH = {
+    "dss.care_level": (
+        '{"window_periods": 12, "min_period": "2025-04", '
+        '"min_cases_per_bucket": 30, "shrink_k0": 6}',
+        "Tầng 2 — cửa sổ tính p̂(g,ro) và định mức thực nghiệm. "
+        "Sửa ở Quản trị → Tham số DSS.",
+    ),
+    "dss.thresholds": (
+        '{"doi_red_days": 18, "doi_amber_days": 36, "horizon_days": 30, '
+        '"fefo_window_days": 30, "active_period_lookback": 3, '
+        '"focus_min_resp_share": 25, "overstock_factor": 2, '
+        '"incoming_stock_considered": false}',
+        "Tầng 3 — ngưỡng DOI và chân trời nhu cầu. "
+        "Sửa ở Quản trị → Tham số DSS.",
+    ),
+}
+
+
+def dam_bao_cau_hinh(engine=None) -> dict:
+    """Gieo `dss.care_level` / `dss.thresholds` nếu system_config chưa có.
+
+    Trả {config_key: 'đã gieo' | 'đã có' | 'lỗi: ...'}.
+    """
+    from sqlalchemy import text
+    if engine is None:
+        from app.database import engine as _e
+        engine = _e
+    ket_qua: dict[str, str] = {}
+    with engine.begin() as conn:
+        co_bang = {r[0] for r in conn.execute(text(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"))}
+        if "system_config" not in co_bang:
+            return {"system_config": "bỏ qua: chưa có bảng"}
+        for khoa, (gia_tri, mo_ta) in CAU_HINH_MAC_DINH.items():
+            try:
+                co = conn.execute(text(
+                    "SELECT 1 FROM system_config WHERE config_key = :k"),
+                    {"k": khoa}).first()
+                if co:
+                    ket_qua[khoa] = "đã có"
+                    continue
+                conn.execute(text(
+                    "INSERT INTO system_config (config_key, config_value, description) "
+                    "VALUES (:k, :v, :d)"), {"k": khoa, "v": gia_tri, "d": mo_ta})
+                ket_qua[khoa] = "đã gieo"
+            except Exception as exc:                      # noqa: BLE001
+                ket_qua[khoa] = f"lỗi: {exc}"
+    return ket_qua
+
 
 VIEWS = {
     "v_supply_active": V_SUPPLY_ACTIVE,
@@ -175,12 +237,15 @@ def tao_bang_tu_quan(db=None) -> dict:
 
 
 def dam_bao_luoc_do(engine=None, db=None) -> dict:
-    """Dựng ĐỦ mọi đối tượng ngoài ORM: 6 bảng tự quản, rồi 4 view.
+    """Dựng ĐỦ mọi đối tượng ngoài ORM: 6 bảng tự quản, 2 dòng cấu hình DSS,
+    rồi 4 view.
 
     Thứ tự bắt buộc — view dựa trên fact_usage_total và
-    fact_cases_by_care_level, tạo view trước thì chúng bị bỏ qua.
+    fact_cases_by_care_level, tạo view trước thì chúng bị bỏ qua; và
+    v_care_level_share đọc `dss.care_level` trong system_config.
     """
     out = dict(tao_bang_tu_quan(db))
+    out.update(dam_bao_cau_hinh(engine))
     out.update(tao_views(engine))
     return out
 

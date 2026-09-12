@@ -55,6 +55,32 @@ mặc định) để xử lý tay. Chạy lại nhiều lần vô hại.
 Nếu máy đó không có dữ liệu HIS cần giữ thì đơn giản hơn: xoá
 `backend\data\medforecast.db` rồi chạy lại `python scripts\khoi_tao_moi.py`.
 
+## 0.2) Xoá hẳn DB và dựng lại từ đầu
+
+```powershell
+cd <thư-mục-repo>\backend
+venv\Scripts\activate
+copy data\medforecast.db data\saoluu_truoc_khi_xoa.db   # giữ lại cho chắc
+del data\medforecast.db
+del data\medforecast_dw.db          # file thừa từ lần tách DB cũ
+python scripts\khoi_tao_moi.py
+uvicorn app.main:app --reload --reload-dir app --port 8000
+```
+
+**Mất gì:** toàn bộ dữ liệu HIS đã đồng bộ (tồn kho, tiêu hao,
+`fact_usage/cases_by_care_level`). `dataset\v1` KHÔNG có phần vật tư — phải vào
+**Quản trị → Kết nối HIS → Đồng bộ** mới có lại Cảnh báo thiếu hụt và Định mức
+thực nghiệm. Trước đó hai màn hình đó ghi rõ "thiếu dữ liệu tồn kho", đúng thiết kế.
+
+**Giữ lại ghi chú nguồn:** `khoi_tao_moi` gieo `dss.care_level` và
+`dss.thresholds` bằng giá trị mặc định (18/36 ngày, cửa sổ 12 kỳ từ 2025-04).
+Phần chú thích `nguon` (Đ9, Đ11) trong DB cũ sẽ mất — muốn giữ thì chép lại
+trước khi xoá:
+
+```powershell
+python -c "import sqlite3;c=sqlite3.connect('data/medforecast.db');[print(r) for r in c.execute(\"SELECT config_key, config_value FROM system_config WHERE config_key LIKE 'dss.%'\")]"
+```
+
 ## 1) Backend (FastAPI)
 ```powershell
 cd D:\Personnal\LienThong\CDTN\webyte\webyte\backend
@@ -124,6 +150,25 @@ liệu, watermark nạp lại đúng cửa sổ, cờ tháng-trọn-vẹn tự s
 đường đọc SQL Server, và tính idempotent. Kỳ vọng: `KẾT QUẢ: TẤT CẢ PASS`.
 
 ## Lỗi thường gặp
+
+### `IntegrityError: datatype mismatch` khi mở Tổng quan trên DB vừa dựng lại
+Triệu chứng: đăng nhập được, `/api/v1/dashboard/v2` trả **500**, traceback dừng ở
+`SELECT ... FROM v_care_level_share`.
+
+Nguyên nhân: view đó đọc `system_config` để lấy cửa sổ tính. DB mới không có
+dòng `dss.care_level` → truy vấn con trả NULL → `LIMIT NULL`, và SQLite coi đó
+là lỗi kiểu. Lỗi nổ lúc **SELECT**, không phải lúc tạo view, nên
+`khoi_tao_moi.py` vẫn báo "4/4 view" rồi trang mới chết.
+
+Đã sửa 12/09/2026 (gieo sẵn hai dòng cấu hình + bọc `COALESCE` trong view). Máy
+đã lỡ dựng DB bằng bản cũ thì chạy một lệnh là xong, không cần dựng lại:
+
+```powershell
+cd <thư-mục-repo>\backend
+venv\Scripts\activate
+python -c "from app.data_pipeline.views import dam_bao_luoc_do; [print(k, v) for k, v in dam_bao_luoc_do().items()]"
+```
+
 - **Log chạy như thác, toàn dòng `watchfiles.main - INFO - 1 change detected`**:
   `uvicorn --reload` dùng watchfiles; watchfiles ghi log ở mức INFO; dòng log đó
   được ghi vào `backend/logs/medforecast.log`; tệp log nằm TRONG thư mục đang

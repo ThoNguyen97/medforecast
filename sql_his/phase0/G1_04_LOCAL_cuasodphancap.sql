@@ -95,11 +95,14 @@ WITH cua_so AS (
     SELECT MAX(p) AS p_max, MIN(p) AS p_min FROM (
         SELECT DISTINCT period AS p
         FROM   fact_cases_by_care_level
-        WHERE  period >= (SELECT json_extract(config_value, '$.min_period')
-                          FROM system_config WHERE config_key = 'dss.care_level')
+        /* COALESCE bắt buộc: thiếu dòng 'dss.care_level' thì truy vấn con trả
+           NULL, và LIMIT NULL làm SQLite ném "datatype mismatch" ngay lúc
+           SELECT view (không phải lúc tạo view). Xem app/data_pipeline/views.py */
+        WHERE  period >= COALESCE((SELECT json_extract(config_value, '$.min_period')
+                                   FROM system_config WHERE config_key = 'dss.care_level'), '2025-04')
         ORDER BY period DESC
-        LIMIT  (SELECT json_extract(config_value, '$.window_periods')
-                FROM system_config WHERE config_key = 'dss.care_level')
+        LIMIT  COALESCE((SELECT json_extract(config_value, '$.window_periods')
+                         FROM system_config WHERE config_key = 'dss.care_level'), 12)
     )
 )
 SELECT  f.block_code,
@@ -112,8 +115,8 @@ SELECT  f.block_code,
         MAX(f.period)                                                  AS den_ky,
         /* Rổ dưới ngưỡng mẫu tối thiểu → tầng sau PHẢI co ngót về mức nhóm,
            đừng dùng thẳng tỷ trọng này. Đ11-D đo được có rổ chỉ 5-8 đợt. */
-        CASE WHEN SUM(f.cases) < (SELECT json_extract(config_value, '$.min_cases_per_bucket')
-                                  FROM system_config WHERE config_key = 'dss.care_level')
+        CASE WHEN SUM(f.cases) < COALESCE((SELECT json_extract(config_value, '$.min_cases_per_bucket')
+                                           FROM system_config WHERE config_key = 'dss.care_level'), 30)
              THEN 1 ELSE 0 END                                         AS mau_qua_nho
 FROM    fact_cases_by_care_level f, cua_so c
 WHERE   f.period >= c.p_min AND f.period <= c.p_max
