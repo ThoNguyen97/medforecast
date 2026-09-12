@@ -43,7 +43,24 @@ load_dotenv()
 from sqlalchemy import inspect, text    # noqa: E402
 
 from app.database import Base, engine   # noqa: E402
-import app.models                       # noqa: F401,E402  (đăng ký toàn bộ bảng)
+import app.models                       # noqa: F401,E402  (đăng ký bảng nghiệp vụ)
+
+# Tầng dữ liệu (mart_/dim_/stg_/fact_/sync_state) khai báo trên MỘT declarative_base
+# KHÁC — `app.data_pipeline.db.Base`. Thiếu dòng này là bỏ sót 13 bảng: DB vẫn mở
+# được, đăng nhập được, nhưng Dashboard dịch tễ và Phân tích & Dự báo trắng trơn.
+try:
+    from app.data_pipeline.db import Base as PipelineBase   # noqa: E402
+    import app.data_pipeline.models                         # noqa: F401,E402
+except Exception:                                           # noqa: BLE001
+    PipelineBase = None
+
+
+def _cac_bang() -> dict:
+    """Toàn bộ bảng khai báo trong code: nghiệp vụ + tầng dữ liệu."""
+    tables = dict(Base.metadata.tables)
+    if PipelineBase is not None:
+        tables.update(PipelineBase.metadata.tables)
+    return tables
 
 
 # ── Tiện ích ─────────────────────────────────────────────────────────────────
@@ -92,7 +109,7 @@ def _khao_sat():
     cot_thieu: list[tuple[str, str, str]] = []      # (bảng, câu ALTER, mô tả)
     canh_bao: list[str] = []
 
-    for ten, bang in Base.metadata.tables.items():
+    for ten, bang in _cac_bang().items():
         if ten not in co_trong_db:
             bang_thieu.append(ten)
             continue
@@ -174,16 +191,12 @@ def main() -> int:
         shutil.copy2(db, luu)
         print(f"\n✓ Đã sao lưu: {luu.name}")
 
-    # 1) Bảng còn thiếu — create_all lo được (kể cả bảng mart/fact của pipeline).
+    # 1) Bảng còn thiếu — create_all của cả hai metadata.
     if bang_thieu:
         Base.metadata.create_all(bind=engine)
+        if PipelineBase is not None:
+            PipelineBase.metadata.create_all(bind=engine)
         print(f"✓ Đã tạo {len(bang_thieu)} bảng.")
-    try:
-        from app.data_pipeline.db import init_db as _pipeline_init_db
-        _pipeline_init_db()
-        print("✓ Đã kiểm tra bảng tầng dữ liệu (mart/fact).")
-    except Exception as exc:                            # noqa: BLE001
-        print(f"! Bỏ qua bảng mart/fact: {exc}")
 
     # 2) Cột còn thiếu — ALTER TABLE từng cột một.
     ok = 0
