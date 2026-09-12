@@ -1,11 +1,13 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import { useUIStore } from '../../store/uiStore';
 import { cn } from '../../utils/cn';
+import ErrorBoundary from '../common/ErrorBoundary';
 
 export default function Layout() {
   const { isSidebarOpen } = useUIStore();
+  const location = useLocation();
 
   return (
     <div className="flex h-screen overflow-hidden bg-neutral-50">
@@ -33,7 +35,12 @@ export default function Layout() {
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <Header />
         <main className="flex-1 overflow-y-auto p-6">
-          <Outlet />
+          {/* Ranh giới lỗi đặt ở đây (trong Layout) để khi một trang hỏng thì
+              sidebar và header vẫn còn, người dùng chuyển trang khác được.
+              resetKey theo đường dẫn: rời trang hỏng là ranh giới tự reset. */}
+          <ErrorBoundary resetKey={location.pathname}>
+            <Outlet />
+          </ErrorBoundary>
         </main>
       </div>
     </div>

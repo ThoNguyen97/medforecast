@@ -21,12 +21,6 @@ const PAGE_SIZE = 10;
 /** Module 6 — Quản lý Vật tư Y tế & Kho vận */
 export default function Inventory() {
   const { setPageTitle } = useUIStore();
-  // Nhập tồn kho / thêm vật tư đi qua POST /inventory/import, mà endpoint đó
-  // yêu cầu get_inventory_manager_or_admin. Trước đây nút hiện cho mọi vai trò
-  // nên tài khoản Dược bấm vào chỉ nhận 403.
-  const { user } = useAuthStore();
-  const duocSuaKho =
-    user?.role === 'Administrator' || user?.role === 'Inventory_Manager';
 
   useEffect(() => {
     setPageTitle('Vật tư y tế');
@@ -39,6 +33,16 @@ export default function Inventory() {
  * Main inventory content (extracted to component for cleaner code)
  */
 function InventoryContent() {
+  // Nhập tồn kho / thêm vật tư đi qua POST /inventory/import, mà endpoint đó
+  // yêu cầu get_inventory_manager_or_admin. Không có quyền mà vẫn hiện nút thì
+  // bấm vào chỉ nhận 403.
+  // PHẢI khai ở ĐÂY chứ không phải ở Inventory(): hai nút dùng biến này nằm
+  // trong InventoryContent, mà đây là hai hàm riêng biệt — khai nhầm chỗ thì
+  // lúc chạy ném ReferenceError và React gỡ toàn bộ cây (trắng cả trang).
+  const { user } = useAuthStore();
+  const duocSuaKho =
+    user?.role === 'Administrator' || user?.role === 'Inventory_Manager';
+
   const [filters, setFilters] = useState<InventoryFilters>({
     search: '',
     category: 'all',
