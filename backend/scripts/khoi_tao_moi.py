@@ -212,11 +212,34 @@ def nap_du_lieu(data_dir: Path) -> list[str]:
 
 # ── chạy ─────────────────────────────────────────────────────────────────────
 
+def _dem_du_lieu_cu() -> str:
+    """Mô tả ngắn dữ liệu đang có trong DB, "" nếu DB còn trống."""
+    from sqlalchemy import text
+    from app.database import SessionLocal
+    db = SessionLocal()
+    try:
+        phan = []
+        for bang, nhan in (("disease_cases", "số ca"), ("fact_usage_total", "tiêu hao"),
+                           ("fact_inventory_snapshot", "tồn kho")):
+            try:
+                n = db.execute(text(f"SELECT COUNT(*) FROM {bang}")).scalar() or 0
+            except Exception:                               # noqa: BLE001
+                n = 0
+            if n:
+                phan.append(f"{nhan} {n} dòng")
+        return "; ".join(phan)
+    finally:
+        db.close()
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--data", default=str(BACKEND_DIR.parent / "dataset" / "v1"))
     ap.add_argument("--no-data", action="store_true", help="chỉ tạo bảng + tài khoản")
+    ap.add_argument("--ghi-de-du-lieu", action="store_true",
+                    help="nạp dataset dù DB đã có dữ liệu (XOÁ disease_cases, "
+                         "environmental_data và mart/fact hiện có)")
     ap.add_argument("--username", default="admin")
     ap.add_argument("--password", default="admin123")
     ap.add_argument("--email", default="admin@example.com")
@@ -239,7 +262,16 @@ def main(argv=None) -> int:
         print("4) Dữ liệu    : bỏ qua (--no-data)")
     else:
         d = Path(args.data)
-        if not (d / "nhom_thang.csv").exists():
+        # Máy đã chạy và đã đồng bộ HIS: nạp dataset sẽ XOÁ số ca thật rồi thay
+        # bằng 938 dòng của bản công bố — mất dữ liệu mà không ai thấy. Chặn lại.
+        dang_co = _dem_du_lieu_cu()
+        if dang_co and not args.ghi_de_du_lieu:
+            print(f"4) Dữ liệu    : DB đã có dữ liệu ({dang_co}) — KHÔNG nạp dataset "
+                  f"để tránh xoá số liệu thật.")
+            print("                Máy đã chạy trước đó mà thiếu bảng: "
+                  "python -m scripts.nang_cap_db --ap-dung rồi đồng bộ lại từ HIS.")
+            print("                Thật sự muốn thay bằng bản công bố: thêm --ghi-de-du-lieu.")
+        elif not (d / "nhom_thang.csv").exists():
             print(f"4) Dữ liệu    : KHÔNG thấy {d}/nhom_thang.csv — bỏ qua. "
                   f"Dùng --data để chỉ đúng thư mục dataset.")
         else:
