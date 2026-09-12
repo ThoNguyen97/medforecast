@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     VERSION: str = "1.0.0"
     ENVIRONMENT: str = "development"
     DEBUG: bool = False
+    # Bật SQL_ECHO là in TOÀN BỘ câu SQL ra log — chỉ dùng khi đang soi một
+    # truy vấn cụ thể. Trước đây nó đi kèm DEBUG, nên bật DEBUG để xem log ứng
+    # dụng là vô tình biến log thành bức tường SQL và phình tệp log rất nhanh.
+    SQL_ECHO: bool = False
     LOG_LEVEL: str = "INFO"
 
     # CORS — stored as a plain string in .env; parsed into a list at runtime.

@@ -124,6 +124,16 @@ liệu, watermark nạp lại đúng cửa sổ, cờ tháng-trọn-vẹn tự s
 đường đọc SQL Server, và tính idempotent. Kỳ vọng: `KẾT QUẢ: TẤT CẢ PASS`.
 
 ## Lỗi thường gặp
+- **Log chạy như thác, toàn dòng `watchfiles.main - INFO - 1 change detected`**:
+  `uvicorn --reload` dùng watchfiles; watchfiles ghi log ở mức INFO; dòng log đó
+  được ghi vào `backend/logs/medforecast.log`; tệp log nằm TRONG thư mục đang
+  theo dõi → watchfiles lại thấy thay đổi → ghi tiếp. Vòng lặp tự nuôi khoảng
+  400 ms một vòng. Đã chặn trong mã (hạ `watchfiles` xuống WARNING), nhưng vẫn
+  nên chạy đúng lệnh có `--reload-dir app` để watcher không quét cả `data\` và
+  `logs\`.
+- **Log toàn câu SQL**: `.env` đang đặt `DEBUG=True`. Từ 12/09 việc in SQL tách
+  sang biến riêng `SQL_ECHO` (mặc định False) — bật `DEBUG` không còn kéo theo
+  SQL nữa. Nếu vẫn thấy SQL thì kiểm tra `SQL_ECHO` trong `.env`.
 - **Trang Kế hoạch nhập kho trống / 503**: chưa bấm Đồng bộ (mart trống) → bấm
   Đồng bộ ở trang Dịch tễ trước.
 - **Network Error / 404 ở mọi API**: backend chưa chạy, hoặc đang chạy ở cổng khác

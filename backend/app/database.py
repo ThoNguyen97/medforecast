@@ -26,7 +26,7 @@ engine = create_engine(
     settings.DATABASE_URL,
     connect_args={"check_same_thread": False} if _is_sqlite else {},
     pool_pre_ping=not _is_sqlite,  # tự phát hiện kết nối chết (Postgres/VPS)
-    echo=settings.DEBUG,
+    echo=settings.SQL_ECHO,
 )
 
 # Session factory

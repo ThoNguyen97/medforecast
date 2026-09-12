@@ -45,6 +45,19 @@ def setup_logging(log_level: str = "INFO") -> None:
     # Quieten noisy third-party loggers
     logging.getLogger("uvicorn.access").setLevel(logging.INFO)
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+    # echo=True đặt mức INGAY trên logger con "sqlalchemy.engine.Engine", nên đặt
+    # mức ở logger cha phía trên KHÔNG có tác dụng. Phải ghì đúng logger con.
+    logging.getLogger("sqlalchemy.engine.Engine").setLevel(logging.WARNING)
+
+    # VÒNG LẶP TỰ NUÔI — phải chặn, không chỉ là cho đỡ ồn:
+    # uvicorn --reload dùng watchfiles; watchfiles ghi "1 change detected" ở mức
+    # INFO; dòng log đó được handler tệp ghi vào backend/logs/medforecast.log;
+    # tệp log nằm TRONG thư mục đang được theo dõi, nên watchfiles lại thấy có
+    # thay đổi và ghi tiếp — lặp vô hạn khoảng 400 ms một vòng, log phình liên
+    # tục và CPU chạy không tải. Hạ watchfiles xuống WARNING là cắt vòng lặp
+    # ngay tại gốc, kể cả khi chạy `--reload` mà quên `--reload-dir app`.
+    logging.getLogger("watchfiles").setLevel(logging.WARNING)
+    logging.getLogger("watchfiles.main").setLevel(logging.WARNING)
 
     logger = logging.getLogger(__name__)
     logger.info("Logging configured — log files at: %s", LOGS_DIR)
