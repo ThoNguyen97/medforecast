@@ -4,6 +4,7 @@
 |---|---|---|
 | `KetQua_Backtest_ChonCauHinh.md` | Kết quả backtest chính thức (M12: RelMAE mã 0,500), các biến thể đối chứng, XGBoost/Prophet, tính tái lập | Chương 4 — kết quả |
 | `DinhHinhLai_MedForecast_2026-09-09.md` | Bốn quyết định phạm vi, kiến trúc 3 tầng, kế hoạch 6 tuần + nhật ký từng tuần | Chương 3 — thiết kế; phụ lục quá trình |
+| `ra-soat/RaSoat_ToanDien_2026-09-12.md` | **Rà soát toàn diện mã nguồn + DB thật, việc còn lại trước bảo vệ** | Tuần 5-6 |
 | `ra-soat/RaSoat_ToanDien_MedForecast_2026-09-09.md` | Rà soát mã nguồn và kiến trúc trước tái cấu trúc | Phụ lục |
 | `ra-soat/RaSoat_MoHinh_MedForecast_2026-09-09.md` | Rà soát mô hình dự báo, danh mục M1–M14 | Chương 3 — mô hình |
 | `ra-soat/RaSoat_DeCuong_vs_ThucTe.md` | Đối chiếu cam kết đề cương với thực tế | Tuần 5 |
