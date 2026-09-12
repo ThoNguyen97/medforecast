@@ -37,14 +37,14 @@ except Exception as _e:  # noqa: BLE001
 # đồng bộ HIS báo OK, nhưng Dashboard hiện "0 mã có mẫu số" và cảnh báo trống —
 # hỏng âm thầm, không ném lỗi. View tạo lại mỗi lần khởi động là vô hại.
 try:
-    from app.data_pipeline.views import tao_views as _tao_views
-    _kq = _tao_views()
+    from app.data_pipeline.views import dam_bao_luoc_do as _dam_bao
+    _kq = _dam_bao()
     _da = [k for k, v in _kq.items() if v == "đã tạo"]
     _bo = {k: v for k, v in _kq.items() if v != "đã tạo"}
-    logger.info("Views DSS: đã tạo %d/%d %s", len(_da), len(_kq),
-                ("— bỏ qua: %s" % _bo) if _bo else "")
+    logger.info("Lược đồ ngoài ORM: %d/%d nhóm đã tạo %s", len(_da), len(_kq),
+                ("— chờ dữ liệu: %s" % _bo) if _bo else "")
 except Exception as _e:  # noqa: BLE001
-    logger.warning("Bỏ qua tạo view DSS (non-fatal): %s", _e)
+    logger.warning("Bỏ qua dựng lược đồ ngoài ORM (non-fatal): %s", _e)
 
 # ── Application ───────────────────────────────────────────────────────────────
 

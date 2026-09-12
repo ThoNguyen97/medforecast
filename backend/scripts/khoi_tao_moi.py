@@ -67,17 +67,24 @@ def tao_bang() -> str:
     from app.data_pipeline.db import init_db as pipeline_init_db, get_db_url
     pipeline_init_db()
     from app.data_pipeline.db import Base as PBase
-    # Bốn view của Tầng 2/Tầng 3: create_all không biết tới view, thiếu chúng
-    # thì Dashboard hiện "0 mã có mẫu số" mà không báo lỗi gì.
-    from app.data_pipeline.views import tao_views
-    kq = tao_views(engine)
-    n_view = sum(1 for v in kq.values() if v == "đã tạo")
+    # Sáu bảng tự quản + bốn view: create_all không biết tới chúng. Không dựng
+    # ở đây thì DB mới chỉ có 29/35 bảng và 0 view — Dashboard sẽ hiện
+    # "0 mã có mẫu số" mà không báo lỗi gì.
+    from app.data_pipeline.views import dam_bao_luoc_do, VIEWS
+    kq = dam_bao_luoc_do(engine)
+    n_view = sum(1 for k, v in kq.items() if k in VIEWS and v == "đã tạo")
+    from sqlalchemy import text as _text
+    with engine.connect() as _c:
+        n_bang = _c.execute(_text(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' "
+            "AND name NOT LIKE 'sqlite_%'")).scalar() or 0
     ghi_chu = ""
-    if n_view < len(kq):
-        ghi_chu = (" — %d view chờ dữ liệu vật tư, tự tạo lại ở lần khởi động sau"
-                   % (len(kq) - n_view))
-    return (f"{n_app} bảng nghiệp vụ + {len(PBase.metadata.tables)} bảng tầng dữ liệu "
-            f"+ {n_view}/{len(kq)} view{ghi_chu} trong {get_db_url()}")
+    if n_view < len(VIEWS):
+        ghi_chu = (" — %d view chờ dữ liệu vật tư, tự tạo sau lần đồng bộ HIS đầu tiên"
+                   % (len(VIEWS) - n_view))
+    return (f"{n_bang} bảng ({n_app} nghiệp vụ + {len(PBase.metadata.tables)} tầng dữ "
+            f"liệu + 6 tự quản) + {n_view}/{len(VIEWS)} view{ghi_chu} "
+            f"trong {get_db_url()}")
 
 
 # ── 3. tài khoản ─────────────────────────────────────────────────────────────

@@ -1,5 +1,22 @@
 # -*- coding: utf-8 -*-
-"""BỐN VIEW SQLITE CỦA TẦNG 2 VÀ TẦNG 3 (12/09/2026).
+"""CÁC ĐỐI TƯỢNG CSDL KHÔNG NẰM TRONG `Base.metadata` (12/09/2026).
+
+Lược đồ của hệ thống có ba nhóm đối tượng, và chỉ nhóm đầu được
+`Base.metadata.create_all` lo:
+
+  1. 29 bảng ORM — khai trong `app/models` và `app/data_pipeline/models.py`.
+  2.  6 bảng TỰ QUẢN, tạo bằng `CREATE TABLE IF NOT EXISTS` rải trong mã:
+     `fact_cases_by_care_level`, `fact_usage_by_care_level`, `fact_usage_total`,
+     `fact_inventory_lot` (dss_loader — sinh ra khi đồng bộ HIS) và
+     `dss_forecast_cache`, `forecast_runs` (dss_dashboard — sinh ra khi mở
+     Dashboard lần đầu).
+  3.  4 VIEW — trước nay chỉ tạo khi chạy tay hai script SQL của G1.
+
+Nhóm 2 và 3 vì thế xuất hiện MUỘN và KHÔNG ĐỀU: một DB vừa dựng lại từ đầu chỉ
+có 29 bảng, phải đồng bộ HIS xong rồi mở Dashboard thì mới đủ 35 — và view thì
+không bao giờ tự có. Module này gom cả hai nhóm về một chỗ để mọi máy đều dựng
+được lược đồ ĐẦY ĐỦ bằng một lệnh.
+
 
 Vì sao có file này: bốn view dưới đây trước nay CHỈ được tạo khi ai đó mở
 SSMS/DB Browser chạy tay `sql_his/phase0/G1_03_LOCAL_cau_hinh.sql` và
@@ -122,6 +139,50 @@ PHU_THUOC = {
     "v_supply_daily_demand": ("fact_usage_total",),
     "v_care_level_share": ("fact_cases_by_care_level", "system_config"),
 }
+
+
+def tao_bang_tu_quan(db=None) -> dict:
+    """Tạo 6 bảng tự quản nằm ngoài Base.metadata.
+
+    Chúng vốn được tạo lười (lazy): 4 bảng của dss_loader ra đời khi đồng bộ
+    HIS, 2 bảng của dss_dashboard ra đời khi mở Dashboard lần đầu. Tạo sẵn ở
+    đây để một DB vừa dựng lại đã có đủ lược đồ, thay vì đủ dần theo thao tác
+    người dùng. Mọi câu đều là CREATE TABLE IF NOT EXISTS nên vô hại khi lặp.
+    """
+    tu_dong = db is None
+    if tu_dong:
+        from app.database import SessionLocal
+        db = SessionLocal()
+    ket_qua: dict[str, str] = {}
+    try:
+        try:
+            from app.data_pipeline.dss_loader import ensure_tables
+            ensure_tables(db)
+            ket_qua["dss_loader (4 bảng fact + index)"] = "đã tạo"
+        except Exception as exc:                          # noqa: BLE001
+            ket_qua["dss_loader (4 bảng fact + index)"] = f"lỗi: {exc}"
+        try:
+            from app.services.dss_dashboard import _ensure_cache
+            _ensure_cache(db)
+            ket_qua["dss_dashboard (cache + forecast_runs)"] = "đã tạo"
+        except Exception as exc:                          # noqa: BLE001
+            ket_qua["dss_dashboard (cache + forecast_runs)"] = f"lỗi: {exc}"
+        db.commit()
+    finally:
+        if tu_dong:
+            db.close()
+    return ket_qua
+
+
+def dam_bao_luoc_do(engine=None, db=None) -> dict:
+    """Dựng ĐỦ mọi đối tượng ngoài ORM: 6 bảng tự quản, rồi 4 view.
+
+    Thứ tự bắt buộc — view dựa trên fact_usage_total và
+    fact_cases_by_care_level, tạo view trước thì chúng bị bỏ qua.
+    """
+    out = dict(tao_bang_tu_quan(db))
+    out.update(tao_views(engine))
+    return out
 
 
 def tao_views(engine=None) -> dict:
