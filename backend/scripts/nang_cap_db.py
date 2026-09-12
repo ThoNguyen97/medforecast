@@ -164,8 +164,20 @@ def main() -> int:
 
     bang_thieu, cot_thieu, canh_bao = _khao_sat()
 
+    # View của Tầng 2/Tầng 3 phải được kiểm ngay cả khi bảng đã đủ: chúng không
+    # nằm trong Base.metadata nên _khao_sat() không thấy, mà thiếu chúng thì
+    # Dashboard hiện "0 mã có mẫu số" mà không báo lỗi. Tạo view không đụng dữ
+    # liệu nên làm luôn, không cần --ap-dung.
+    try:
+        from app.data_pipeline.views import tao_views
+        kq_view = tao_views(engine)
+    except Exception as exc:                                # noqa: BLE001
+        kq_view = {"(bỏ qua)": str(exc)}
+    for ten, tt in kq_view.items():
+        print(("✓ " if tt == "đã tạo" else "! ") + f"view {ten}: {tt}")
+
     if not bang_thieu and not cot_thieu and not canh_bao:
-        print("✓ Lược đồ DB đã khớp mã nguồn, không cần làm gì.")
+        print("✓ Lược đồ DB đã khớp mã nguồn, không cần làm gì thêm.")
         return 0
 
     print()

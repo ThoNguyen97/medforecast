@@ -67,8 +67,17 @@ def tao_bang() -> str:
     from app.data_pipeline.db import init_db as pipeline_init_db, get_db_url
     pipeline_init_db()
     from app.data_pipeline.db import Base as PBase
+    # Bốn view của Tầng 2/Tầng 3: create_all không biết tới view, thiếu chúng
+    # thì Dashboard hiện "0 mã có mẫu số" mà không báo lỗi gì.
+    from app.data_pipeline.views import tao_views
+    kq = tao_views(engine)
+    n_view = sum(1 for v in kq.values() if v == "đã tạo")
+    ghi_chu = ""
+    if n_view < len(kq):
+        ghi_chu = (" — %d view chờ dữ liệu vật tư, tự tạo lại ở lần khởi động sau"
+                   % (len(kq) - n_view))
     return (f"{n_app} bảng nghiệp vụ + {len(PBase.metadata.tables)} bảng tầng dữ liệu "
-            f"trong {get_db_url()}")
+            f"+ {n_view}/{len(kq)} view{ghi_chu} trong {get_db_url()}")
 
 
 # ── 3. tài khoản ─────────────────────────────────────────────────────────────

@@ -32,6 +32,20 @@ try:
 except Exception as _e:  # noqa: BLE001
     logger.warning("Pipeline table init skipped (non-fatal): %s", _e)
 
+# Bốn view của Tầng 2/Tầng 3. create_all KHÔNG biết tới view, nên nếu không tạo
+# ở đây thì máy nào chưa chạy tay sql_his/phase0/G1_03 và G1_04 sẽ có đủ bảng,
+# đồng bộ HIS báo OK, nhưng Dashboard hiện "0 mã có mẫu số" và cảnh báo trống —
+# hỏng âm thầm, không ném lỗi. View tạo lại mỗi lần khởi động là vô hại.
+try:
+    from app.data_pipeline.views import tao_views as _tao_views
+    _kq = _tao_views()
+    _da = [k for k, v in _kq.items() if v == "đã tạo"]
+    _bo = {k: v for k, v in _kq.items() if v != "đã tạo"}
+    logger.info("Views DSS: đã tạo %d/%d %s", len(_da), len(_kq),
+                ("— bỏ qua: %s" % _bo) if _bo else "")
+except Exception as _e:  # noqa: BLE001
+    logger.warning("Bỏ qua tạo view DSS (non-fatal): %s", _e)
+
 # ── Application ───────────────────────────────────────────────────────────────
 
 @asynccontextmanager

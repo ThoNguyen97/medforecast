@@ -150,6 +150,18 @@ class SyncService:
             result["forecast_runs_verified"] = dss_dashboard.fill_actuals(self.db)
         except Exception as exc:                          # noqa: BLE001
             logger.warning("fill_actuals sau đồng bộ lỗi: %s", exc)
+
+        # Bốn view của Tầng 2/Tầng 3 dựa trên fact_usage_total và
+        # fact_cases_by_care_level — hai bảng do CHÍNH đợt đồng bộ này tạo ra.
+        # Lần đồng bộ đầu tiên trên máy mới, lúc ứng dụng khởi động hai bảng đó
+        # chưa tồn tại nên view bị bỏ qua; không tạo lại ở đây thì Dashboard sẽ
+        # hiện "0 mã có mẫu số" cho tới lần khởi động lại tiếp theo.
+        try:
+            from app.data_pipeline.views import tao_views
+            kq_view = tao_views()
+            result["views"] = {k: v for k, v in kq_view.items() if v != "đã tạo"} or "đủ 4 view"
+        except Exception as exc:                          # noqa: BLE001
+            logger.warning("Tạo view sau đồng bộ lỗi: %s", exc)
         return result
 
     # ── trạng thái PROD → STA ──────────────────────────────────────────
