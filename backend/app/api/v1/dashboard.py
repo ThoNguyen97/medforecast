@@ -520,6 +520,32 @@ def get_dashboard_v2(
         raise HTTPException(status_code=400, detail=str(exc))
 
 
+@router.get("/v2/alerts")
+def get_dashboard_v2_alerts(
+    focus: bool = Query(True, description="Tập trọng tâm (tỷ trọng hô hấp ≥ 25%) hay toàn danh mục"),
+    level: Optional[str] = Query(None, description="red | amber | green | grey; bỏ trống = mọi mức"),
+    q: Optional[str] = Query(None, description="Lọc theo mã hoặc tên hoạt chất"),
+    danh_muc: Optional[str] = Query(None, description="Lọc theo danh mục"),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Dict:
+    """Trang Cảnh báo thiếu hụt (12/09/2026).
+
+    CÙNG chuỗi Tầng 1 → 2 → 3 với `/v2` — cùng dự báo, cùng định mức thực
+    nghiệm, cùng ngưỡng `dss.thresholds` — chỉ khác là trả toàn bộ dòng có
+    phân trang thay vì top-8. Trước đây trang này gọi một service riêng đọc
+    định mức nhập tay × tỷ lệ Nhẹ/TB/Nặng, nên hai trang ra hai con số khác
+    nhau về cùng một mã; service đó đã chuyển sang _archive/.
+    """
+    try:
+        return dss_dashboard.alerts_payload(db, focus=focus, level=level, q=q,
+                                            danh_muc=danh_muc, limit=limit, offset=offset)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 @router.get("/v2/forecast")
 def get_dashboard_v2_forecast(
     force: bool = Query(False, description="Bỏ cache, khớp lại mô hình"),

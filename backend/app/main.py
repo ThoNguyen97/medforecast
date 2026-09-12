@@ -118,7 +118,12 @@ async def health_check():
 
 
 # ── API Routes ────────────────────────────────────────────────────────────────
-from app.api.v1 import auth, users, supplies, inventory, environmental, disease_cases, supply_requirements, alerts, dashboard, reports, config, audit_logs, forecast_analysis, admin_catalog, supply_recommendations, admin_severity, forecast_hier, sync, supply_plan
+# 12/09/2026: alerts / supply_recommendations / admin_severity / supply_plan đã
+# chuyển sang _archive/dinh_muc_nhap_tay/ — chúng tính nhu cầu bằng định mức
+# nhập tay × tỷ lệ Nhẹ/TB/Nặng và ngưỡng 3/7/14 ngày, tức một bộ máy thứ hai
+# cho ra con số khác Dashboard. Cảnh báo thiếu hụt giờ đi qua /dashboard/v2/alerts,
+# tham số DSS qua /dss/params, định mức thực nghiệm (chỉ đọc) qua /dss/norms.
+from app.api.v1 import auth, users, supplies, inventory, environmental, disease_cases, supply_requirements, dashboard, reports, config, audit_logs, forecast_analysis, admin_catalog, forecast_hier, sync, dss_config
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["authentication"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
@@ -127,15 +132,12 @@ app.include_router(inventory.router, prefix="/api/v1/inventory", tags=["inventor
 app.include_router(environmental.router, prefix="/api/v1/environmental", tags=["environmental-data"])
 app.include_router(disease_cases.router, prefix="/api/v1/disease-cases", tags=["disease-cases"])
 app.include_router(supply_requirements.router, prefix="/api/v1/supply-requirements", tags=["supply-requirements"])
-app.include_router(alerts.router, prefix="/api/v1/alerts", tags=["alerts"])
 app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["dashboard"])
 app.include_router(reports.router, prefix="/api/v1/reports", tags=["reports"])
 app.include_router(config.router, prefix="/api/v1/config", tags=["configuration"])
 app.include_router(audit_logs.router, prefix="/api/v1", tags=["audit-logs"])
 app.include_router(forecast_analysis.router, prefix="/api/v1/forecast", tags=["forecast-analysis"])
 app.include_router(admin_catalog.router, prefix="/api/v1/admin", tags=["admin-catalog"])
-app.include_router(supply_recommendations.router, prefix="/api/v1/supply-recommendations", tags=["supply-recommendations"])
-app.include_router(admin_severity.router, prefix="/api/v1/admin", tags=["admin-severity"])
 app.include_router(forecast_hier.router, prefix="/api/v1/forecast-hier", tags=["forecast-hierarchical"])
 app.include_router(sync.router, prefix="/api/v1/sync", tags=["data-sync"])
-app.include_router(supply_plan.router, prefix="/api/v1/supply-plan", tags=["supply-planning"])
+app.include_router(dss_config.router, prefix="/api/v1/dss", tags=["dss-config"])

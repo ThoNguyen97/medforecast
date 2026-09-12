@@ -183,7 +183,7 @@ export interface CareLevelShare {
 export interface CareLevelSection {
   shares: CareLevelShare[];
   cua_so: { tu_ky?: Period; den_ky?: Period; so_ky?: number };
-  anh_xa_ro_do_nang: Record<string, string>;
+  ten_ro: Record<string, string>;
   chan_doan_dinh_muc: Record<string, unknown>;
   ghi_chu: string;
 }

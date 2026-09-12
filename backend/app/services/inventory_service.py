@@ -15,28 +15,14 @@ logger = logging.getLogger(__name__)
 
 
 def _trigger_alert_check(db: Session, supply_id: int) -> None:
-    """
-    Re-evaluate alerts for a supply after an inventory update.
+    """Không còn gì để làm (12/09/2026).
 
-    Imported lazily to avoid circular imports between inventory_service and
-    alert_service.
+    Trước đây gọi AlertModule (bảng `alerts`, ngưỡng 3/7/14 ngày) để tự đóng
+    cảnh báo sau khi sửa kho. Cảnh báo thật giờ được tính lại mỗi lần đọc
+    (/dashboard/v2, /dashboard/v2/alerts) từ tồn FEFO và nhu cầu dự báo —
+    không có trạng thái cần đồng bộ. Giữ tên hàm để hai chỗ gọi khỏi đổi.
     """
-    try:
-        from app.services.alert_service import AlertModule
-
-        module = AlertModule(db)
-        resolved = module.check_and_resolve_alerts_for_supply(supply_id)
-        if resolved:
-            logger.info(
-                f"Auto-resolved alert for supply_id={supply_id} "
-                "after inventory update"
-            )
-    except Exception as exc:
-        # Alert check failures should not break inventory updates
-        logger.warning(
-            f"Alert check failed for supply_id={supply_id} "
-            f"after inventory update: {exc}"
-        )
+    return None
 
 
 class InventoryService:

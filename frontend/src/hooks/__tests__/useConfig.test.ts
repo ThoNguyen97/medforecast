@@ -5,12 +5,8 @@ import { createElement, type ReactNode } from 'react';
 import {
   useConfigs,
   useConfigByKey,
-  useConversionRatios,
-  useThresholds,
   useAuditLogs,
   useUpdateConfig,
-  useUpdateConversionRatios,
-  useUpdateThresholds,
 } from '../useConfig';
 import { configService } from '../../services/configService';
 
@@ -52,26 +48,6 @@ describe('useConfigByKey', () => {
   });
 });
 
-describe('useConversionRatios', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it('fetches conversion ratios', async () => {
-    vi.mocked(configService.getConversionRatios).mockResolvedValueOnce([]);
-    const { result } = renderHook(() => useConversionRatios(), { wrapper: makeWrapper() });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-  });
-});
-
-describe('useThresholds', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it('fetches thresholds', async () => {
-    vi.mocked(configService.getThresholds).mockResolvedValueOnce([]);
-    const { result } = renderHook(() => useThresholds(), { wrapper: makeWrapper() });
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-  });
-});
-
 describe('useAuditLogs', () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -98,32 +74,3 @@ describe('useUpdateConfig', () => {
   });
 });
 
-describe('useUpdateConversionRatios', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it('calls updateConversionRatios service', async () => {
-    vi.mocked(configService.updateConversionRatios).mockResolvedValueOnce([] as any);
-    const { result } = renderHook(() => useUpdateConversionRatios(), { wrapper: makeWrapper() });
-
-    await act(async () => {
-      await result.current.mutateAsync({ ratios: [] } as any);
-    });
-
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-  });
-});
-
-describe('useUpdateThresholds', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it('calls updateThresholds service', async () => {
-    vi.mocked(configService.updateThresholds).mockResolvedValueOnce([] as any);
-    const { result } = renderHook(() => useUpdateThresholds(), { wrapper: makeWrapper() });
-
-    await act(async () => {
-      await result.current.mutateAsync({ thresholds: [] } as any);
-    });
-
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-  });
-});

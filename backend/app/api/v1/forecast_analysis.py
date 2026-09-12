@@ -949,21 +949,8 @@ def analyze_forecast(
                 exc,
             )
 
-        # Spec 5 → Bước 6: tự sinh alerts từ shortage hiện tại để Dashboard có cảnh báo
-        try:
-            from datetime import timedelta as _timedelta
-            from app.services.alert_service import AlertModule
-
-            AlertModule(db).check_and_generate_alerts(
-                start_date=date.today(),
-                end_date=date.today() + _timedelta(days=60),
-            )
-        except Exception as exc:
-            logger.warning(
-                "Failed to auto-generate alerts for forecast %s: %s",
-                saved.id,
-                exc,
-            )
+        # (Bước 6 cũ — AlertModule sinh bảng `alerts` theo ngưỡng 3/7/14 — đã gỡ
+        #  12/09/2026: cảnh báo thật tính lại mỗi lần đọc ở /dashboard/v2.)
 
         # Invalidate dashboard cache → dashboard cập nhật ngay (không chờ TTL 5')
         try:

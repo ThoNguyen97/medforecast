@@ -13,8 +13,6 @@ import InventoryTable, {
   type InventoryRow,
 } from '../components/inventory/InventoryTable';
 import { classifyStatus } from '../components/inventory/InventoryStatusBadge';
-import { adminSeverityService, type SupplyNormCell } from '../services/adminSeverityService';
-import { useDiseaseOptions } from '../hooks/useForecastAnalysis';
 
 const PAGE_SIZE = 10;
 
@@ -47,11 +45,8 @@ function InventoryContent() {
     search: '',
     category: 'all',
     status: 'all',
-    disease: '',
-    level: 'all',
   });
   const [page, setPage] = useState(1);
-  const [normMap, setNormMap] = useState<Map<string, SupplyNormCell>>(new Map());
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -68,38 +63,8 @@ function InventoryContent() {
 
   const { data: inventory = [], isLoading, refetch } = useInventory({ limit: 2000 });
 
-  // Bệnh dùng để tra định mức = NHÓM ICD (khớp icd_code đã lưu ở
-  // severity_rates/disease_supply_norms — 2 bảng này đã chuyển sang cấp
-  // nhóm từ trước, không còn theo 4 mã lẻ J20/J06/J02/J01 nữa).
-  const { data: diseaseGroups = [] } = useDiseaseOptions();
-  const diseases = useMemo(
-    () => [
-      { value: '', label: 'Tất cả' },
-      ...diseaseGroups.map((g) => ({ value: g.key, label: `${g.label} (${g.key})` })),
-    ],
-    [diseaseGroups],
-  );
-
-  // Fetch norm matrix khi đổi bệnh
-  useEffect(() => {
-    if (!filters.disease) {
-      setNormMap(new Map());
-      return;
-    }
-    let cancelled = false;
-    adminSeverityService.getNormMatrix(filters.disease).then((data) => {
-      if (cancelled) return;
-      const map = new Map<string, SupplyNormCell>();
-      data.supplies.forEach((s) => {
-        // Key bằng supply_code để ghép với bảng kho
-        map.set(s.supply_code, s);
-      });
-      setNormMap(map);
-    }).catch(() => {
-      if (!cancelled) setNormMap(new Map());
-    });
-    return () => { cancelled = true; };
-  }, [filters.disease]);
+  // 12/09/2026: cột định mức Nhẹ/TB/Nặng theo bệnh đã gỡ khỏi trang này — định
+  // mức DSS là thực nghiệm theo rổ chăm sóc, xem ở Quản trị → Định mức thực nghiệm.
 
   // Map raw inventory → flat row dùng cho bảng
   const allRows: InventoryRow[] = useMemo(() => {
@@ -114,9 +79,6 @@ function InventoryContent() {
         supply.category ??
         '—';
       const supplyName = supply.ten_hoat_chat ?? supply.name ?? '—';
-      // Ghép dữ liệu định mức nếu có
-      const norm = normMap.get(code);
-      
       return {
         id: item.id,
         code,
@@ -125,12 +87,9 @@ function InventoryContent() {
         unit: supply.unit ?? '—',
         currentStock: item.current_stock ?? 0,
         safetyStock: item.safety_stock ?? 0,
-        mild: norm?.mild,
-        moderate: norm?.moderate,
-        severe: norm?.severe,
       };
     });
-  }, [inventory, normMap]);
+  }, [inventory]);
 
   // Lấy danh sách category xuất hiện trong dữ liệu
   const categoryOptions = useMemo(() => {
@@ -158,11 +117,6 @@ function InventoryContent() {
         const status = classifyStatus(r.currentStock, r.safetyStock);
         if (status !== filters.status) return false;
       }
-      // Lọc theo cấp độ: chỉ hiển thị thuốc có định mức > 0 ở cấp độ đang chọn
-      if (filters.level !== 'all') {
-        const val = r[filters.level] ?? 0;
-        if (val <= 0) return false;
-      }
       return true;
     });
   }, [allRows, filters]);
@@ -184,7 +138,7 @@ function InventoryContent() {
   // Reset page khi filter đổi
   useEffect(() => {
     setPage(1);
-  }, [filters.search, filters.category, filters.status, filters.disease, filters.level]);
+  }, [filters.search, filters.category, filters.status]);
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
   const handleDownloadTemplate = () => {
@@ -349,7 +303,6 @@ function InventoryContent() {
           filters={filters}
           onChange={setFilters}
           categories={categoryOptions}
-          diseases={diseases}
         />
         <InventoryTable
           rows={paged}
@@ -360,8 +313,6 @@ function InventoryContent() {
           onPageChange={setPage}
           onEdit={handleEdit}
           onDelete={handleDelete}
-          showSeverity={normMap.size > 0}
-          level={filters.level}
         />
       </div>
 

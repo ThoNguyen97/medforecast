@@ -4,7 +4,7 @@ Tests use mocking (unittest.mock) to isolate units from the database.
 Covers: UserService, MedicalSupplyService, InventoryService,
         EnvironmentalDataService, DiseaseCaseService,
         ForecastService, ConfigService, NotificationService,
-        DataCollectorService, AlertModule, ProcurementPlanner.
+        DataCollectorService, ProcurementPlanner. (AlertModule đã archive 12/09/2026.)
 """
 
 import asyncio
@@ -507,62 +507,6 @@ class TestConfigService:
         result = service.get_all_configs()
         assert len(result) == 1
 
-    def test_get_thresholds_uses_defaults_when_absent(self, service, mock_db):
-        mock_db.query.return_value.filter.return_value.all.return_value = []
-        result = service.get_thresholds()
-        assert result["critical_days"] == 3
-        assert result["high_days"] == 7
-        assert result["medium_days"] == 14
-
-    def test_get_thresholds_uses_db_values(self, service, mock_db):
-        from app.models.system_config import SystemConfig
-        rows = [
-            SystemConfig(config_key="threshold_critical_days", config_value="2"),
-            SystemConfig(config_key="threshold_high_days", config_value="5"),
-            SystemConfig(config_key="threshold_medium_days", config_value="10"),
-        ]
-        mock_db.query.return_value.filter.return_value.all.return_value = rows
-        result = service.get_thresholds()
-        assert result["critical_days"] == 2
-        assert result["high_days"] == 5
-        assert result["medium_days"] == 10
-
-    def test_update_thresholds_raises_on_invalid_ordering(self, service, mock_db):
-        from fastapi import HTTPException
-        from app.schemas.base import ThresholdConfig
-        data = ThresholdConfig(critical_days=10, high_days=5, medium_days=14)  # critical > high
-        with pytest.raises(HTTPException) as exc:
-            service.update_thresholds(data, updated_by_user_id=1, ip_address="127.0.0.1")
-        assert exc.value.status_code == 400
-
-    def test_update_thresholds_valid_ordering(self, service, mock_db):
-        from app.schemas.base import ThresholdConfig
-        mock_db.query.return_value.filter.return_value.first.return_value = None
-        mock_db.query.return_value.filter.return_value.all.return_value = []
-        data = ThresholdConfig(critical_days=2, high_days=6, medium_days=12)
-        result = service.update_thresholds(data, updated_by_user_id=1, ip_address="127.0.0.1")
-        assert result["critical_days"] == 2
-        assert result["high_days"] == 6
-        assert result["medium_days"] == 12
-
-    def test_update_conversion_ratios_raises_on_empty_list(self, service, mock_db):
-        from fastapi import HTTPException
-        with pytest.raises(HTTPException) as exc:
-            service.update_conversion_ratios([], updated_by_user_id=1, ip_address="127.0.0.1")
-        assert exc.value.status_code == 400
-
-    def test_update_conversion_ratios_supply_not_found_raises_404(self, service, mock_db):
-        from app.schemas.base import ConversionRatioUpdate
-        from fastapi import HTTPException
-        mock_db.query.return_value.filter.return_value.first.return_value = None
-        updates = [ConversionRatioUpdate(disease_type="dengue_fever", supply_id=99, ratio=2.0, unit="units")]
-        with pytest.raises(HTTPException) as exc:
-            service.update_conversion_ratios(updates, updated_by_user_id=1, ip_address="127.0.0.1")
-        assert exc.value.status_code == 404
-
-
-# =============================================================================
-# ForecastService Unit Tests
 # =============================================================================
 
 class TestForecastServiceUnit:
@@ -828,92 +772,7 @@ class TestDataCollectorService:
 
 
 # =============================================================================
-# AlertModule Unit Tests (Comprehensive)
-# =============================================================================
 
-class TestAlertModuleUnit:
-    """Additional unit tests for AlertModule beyond the inline tests."""
-
-    # ── Static pure methods ───────────────────────────────────────────────────
-
-    def test_classify_severity_boundaries(self):
-        from app.services.alert_service import AlertModule
-        assert AlertModule.classify_severity(0) == "critical"
-        assert AlertModule.classify_severity(3) == "critical"
-        assert AlertModule.classify_severity(4) == "high"
-        assert AlertModule.classify_severity(7) == "high"
-        assert AlertModule.classify_severity(8) == "medium"
-        assert AlertModule.classify_severity(14) == "medium"
-        assert AlertModule.classify_severity(15) is None
-        assert AlertModule.classify_severity(100) is None
-
-    def test_calculate_shortage_date_basic(self):
-        from app.services.alert_service import AlertModule
-        today = date(2024, 1, 1)
-        result = AlertModule.calculate_shortage_date(100, 10.0, today=today)
-        assert result == date(2024, 1, 11)
-
-    def test_calculate_shortage_date_zero_demand(self):
-        from app.services.alert_service import AlertModule
-        assert AlertModule.calculate_shortage_date(100, 0.0) is None
-
-    def test_days_until_shortage_basic(self):
-        from app.services.alert_service import AlertModule
-        assert AlertModule.days_until_shortage(100, 10.0) == 10
-
-    def test_days_until_shortage_zero_demand(self):
-        from app.services.alert_service import AlertModule
-        assert AlertModule.days_until_shortage(100, 0.0) is None
-
-    def test_build_alert_message_content(self):
-        from app.services.alert_service import AlertModule
-        msg = AlertModule.build_alert_message("Masks", "critical", 10, 100, date(2024, 3, 15))
-        assert "CRITICAL" in msg
-        assert "Masks" in msg
-        assert "90" in msg  # shortage = 100 - 10
-
-    def test_build_alert_message_unknown_date(self):
-        from app.services.alert_service import AlertModule
-        msg = AlertModule.build_alert_message("Gloves", "high", 50, 200, None)
-        assert "unknown date" in msg
-
-    # ── Resolve logic ─────────────────────────────────────────────────────────
-
-    def test_resolve_alert_marks_resolved(self):
-        from app.services.alert_service import AlertModule
-        from app.models.alert import Alert
-        mock_db = MagicMock()
-        alert = Alert()
-        alert.id = 1
-        alert.supply_id = 1
-        alert.is_resolved = False
-        alert.resolved_at = None
-        mock_db.query.return_value.filter.return_value.first.return_value = alert
-        module = AlertModule(mock_db)
-        result = module.resolve_alert(1)
-        assert result is not None
-        assert result.is_resolved is True
-        assert result.resolved_at is not None
-        mock_db.commit.assert_called_once()
-
-    def test_resolve_nonexistent_alert_returns_none(self):
-        from app.services.alert_service import AlertModule
-        mock_db = MagicMock()
-        mock_db.query.return_value.filter.return_value.first.return_value = None
-        module = AlertModule(mock_db)
-        assert module.resolve_alert(999) is None
-
-    def test_check_and_generate_no_requirements(self):
-        from app.services.alert_service import AlertModule
-        mock_db = MagicMock()
-        mock_db.query.return_value.filter.return_value.group_by.return_value.all.return_value = []
-        module = AlertModule(mock_db)
-        alerts = module.check_and_generate_alerts()
-        assert alerts == []
-
-
-# =============================================================================
-# ProcurementPlanner Unit Tests (Comprehensive)
 # =============================================================================
 
 class TestProcurementPlannerUnit:

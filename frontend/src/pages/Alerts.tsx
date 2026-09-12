@@ -1,757 +1,367 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { PackageMinus, AlertTriangle, CheckCircle2, TrendingUp, Calculator, Save, Loader2, Search, Edit } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { Loader2, RefreshCw, Search } from 'lucide-react';
 
 import { useUIStore } from '../store/uiStore';
-import api from '../services/api';
+import { useAuthStore } from '../store/authStore';
+import { dssService } from '../services/dssService';
+import { cn } from '../utils/cn';
+import KpiTile from '../components/dashboard/KpiTile';
+import LevelPill from '../components/dashboard/LevelPill';
 import {
-  supplyRecommendationService,
-  type AggregatedItem,
-  type DiseaseRecommendation,
-} from '../services/supplyRecommendationService';
-import LoadingSpinner from '../components/common/LoadingSpinner';
+  BLOCK_LABELS,
+  GREY_REASON_LABELS,
+  LEVEL_LABELS,
+  type AlertLevel,
+  type AlertRow,
+} from '../types/dashboardV2';
 
-// ─── Cảnh báo 4 mức theo Bảng 4 đề cương ─────────────────────────────────────
-// Tính tại client để badge tự cập nhật khi người dùng sửa ngưỡng an toàn tay;
-// backend cũng trả level/reason/action (nguồn chân lý) — hai bên cùng công thức:
-//   ĐỎ  tồn < nhu cầu chưa dự phòng · VÀNG tồn < ngưỡng an toàn · XANH đủ · XÁM thiếu dữ liệu
-type MucCanhBao = { level: 'red' | 'yellow' | 'green' | 'gray'; label: string; reason: string };
+const PAGE_SIZE = 25;
 
-function mucCanhBao(needBeforeBuffer: number, safetyStock: number, currentStock: number): MucCanhBao {
-  if (currentStock < needBeforeBuffer)
-    return { level: 'red', label: 'Đỏ', reason: `Tồn ${currentStock.toLocaleString('vi-VN')} thấp hơn nhu cầu chưa tính dự phòng ${Math.round(needBeforeBuffer).toLocaleString('vi-VN')} — cần chuẩn bị bổ sung ngay.` };
-  if (currentStock < safetyStock)
-    return { level: 'yellow', label: 'Vàng', reason: `Đủ nhu cầu cơ bản nhưng dưới ngưỡng an toàn ${Math.round(safetyStock).toLocaleString('vi-VN')} — đưa vào kỳ bổ sung kế tiếp.` };
-  return { level: 'green', label: 'Xanh', reason: 'Tồn kho cao hơn ngưỡng an toàn — theo dõi định kỳ.' };
-}
-
-const MAU_MUC: Record<MucCanhBao['level'], string> = {
-  red: 'bg-red-50 text-red-700 border border-red-200',
-  yellow: 'bg-amber-50 text-amber-700 border border-amber-200',
-  green: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
-  gray: 'bg-slate-100 text-slate-600 border border-slate-200',
-};
-
+const fmt = (v: number | null | undefined, digits = 0) =>
+  v == null ? '—' : v.toLocaleString('vi-VN', { maximumFractionDigits: digits });
 
 /**
- * Module 7 — Cảnh báo nguy cơ thiếu hụt
+ * Cảnh báo thiếu hụt — 12/09/2026.
  *
- * Áp dụng đầy đủ công thức theo yêu cầu mục 4-7:
- *  - Mục 5.1: Phân bổ ca theo Nhẹ/TB/Nặng (severity_rate)
- *  - Mục 6:   Nhu cầu = Σ(số ca × định mức) × (1 + dự phòng 15%)
- *  - Mục 7:   Lượng thiếu hụt cần chuẩn bị = max(0, nhu cầu + ngưỡng an toàn − tồn kho)
+ * Trang này và Tổng quan đọc CÙNG một chuỗi Tầng 1 → 2 → 3
+ * (/dashboard/v2/alerts): cùng dự báo Ŷ_g, cùng định mức thực nghiệm, cùng
+ * ngưỡng `dss.thresholds`. Khác biệt duy nhất: ở đây trả mọi dòng, phân trang
+ * server, có tìm kiếm và lọc danh mục. Không có cột "đề xuất nhập" — phạm vi
+ * dừng ở cảnh báo; Δ_need = max(0, nhu cầu horizon − tồn hữu dụng) là mức
+ * thiếu hụt dự kiến, không phải lượng mua.
+ *
+ * Trước 12/09 trang này gọi supply_recommendation_service (định mức nhập tay
+ * × tỷ lệ Nhẹ/TB/Nặng, ngưỡng 3/7/14) nên ra con số khác Dashboard.
  */
 export default function Alerts() {
   const { setPageTitle } = useUIStore();
+  const { isAuthenticated } = useAuthStore();
+  useEffect(() => setPageTitle('Cảnh báo thiếu hụt'), [setPageTitle]);
 
+  const [focus, setFocus] = useState(true);
+  const [level, setLevel] = useState<AlertLevel | null>(null);
+  const [danhMuc, setDanhMuc] = useState('');
+  const [search, setSearch] = useState('');
+  const [q, setQ] = useState('');
+  const [page, setPage] = useState(1);
+
+  // gõ xong 300ms mới gọi server
   useEffect(() => {
-    setPageTitle('Cảnh báo nguy cơ thiếu hụt');
-  }, [setPageTitle]);
+    const t = setTimeout(() => setQ(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+  useEffect(() => setPage(1), [focus, level, danhMuc, q]);
 
-  // Mặc định lấy tháng hiện tại
-  const [forecastMonth, setForecastMonth] = useState<string>(() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  });
-  const [bufferRate, setBufferRate] = useState<number>(15);
-  const [selectedDisease, setSelectedDisease] = useState<string>('all');
-  const [search, setSearch] = useState<string>('');
-  const [page, setPage] = useState<number>(1);
-  const PAGE_SIZE = 10;
-
-  // State cho modal sửa ngưỡng an toàn
-  const [editingItem, setEditingItem] = useState<AggregatedItem | null>(null);
-  const [newThreshold, setNewThreshold] = useState<number>(0);
-
-  // State để lưu các giá trị Ngưỡng an toàn đã sửa thủ công
-  // Load từ sessionStorage khi khởi tạo
-  const [manualThresholds, setManualThresholds] = useState<Map<number, number>>(() => {
-    try {
-      const saved = sessionStorage.getItem('manualThresholds');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return new Map(Object.entries(parsed).map(([k, v]) => [Number(k), v as number]));
-      }
-    } catch (e) {
-      console.error('Failed to load manual thresholds:', e);
-    }
-    return new Map();
-  });
-
-  // Lưu vào sessionStorage mỗi khi thay đổi
-  useEffect(() => {
-    try {
-      const obj = Object.fromEntries(manualThresholds.entries());
-      sessionStorage.setItem('manualThresholds', JSON.stringify(obj));
-    } catch (e) {
-      console.error('Failed to save manual thresholds:', e);
-    }
-  }, [manualThresholds]);
-
-  const monthDate = `${forecastMonth}-01`;
-
-  const queryClient = useQueryClient();
-
-  const { data, isLoading, error, refetch, isFetching } = useQuery({
-    queryKey: ['supply-recommendations', forecastMonth, bufferRate],
+  const query = useQuery({
+    queryKey: ['dss', 'alerts', focus, level ?? 'all', danhMuc, q, page],
     queryFn: () =>
-      supplyRecommendationService.calculateForMonth({
-        forecast_month: monthDate,
-        buffer_rate: bufferRate,
+      dssService.getAlerts({
+        focus,
+        level,
+        q: q || undefined,
+        danh_muc: danhMuc || undefined,
+        limit: PAGE_SIZE,
+        offset: (page - 1) * PAGE_SIZE,
       }),
-    staleTime: 0, // Không cache, luôn lấy dữ liệu mới
+    enabled: isAuthenticated,
+    staleTime: 60_000,
     retry: false,
+    refetchOnWindowFocus: false,
+    placeholderData: (prev) => prev,
   });
+  const data = query.data;
+  const counts = data?.counts;
+  const th = data?.meta.thresholds;
+  const horizon = data?.meta.horizon_days ?? 30;
+  const demandReady = !!data?.demand.ready;
+  const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / PAGE_SIZE));
 
-  // Mutation để lưu kết quả
-  const saveMutation = useMutation({
-    mutationFn: () =>
-      supplyRecommendationService.calculateForMonth({
-        forecast_month: monthDate,
-        buffer_rate: bufferRate,
-        save: true, // Lưu vào DB
-      }),
-    onSuccess: (result) => {
-      alert(`Đã lưu ${result.diseases.length} bệnh với tổng cộng ${result.total_supplies} vật tư vào database.`);
-      queryClient.invalidateQueries({ queryKey: ['supply-recommendations'] });
-    },
-    onError: (err: any) => {
-      alert('Lỗi khi lưu: ' + (err?.response?.data?.detail || err.message));
-    },
-  });
-
-  // Filter theo bệnh
-  const filteredItems = useMemo<AggregatedItem[]>(() => {
-    if (!data) return [];
-    
-    let items: AggregatedItem[];
-    if (selectedDisease === 'all') {
-      items = data.items;
-    } else {
-      const dis = data.diseases.find((d) => d.icd_code === selectedDisease);
-      if (!dis) return [];
-      
-      items = dis.items.map<AggregatedItem>((it) => ({
-        supply_id: it.supply_id,
-        supply_code: it.supply_code,
-        drug_code: it.drug_code,
-        ten_hoat_chat: it.ten_hoat_chat,
-        unit: it.unit,
-        group_name: it.group_name,
-        current_stock: it.current_stock,
-        safety_stock: it.safety_stock,
-        buffer_rate: it.buffer_rate,
-        need_before_buffer_total: it.need_before_buffer,
-        predicted_need_total: it.predicted_need,
-        suggested_import: it.suggested_import,
-        status: it.status,
-        by_disease: [
-          {
-            icd_code: dis.icd_code,
-            disease_name: dis.disease_name,
-            predicted_cases: dis.predicted_cases,
-            predicted_need: it.predicted_need,
-          },
-        ],
-      }));
-    }
-    
-    // Áp dụng các giá trị Ngưỡng an toàn đã sửa thủ công
-    return items.map(item => {
-      const manualThreshold = manualThresholds.get(item.supply_id);
-      if (manualThreshold !== undefined) {
-        // Tính lại lượng thiếu hụt với ngưỡng an toàn mới
-        const newSuggested = Math.max(0, manualThreshold - item.current_stock);
-        return {
-          ...item,
-          safety_stock: manualThreshold,
-          suggested_import: newSuggested,
-          status: newSuggested > 0 ? 'shortage' : 'sufficient',
-        };
-      }
-      return item;
-    });
-  }, [data, selectedDisease, manualThresholds]);
-
-  // Filter theo từ khoá tìm kiếm
-  const searchedItems = useMemo<AggregatedItem[]>(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return filteredItems;
-    return filteredItems.filter((it) => {
-      const haystack = `${it.supply_code} ${it.drug_code ?? ''} ${it.ten_hoat_chat} ${it.group_name ?? ''}`.toLowerCase();
-      return haystack.includes(q);
-    });
-  }, [filteredItems, search]);
-
-  // Reset page về 1 khi đổi filter / tìm kiếm / dữ liệu
-  useEffect(() => {
-    setPage(1);
-  }, [selectedDisease, search, forecastMonth, bufferRate, data]);
-
-  const totalPages = Math.max(1, Math.ceil(searchedItems.length / PAGE_SIZE));
-  const startIdx = (page - 1) * PAGE_SIZE;
-  const endIdx = startIdx + PAGE_SIZE;
-  const pagedItems = searchedItems.slice(startIdx, endIdx);
-
-  // KPIs
-  const kpis = useMemo(() => {
-    if (!filteredItems.length) {
-      return { shortage: 0, sufficient: 0, totalImport: 0, totalNeed: 0 };
-    }
-    return {
-      shortage: filteredItems.filter((i) => i.suggested_import > 0).length,
-      sufficient: filteredItems.filter((i) => i.suggested_import === 0).length,
-      totalImport: filteredItems.reduce((s, i) => s + i.suggested_import, 0),
-      totalNeed: filteredItems.reduce((s, i) => s + i.predicted_need_total, 0),
-    };
-  }, [filteredItems]);
-
-  const handleEditThreshold = (item: AggregatedItem) => {
-    setEditingItem(item);
-    setNewThreshold(item.safety_stock);
-  };
-
-  const handleSaveThreshold = async () => {
-    if (!editingItem) return;
-    
-    // Lưu vào local state (chỉ trong session)
-    setManualThresholds(prev => {
-      const next = new Map(prev);
-      next.set(editingItem.supply_id, newThreshold);
-      return next;
-    });
-    
-    setEditingItem(null);
-    
-    alert(`Đã cập nhật ngưỡng an toàn cho ${editingItem.ten_hoat_chat} thành ${newThreshold}. Nhớ bấm "Lưu kết quả vào DB" để lưu vĩnh viễn.`);
-  };
-
-  const handleSaveToDB = async () => {
-    try {
-      // Lưu các giá trị Ngưỡng an toàn đã sửa vào Inventory
-      for (const [supplyId, threshold] of manualThresholds.entries()) {
-        const inventoryRes = await api.get('/inventory/', {
-          params: { supply_id: supplyId },
-        });
-        
-        if (inventoryRes.data && inventoryRes.data.length > 0) {
-          const inventoryId = inventoryRes.data[0].id;
-          await api.put(`/inventory/${inventoryId}`, {
-            safety_stock: threshold,
-          });
-        }
-      }
-      
-      // Sau đó lưu recommendations
-      await saveMutation.mutateAsync();
-      
-      // Invalidate cache của Inventory để trang Vật tư y tế tự động cập nhật
-      queryClient.invalidateQueries({ queryKey: ['inventory'] });
-      
-      // KHÔNG clear local state - giữ nguyên giá trị đã sửa cho đến khi bấm "Tính lại"
-      alert(`Đã lưu thành công ${manualThresholds.size} giá trị Ngưỡng an toàn vào database. Trang Vật tư y tế sẽ tự động cập nhật.`);
-    } catch (err: any) {
-      alert(`Lỗi: ${err?.response?.data?.detail || err.message || 'Không thể lưu'}`);
-    }
-  };
+  const forecastLine = useMemo(() => {
+    if (!data?.forecast.ready) return null;
+    const parts = data.forecast.blocks.map((b) => `${BLOCK_LABELS[b.block]} ${fmt(b.point)}`);
+    return `${fmt(data.forecast.total.point)} ca · ${parts.join(' · ')}`;
+  }, [data]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-3xl font-extrabold text-neutral-900">
-            Cảnh báo nguy cơ thiếu hụt
-          </h2>
+          <h2 className="text-3xl font-extrabold text-neutral-900">Cảnh báo thiếu hụt</h2>
           <p className="text-sm text-neutral-500 mt-1">
-            Nhu cầu = Σ(số ca × định mức) × (1 + dự phòng) ·
-            Lượng thiếu hụt cần chuẩn bị = max(0, nhu cầu + ngưỡng an toàn − tồn kho).
-            Ngưỡng an toàn = nhu cầu dự báo cộng dự phòng; hệ thống không đặt hàng, Khoa Dược quyết định cung ứng.
+            {data?.basis ?? 'DOI = tồn hữu dụng (FEFO) ÷ nhu cầu/ngày'} · nhu cầu dự báo quy về{' '}
+            {horizon} ngày
+            {data?.meta.forecast_period ? ` · kỳ dự báo ${data.meta.forecast_period}` : ''}
           </p>
         </div>
-        {data && (
-          <button
-            onClick={handleSaveToDB}
-            disabled={saveMutation.isPending}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white text-sm font-semibold rounded-xl hover:bg-emerald-700 disabled:opacity-60 shadow-sm"
-          >
-            {saveMutation.isPending ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Save className="w-4 h-4" />
-            )}
-            {saveMutation.isPending ? 'Đang lưu...' : 'Lưu kết quả vào DB'}
-            {manualThresholds.size > 0 && (
-              <span className="ml-1 px-2 py-0.5 bg-emerald-700 rounded-full text-xs">
-                {manualThresholds.size} sửa đổi
-              </span>
-            )}
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => query.refetch()}
+          disabled={query.isFetching}
+          className="inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-neutral-200 bg-white text-sm text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+        >
+          {query.isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+          Làm mới
+        </button>
       </div>
 
-      {/* Filter bar */}
-      <div className="bg-white rounded-xl border border-neutral-200 p-4 grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div>
-          <label className="block text-xs font-medium text-neutral-600 mb-1.5">
-            Tháng dự báo
-          </label>
-          <input
-            type="month"
-            value={forecastMonth}
-            onChange={(e) => setForecastMonth(e.target.value)}
-            className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm"
-          />
+      {/* Cảnh báo hệ thống */}
+      {!!data?.canh_bao.length && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 space-y-1">
+          {data.canh_bao.map((c, i) => (
+            <p key={i}>{c}</p>
+          ))}
         </div>
-        <div>
-          <label className="block text-xs font-medium text-neutral-600 mb-1.5">
-            Bệnh
-          </label>
+      )}
+      {query.error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          Không tải được cảnh báo: {(query.error as Error).message}
+        </div>
+      )}
+
+      {/* KPI */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <KpiTile
+          label="Đỏ"
+          tone="red"
+          loading={!data}
+          value={fmt(counts?.red)}
+          unit="mã"
+          context={th ? `DOI ≤ ${fmt(th.red_days)} ngày` : undefined}
+          footer="Cần xử lý ngay"
+        />
+        <KpiTile
+          label="Vàng"
+          tone="amber"
+          loading={!data}
+          value={fmt(counts?.amber)}
+          unit="mã"
+          context={th ? `${fmt(th.red_days)} < DOI ≤ ${fmt(th.amber_days)} ngày` : undefined}
+          footer="Đưa vào kỳ bổ sung kế tiếp"
+        />
+        <KpiTile
+          label="Xanh"
+          tone="green"
+          loading={!data}
+          value={fmt(counts?.green)}
+          unit="mã"
+          context={th ? `DOI > ${fmt(th.amber_days)} ngày` : undefined}
+          footer="Theo dõi định kỳ"
+        />
+        <KpiTile
+          label="Xám"
+          tone="neutral"
+          loading={!data}
+          value={fmt(counts?.grey)}
+          unit="mã"
+          context="Chưa đo được — không phải an toàn"
+          footer={
+            counts?.ly_do_xam
+              ? Object.entries(counts.ly_do_xam)
+                  .map(([k, n]) => `${GREY_REASON_LABELS[k as keyof typeof GREY_REASON_LABELS] ?? k}: ${n}`)
+                  .join(' · ')
+              : undefined
+          }
+        />
+        <KpiTile
+          label="Dự báo kỳ tới"
+          tone="blue"
+          loading={!data}
+          value={data?.forecast.ready ? fmt(data.forecast.total.point) : '—'}
+          unit={data?.forecast.ready ? 'ca' : undefined}
+          context={forecastLine ?? 'Chưa có dự báo — Tầng 2 chưa chạy, cột thiếu hụt để trống'}
+          footer={
+            data?.demand.ready
+              ? `Định mức thực nghiệm · ${fmt(data.demand.so_ma)} mã có nhu cầu`
+              : data?.demand.error
+                ? `Tầng 2 lỗi: ${data.demand.error}`
+                : undefined
+          }
+        />
+      </div>
+
+      {/* Bộ lọc + bảng */}
+      <div className="bg-white rounded-2xl border border-neutral-200">
+        <div className="px-5 py-4 border-b border-neutral-100 flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-[220px] max-w-md">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" />
+            <input
+              id="alerts-search"
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Tìm theo mã, tên hoạt chất…"
+              className="w-full h-9 pl-9 pr-3 rounded-lg border border-neutral-200 bg-neutral-50 text-sm placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+            />
+          </div>
           <select
-            value={selectedDisease}
-            onChange={(e) => setSelectedDisease(e.target.value)}
-            className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm"
+            id="alerts-focus"
+            value={focus ? 'focus' : 'all'}
+            onChange={(e) => setFocus(e.target.value === 'focus')}
+            className="h-9 px-3 rounded-lg border border-neutral-200 bg-white text-sm text-neutral-700"
           >
-            <option value="all">Tất cả bệnh (cộng dồn)</option>
-            {data?.diseases.map((d) => (
-              <option key={d.icd_code} value={d.icd_code}>
-                {d.icd_code} - {d.disease_name} ({d.predicted_cases} ca)
+            <option value="focus">Tập trọng tâm hô hấp</option>
+            <option value="all">Toàn danh mục</option>
+          </select>
+          <select
+            id="alerts-danhmuc"
+            value={danhMuc}
+            onChange={(e) => setDanhMuc(e.target.value)}
+            className="h-9 px-3 rounded-lg border border-neutral-200 bg-white text-sm text-neutral-700"
+          >
+            <option value="">Mọi danh mục</option>
+            {(data?.danh_muc ?? []).map((d) => (
+              <option key={d} value={d}>
+                {d}
               </option>
             ))}
           </select>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-neutral-600 mb-1.5">
-            Hệ số dự phòng (%)
-          </label>
-          <select
-            value={bufferRate}
-            onChange={(e) => setBufferRate(Number(e.target.value))}
-            className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm"
-          >
-            <option value={5}>5% (rủi ro thấp)</option>
-            <option value={10}>10%</option>
-            <option value={15}>15% (mặc định)</option>
-            <option value={20}>20% (rủi ro cao)</option>
-          </select>
-        </div>
-        <div className="flex items-end">
-          <button
-            onClick={() => {
-              // Clear manual thresholds khi bấm "Tính lại" - reset về công thức
-              setManualThresholds(new Map());
-              sessionStorage.removeItem('manualThresholds');
-              refetch();
-            }}
-            disabled={isFetching}
-            className="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            <Calculator className="w-4 h-4" />
-            {isFetching ? 'Đang tính...' : 'Tính lại'}
-          </button>
-        </div>
-      </div>
-
-      {/* KPI cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <KpiCard
-          icon={<AlertTriangle className="w-5 h-5" />}
-          label="Thiếu hụt"
-          value={kpis.shortage}
-          tone="warning"
-          subtitle="vật tư"
-        />
-        <KpiCard
-          icon={<CheckCircle2 className="w-5 h-5" />}
-          label="Đủ tồn"
-          value={kpis.sufficient}
-          tone="success"
-          subtitle="vật tư"
-        />
-        <KpiCard
-          icon={<TrendingUp className="w-5 h-5" />}
-          label="Tổng nhu cầu"
-          value={kpis.totalNeed}
-          tone="info"
-          subtitle="đơn vị (đã +dự phòng)"
-        />
-        <KpiCard
-          icon={<PackageMinus className="w-5 h-5" />}
-          label="Tổng lượng cần chuẩn bị"
-          value={kpis.totalImport}
-          tone="primary"
-          subtitle="đơn vị"
-        />
-      </div>
-
-      {/* Severity breakdown when filter by disease */}
-      {selectedDisease !== 'all' && data && (
-        <SeverityBreakdownCard
-          recommendation={data.diseases.find((d) => d.icd_code === selectedDisease)}
-        />
-      )}
-
-      {/* Main table */}
-      <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden">
-        <div className="px-5 py-4 border-b border-neutral-100 flex flex-wrap items-center justify-between gap-3">
-          <h3 className="text-base font-semibold text-neutral-900">
-            Danh sách thuốc/vật tư
-          </h3>
-          <div className="flex items-center gap-3 flex-1 sm:flex-none sm:min-w-[280px] max-w-md">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Tìm theo mã, tên hoạt chất, nhóm..."
-                className="w-full h-9 pl-9 pr-3 rounded-lg border border-neutral-200 bg-white text-sm placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
-              />
-            </div>
-            <span className="text-xs text-neutral-500 whitespace-nowrap">
-              {searchedItems.length} mục
-            </span>
-          </div>
-        </div>
-
-        {isLoading && (
-          <div className="py-16">
-            <LoadingSpinner />
-          </div>
-        )}
-
-        {error && (
-          <div className="p-8 text-center text-sm text-red-600">
-            Lỗi tải dữ liệu: {(error as Error).message}
-          </div>
-        )}
-
-        {!isLoading && !error && searchedItems.length === 0 && (
-          <div className="p-12 text-center text-sm text-neutral-500">
-            {search.trim()
-              ? 'Không tìm thấy thuốc/vật tư phù hợp với từ khoá.'
-              : `Không có dữ liệu cho tháng này. Hãy đảm bảo đã có ca bệnh hoặc dự báo cho tháng ${forecastMonth}.`}
-          </div>
-        )}
-
-        {!isLoading && searchedItems.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs uppercase tracking-wide text-neutral-500 border-b border-neutral-100 bg-neutral-50">
-                  <th className="px-4 py-3 font-semibold">Mã</th>
-                  <th className="px-4 py-3 font-semibold">Tên hoạt chất</th>
-                  <th className="px-4 py-3 font-semibold">Nhóm</th>
-                  <th className="px-4 py-3 font-semibold text-right">Nhu cầu cuối</th>
-                  <th className="px-4 py-3 font-semibold text-right">Tồn kho</th>
-                  <th className="px-4 py-3 font-semibold text-right">Ngưỡng an toàn</th>
-                  <th className="px-4 py-3 font-semibold text-right">Thiếu hụt cần chuẩn bị</th>
-                  <th className="px-4 py-3 font-semibold text-center">Trạng thái</th>
-                  <th className="px-4 py-3 font-semibold text-center">Thao tác</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagedItems.map((it) => (
-                  <tr
-                    key={it.supply_id}
-                    className="border-b border-neutral-50 hover:bg-neutral-50/60"
-                  >
-                    <td className="px-4 py-3 font-mono text-xs text-neutral-700">
-                      {it.supply_code}
-                    </td>
-                    <td className="px-4 py-3 text-neutral-900 font-medium">
-                      {it.ten_hoat_chat}
-                      <div className="text-[11px] text-neutral-500 font-normal mt-0.5">
-                        {it.drug_code}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-neutral-600">
-                      {it.group_name}
-                    </td>
-                    <td className="px-4 py-3 text-right font-semibold text-neutral-900">
-                      {it.predicted_need_total.toLocaleString('vi-VN')}
-                      <div className="text-[11px] text-neutral-400 font-normal">
-                        {it.unit}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-right text-neutral-700">
-                      {it.current_stock.toLocaleString('vi-VN')}
-                    </td>
-                    <td className="px-4 py-3 text-right text-neutral-500">
-                      {it.safety_stock.toLocaleString('vi-VN')}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <span
-                        className={
-                          it.suggested_import > 0
-                            ? 'text-orange-600 font-bold'
-                            : 'text-neutral-400'
-                        }
-                      >
-                        {it.suggested_import.toLocaleString('vi-VN')}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {(() => {
-                        const muc = mucCanhBao(
-                          it.need_before_buffer_total,
-                          it.safety_stock,
-                          it.current_stock,
-                        );
-                        return (
-                          <span
-                            title={muc.reason}
-                            className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium cursor-help ${MAU_MUC[muc.level]}`}
-                          >
-                            {muc.label}
-                          </span>
-                        );
-                      })()}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <button
-                        onClick={() => handleEditThreshold(it)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
-                      >
-                        <Edit className="w-3.5 h-3.5" />
-                        Sửa ngưỡng an toàn
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {!isLoading && searchedItems.length > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 border-t border-neutral-100 text-sm text-neutral-600">
-            <span className="text-xs">
-              Hiển thị {startIdx + 1}-{Math.min(endIdx, searchedItems.length)} trong số {searchedItems.length} mục
-            </span>
-            {totalPages > 1 && (
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                  className="px-3 py-1.5 text-xs border border-neutral-200 rounded-lg hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  Trước
-                </button>
-                {buildPageList(page, totalPages).map((p, idx) =>
-                  p === 'ellipsis' ? (
-                    <span key={`e-${idx}`} className="w-8 h-8 inline-flex items-center justify-center text-neutral-400">…</span>
-                  ) : (
-                    <button
-                      key={p}
-                      onClick={() => setPage(p)}
-                      className={`w-8 h-8 text-xs rounded-lg ${
-                        page === p
-                          ? 'bg-blue-600 text-white font-medium'
-                          : 'border border-neutral-200 text-neutral-600 hover:bg-neutral-50'
-                      }`}
-                    >
-                      {p}
-                    </button>
-                  ),
+          <div className="flex items-center gap-1">
+            {([null, 'red', 'amber', 'green', 'grey'] as Array<AlertLevel | null>).map((lv) => (
+              <button
+                key={lv ?? 'all'}
+                type="button"
+                onClick={() => setLevel(lv)}
+                className={cn(
+                  'px-2.5 h-8 rounded-lg text-xs font-medium border transition',
+                  level === lv
+                    ? 'bg-neutral-900 text-white border-neutral-900'
+                    : 'bg-white text-neutral-600 border-neutral-200 hover:bg-neutral-50',
                 )}
-                <button
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page === totalPages}
-                  className="px-3 py-1.5 text-xs border border-neutral-200 rounded-lg hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  Sau
-                </button>
-              </div>
-            )}
+              >
+                {lv ? LEVEL_LABELS[lv] : 'Tất cả'}
+                {lv && counts ? ` · ${counts[lv]}` : ''}
+              </button>
+            ))}
           </div>
-        )}
+        </div>
+
+        <AlertsFullTable rows={data?.rows ?? []} loading={!data} demandReady={demandReady} horizonDays={horizon} />
+
+        <div className="px-5 py-3 border-t border-neutral-100 flex flex-wrap items-center justify-between gap-2 text-xs text-neutral-500">
+          <span>
+            {data ? `${fmt(data.total)} mã khớp bộ lọc · ${fmt(counts?.total)} mã trong tập` : '…'}
+            {data?.meta.assumptions_note ? ` · ${data.meta.assumptions_note}` : ''}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => p - 1)}
+              className="h-8 px-3 rounded-lg border border-neutral-200 bg-white disabled:opacity-40"
+            >
+              Trước
+            </button>
+            <span className="tabular-nums">
+              {page} / {totalPages}
+            </span>
+            <button
+              type="button"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => p + 1)}
+              className="h-8 px-3 rounded-lg border border-neutral-200 bg-white disabled:opacity-40"
+            >
+              Sau
+            </button>
+          </div>
+        </div>
       </div>
+    </div>
+  );
+}
 
-      {/* Modal sửa ngưỡng an toàn */}
-      {editingItem && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
-            <h3 className="text-lg font-bold text-neutral-900 mb-4">
-              Sửa ngưỡng an toàn
-            </h3>
-            
-            <div className="space-y-4 mb-6">
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-1">
-                  Vật tư
-                </label>
-                <div className="text-sm text-neutral-900 font-semibold">
-                  {editingItem.ten_hoat_chat}
+function AlertsFullTable({
+  rows,
+  loading,
+  demandReady,
+  horizonDays,
+}: {
+  rows: AlertRow[];
+  loading: boolean;
+  demandReady: boolean;
+  horizonDays: number;
+}) {
+  if (loading) {
+    return (
+      <div className="px-5 py-5 space-y-2">
+        {[...Array(8)].map((_, i) => (
+          <div key={i} className="h-9 rounded bg-neutral-100 animate-pulse" />
+        ))}
+      </div>
+    );
+  }
+  if (rows.length === 0) {
+    return <div className="py-12 text-center text-sm text-neutral-400">Không có mã nào khớp bộ lọc.</div>;
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-[13px]">
+        <thead>
+          <tr className="text-neutral-500 text-[11px] uppercase tracking-wide">
+            <th className="text-left px-5 py-2.5 font-semibold">Vật tư</th>
+            <th className="text-left px-3 py-2.5 font-semibold">Danh mục</th>
+            <th className="text-right px-3 py-2.5 font-semibold" title="Tổng tồn theo lô">Tồn</th>
+            <th className="text-right px-3 py-2.5 font-semibold" title="Tồn sau khi trừ lô sắp hết hạn (FEFO)">Hữu dụng</th>
+            <th className="text-right px-3 py-2.5 font-semibold" title="Mẫu số: tiêu hao trung bình 12 kỳ">Nhu cầu/ngày</th>
+            <th className="text-right px-3 py-2.5 font-semibold" title={`Nhu cầu dự báo ${horizonDays} ngày = Σ Ŷ·p̂·Norm + nền`}>
+              Nhu cầu {horizonDays}ng
+            </th>
+            <th className="text-right px-3 py-2.5 font-semibold" title="Days of Inventory = hữu dụng ÷ nhu cầu/ngày">DOI</th>
+            <th className="text-right px-3 py-2.5 font-semibold" title={`Δ = max(0, nhu cầu ${horizonDays} ngày − hữu dụng)`}>
+              Thiếu hụt
+            </th>
+            <th className="text-left px-5 py-2.5 font-semibold">Mức</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.supply_code} className="border-t border-neutral-100 hover:bg-neutral-50">
+              <td className="px-5 py-2.5">
+                <div className="font-medium text-neutral-900 leading-tight">{r.ten}</div>
+                <div className="text-[11px] text-neutral-500 font-mono">
+                  {r.supply_code}
+                  {r.don_vi ? ` · ${r.don_vi}` : ''}
+                  {r.ty_trong_hohap != null ? ` · hô hấp ${fmt(r.ty_trong_hohap, 0)}%` : ''}
+                  {r.fefo_ap_dung ? '' : ' · chưa FEFO'}
                 </div>
-                <div className="text-xs text-neutral-500 mt-0.5">
-                  {editingItem.supply_code} · {editingItem.drug_code}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-1">
-                  Ngưỡng an toàn hiện tại
-                </label>
-                <div className="text-2xl font-bold text-neutral-900">
-                  {editingItem.safety_stock.toLocaleString('vi-VN')}
-                  <span className="text-sm text-neutral-500 font-normal ml-1">
-                    {editingItem.unit}
-                  </span>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">
-                  Ngưỡng an toàn mới
-                </label>
-                <input
-                  type="number"
-                  value={newThreshold}
-                  onChange={(e) => setNewThreshold(Number(e.target.value))}
-                  min={0}
-                  className="w-full px-4 py-2.5 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+              </td>
+              <td className="px-3 py-2.5 text-neutral-600">{r.danh_muc}</td>
+              <td className="px-3 py-2.5 text-right tabular-nums text-neutral-600">{fmt(r.s_total)}</td>
+              <td className="px-3 py-2.5 text-right tabular-nums">
+                {fmt(r.s_usable)}
+                {r.s_expiring > 0 && (
+                  <span className="block text-[10px] text-amber-700">−{fmt(r.s_expiring)} sắp hết hạn</span>
+                )}
+              </td>
+              <td className="px-3 py-2.5 text-right tabular-nums text-neutral-600">{fmt(r.d_daily, 2)}</td>
+              <td className="px-3 py-2.5 text-right tabular-nums">
+                {!demandReady ? <span className="text-neutral-400">đang tính</span> : fmt(r.d_forecast, 1)}
+              </td>
+              <td className="px-3 py-2.5 text-right tabular-nums font-semibold whitespace-nowrap">
+                {r.doi == null ? '—' : `${fmt(r.doi, 1)} ng`}
+              </td>
+              <td className="px-3 py-2.5 text-right tabular-nums">
+                {!demandReady ? (
+                  <span className="text-neutral-400">—</span>
+                ) : r.delta_need == null ? (
+                  '—'
+                ) : r.delta_need > 0 ? (
+                  <span className="text-red-700 font-semibold">{fmt(r.delta_need)}</span>
+                ) : (
+                  <span className="text-neutral-400">0</span>
+                )}
+              </td>
+              <td className="px-5 py-2.5">
+                <LevelPill
+                  level={r.muc}
+                  label={r.muc === 'grey' && r.ly_do_xam ? GREY_REASON_LABELS[r.ly_do_xam] : undefined}
                 />
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setEditingItem(null)}
-                className="flex-1 px-4 py-2.5 border border-neutral-200 text-neutral-700 text-sm font-medium rounded-lg hover:bg-neutral-50 transition-colors"
-              >
-                Hủy
-              </button>
-              <button
-                onClick={handleSaveThreshold}
-                className="flex-1 px-4 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                Lưu thay đổi
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function buildPageList(current: number, total: number): Array<number | 'ellipsis'> {
-  if (total <= 5) return Array.from({ length: total }, (_, i) => i + 1);
-  const pages: Array<number | 'ellipsis'> = [];
-  pages.push(1);
-  if (current > 3) pages.push('ellipsis');
-  const startWindow = Math.max(2, current - 1);
-  const endWindow = Math.min(total - 1, current + 1);
-  for (let p = startWindow; p <= endWindow; p++) pages.push(p);
-  if (current < total - 2) pages.push('ellipsis');
-  pages.push(total);
-  return pages;
-}
-
-function KpiCard({
-  icon,
-  label,
-  value,
-  tone,
-  subtitle,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: number;
-  tone: 'warning' | 'success' | 'info' | 'primary';
-  subtitle?: string;
-}) {
-  const toneStyles: Record<string, string> = {
-    warning: 'bg-orange-50 text-orange-700',
-    success: 'bg-emerald-50 text-emerald-700',
-    info: 'bg-blue-50 text-blue-700',
-    primary: 'bg-violet-50 text-violet-700',
-  };
-  return (
-    <div className="bg-white rounded-xl border border-neutral-200 p-4">
-      <div className="flex items-center gap-3">
-        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${toneStyles[tone]}`}>
-          {icon}
-        </div>
-        <div className="flex-1">
-          <div className="text-xs text-neutral-500">{label}</div>
-          <div className="text-2xl font-bold text-neutral-900">
-            {value.toLocaleString('vi-VN')}
-          </div>
-          {subtitle && (
-            <div className="text-[11px] text-neutral-400">{subtitle}</div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SeverityBreakdownCard({
-  recommendation,
-}: {
-  recommendation?: DiseaseRecommendation;
-}) {
-  if (!recommendation) return null;
-  const { severity_breakdown: sb, predicted_cases, disease_name, icd_code } = recommendation;
-  return (
-    <div className="bg-blue-50/50 border border-blue-200 rounded-xl p-5">
-      <h4 className="text-sm font-semibold text-blue-900 mb-3">
-        {icd_code} - {disease_name}
-        <span className="ml-2 text-blue-700 font-normal">
-          ({predicted_cases} ca dự báo)
-        </span>
-      </h4>
-      <div className="grid grid-cols-3 gap-4">
-        <SeverityCell
-          label="Nhẹ"
-          rate={sb.mild_rate}
-          cases={sb.mild_cases}
-          color="green"
-        />
-        <SeverityCell
-          label="Trung bình"
-          rate={sb.moderate_rate}
-          cases={sb.moderate_cases}
-          color="yellow"
-        />
-        <SeverityCell
-          label="Nặng"
-          rate={sb.severe_rate}
-          cases={sb.severe_cases}
-          color="red"
-        />
-      </div>
-    </div>
-  );
-}
-
-function SeverityCell({
-  label,
-  rate,
-  cases,
-  color,
-}: {
-  label: string;
-  rate: number;
-  cases: number;
-  color: 'green' | 'yellow' | 'red';
-}) {
-  const colors: Record<string, string> = {
-    green: 'bg-emerald-100 text-emerald-700',
-    yellow: 'bg-amber-100 text-amber-700',
-    red: 'bg-red-100 text-red-700',
-  };
-  return (
-    <div className="bg-white rounded-lg p-3">
-      <div className={`inline-block px-2 py-0.5 rounded text-xs font-medium mb-2 ${colors[color]}`}>
-        {label} ({rate}%)
-      </div>
-      <div className="text-2xl font-bold text-neutral-900">
-        {cases.toLocaleString('vi-VN')}
-        <span className="text-sm text-neutral-500 font-normal ml-1">ca</span>
-      </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

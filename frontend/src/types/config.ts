@@ -9,41 +9,8 @@ export interface SystemConfig {
   updated_at: string;
 }
 
-export interface ConversionRatio {
-  id: number;
-  disease_type: string;
-  supply_id: number;
-  supply_name?: string;
-  ratio: number;
-  unit: string | null;
-  updated_by: number | null;
-  updated_at: string;
-}
-
-export interface ShortageThreshold {
-  /** Global threshold (per-supply chưa được hỗ trợ ở backend) */
-  critical_days: number;
-  high_days: number;
-  medium_days: number;
-}
-
 export interface ConfigUpdateRequest {
   config_value: string;
-}
-
-export interface ConversionRatiosUpdateRequest {
-  ratios: Array<{
-    disease_type: string;
-    supply_id: number;
-    ratio: number;
-    unit?: string;
-  }>;
-}
-
-export interface ThresholdsUpdateRequest {
-  critical_days: number;
-  high_days: number;
-  medium_days: number;
 }
 
 // Audit log type (for change history)
@@ -66,16 +33,6 @@ export interface AuditLogsResponse {
   skip: number;
   limit: number;
 }
-
-// Grouped config sections (convenience types for the Settings UI)
-export type ConfigSection = 'thresholds' | 'conversion-ratios' | 'unit-prices' | 'history';
-
-export const CONFIG_SECTION_LABELS: Record<ConfigSection, string> = {
-  thresholds: 'Ngưỡng cảnh báo thiếu hụt',
-  'conversion-ratios': 'Tỷ lệ quy đổi',
-  'unit-prices': 'Đơn giá vật tư',
-  history: 'Lịch sử thay đổi',
-};
 
 // Phạm vi đồ án là ba KHỐI ICD-10 hô hấp — khớp app/utils/icd_groups.py phía
 // backend. Danh sách cũ (sốt xuất huyết / cúm mùa) đã ngoài phạm vi: để lại sẽ

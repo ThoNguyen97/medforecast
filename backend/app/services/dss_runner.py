@@ -230,9 +230,8 @@ def critical_alerts_payload(db: Session, limit: int = 10) -> Dict[str, Any]:
 def care_level_payload(db: Session) -> Dict[str, Any]:
     """Tỷ trọng phân cấp chăm sóc p̂(g,c) cho biểu đồ Tầng 2.
 
-    Trả kèm `chan_doan_dinh_muc` để giao diện nói được sự thật: chừng nào định
-    mức chưa phân biệt theo độ nặng thì biểu đồ này là mô tả dữ liệu, không
-    phải một yếu tố làm dự báo chính xác hơn.
+    Trả kèm `chan_doan_dinh_muc` để giao diện nói được sự thật: nhóm nào
+    thiếu định mức thực nghiệm, rổ nào phải dùng định mức gộp vì mẫu nhỏ.
     """
     shares = dss_demand.care_level_shares(db)
     cua_so = {}
@@ -245,7 +244,7 @@ def care_level_payload(db: Session) -> Dict[str, Any]:
         "shares": [{"block_code": g, "ro": ro, "share_pct": round(p * 100, 2)}
                    for g, d in shares.items() for ro, p in sorted(d.items())],
         "cua_so": cua_so,
-        "anh_xa_ro_do_nang": dss_demand.RO_SEVERITY,
+        "ten_ro": dss_demand.RO_LABEL,
         "chan_doan_dinh_muc": dss_demand.chan_doan_dinh_muc(db),
         "ghi_chu": ("p̂(g,c) tính trên cửa sổ trượt 12 kỳ từ 2025-04 (Đ11: đứt gãy "
                     "chế độ ghi nhận đầu 2025), rổ mẫu nhỏ đã co ngót."),

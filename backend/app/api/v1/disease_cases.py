@@ -678,21 +678,10 @@ async def import_disease_cases_csv(
         f"imported={imported} updated={updated} skipped={skipped}"
     )
 
-    # Sau khi import xong → tự động phân loại lại severity & cập nhật severity_rate
-    # (mục 5.2). Dispatch async qua Celery; nếu broker không có thì chạy sync.
+    # (Trước 12/09/2026 ở đây gọi severity_inference_task để tính lại tỷ lệ
+    #  Nhẹ/TB/Nặng. DSS không còn dùng chiều độ nặng — chiều phân loại là rổ
+    #  chăm sóc do HIS ghi nhận, tự cập nhật khi đồng bộ — nên bước này gỡ.)
     auto_severity: dict | None = None
-    if imported > 0 or updated > 0:
-        try:
-            from app.tasks.severity_inference_task import dispatch_recompute
-
-            auto_severity = dispatch_recompute(
-                force=False,
-                trigger="csv_import",
-                updated_by=current_user.username,
-            )
-        except Exception as exc:
-            logger.warning("Auto severity recompute after CSV import failed: %s", exc)
-            auto_severity = {"mode": "failed", "error": str(exc)}
 
     return {
         "status": "ok",

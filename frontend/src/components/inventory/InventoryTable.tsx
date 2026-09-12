@@ -4,7 +4,6 @@ import InventoryStatusBadge, {
   classifyStatus,
   type InventoryStatus,
 } from './InventoryStatusBadge';
-import type { SeverityLevel } from './InventoryToolbar';
 
 export interface InventoryRow {
   id: number;
@@ -14,10 +13,6 @@ export interface InventoryRow {
   unit: string;
   currentStock: number;
   safetyStock: number;
-  /** Định mức theo bệnh đang chọn (undefined = chưa có dữ liệu) */
-  mild?: number;
-  moderate?: number;
-  severe?: number;
 }
 
 interface Props {
@@ -29,10 +24,6 @@ interface Props {
   onPageChange: (page: number) => void;
   onEdit?: (row: InventoryRow) => void;
   onDelete?: (row: InventoryRow) => void;
-  /** Hiện cột định mức khi đã chọn bệnh */
-  showSeverity?: boolean;
-  /** Cấp độ đang chọn: 'all' hiện đủ 3 cột, ngược lại chỉ hiện 1 cột tương ứng */
-  level?: SeverityLevel;
 }
 
 export default function InventoryTable({
@@ -44,18 +35,12 @@ export default function InventoryTable({
   onPageChange,
   onEdit,
   onDelete,
-  showSeverity = false,
-  level = 'all',
 }: Props) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const end = Math.min(page * pageSize, total);
 
-  const showMild = showSeverity && (level === 'all' || level === 'mild');
-  const showModerate = showSeverity && (level === 'all' || level === 'moderate');
-  const showSevere = showSeverity && (level === 'all' || level === 'severe');
-  const severityCols = [showMild, showModerate, showSevere].filter(Boolean).length;
-  const colSpan = 8 + severityCols;
+  const colSpan = 8;
 
   return (
     <div className="overflow-hidden">
@@ -69,21 +54,6 @@ export default function InventoryTable({
               <th className="text-left px-5 py-3 font-semibold">ĐVT</th>
               <th className="text-right px-5 py-3 font-semibold">Tồn kho</th>
               <th className="text-right px-5 py-3 font-semibold">Ngưỡng an toàn</th>
-              {showMild && (
-                <th className="text-center px-3 py-3 font-semibold">
-                  <span className="inline-flex items-center px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded text-[10px]">Nhẹ</span>
-                </th>
-              )}
-              {showModerate && (
-                <th className="text-center px-3 py-3 font-semibold">
-                  <span className="inline-flex items-center px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px]">TB</span>
-                </th>
-              )}
-              {showSevere && (
-                <th className="text-center px-3 py-3 font-semibold">
-                  <span className="inline-flex items-center px-2 py-0.5 bg-red-100 text-red-700 rounded text-[10px]">Nặng</span>
-                </th>
-              )}
               <th className="text-left px-5 py-3 font-semibold">Trạng thái</th>
               <th className="text-center px-5 py-3 font-semibold">Thao tác</th>
             </tr>
@@ -131,27 +101,6 @@ export default function InventoryTable({
                     <td className="px-5 py-3.5 text-right text-neutral-700 tabular-nums">
                       {r.safetyStock.toLocaleString('vi-VN')}
                     </td>
-                    {showMild && (
-                      <td className="px-3 py-3.5 text-center">
-                        <span className="inline-block px-2 py-0.5 bg-emerald-100 text-emerald-900 font-semibold rounded text-xs tabular-nums">
-                          {r.mild ?? 0}
-                        </span>
-                      </td>
-                    )}
-                    {showModerate && (
-                      <td className="px-3 py-3.5 text-center">
-                        <span className="inline-block px-2 py-0.5 bg-amber-100 text-amber-900 font-semibold rounded text-xs tabular-nums">
-                          {r.moderate ?? 0}
-                        </span>
-                      </td>
-                    )}
-                    {showSevere && (
-                      <td className="px-3 py-3.5 text-center">
-                        <span className="inline-block px-2 py-0.5 bg-red-100 text-red-900 font-semibold rounded text-xs tabular-nums">
-                          {r.severe ?? 0}
-                        </span>
-                      </td>
-                    )}
                     <td className="px-5 py-3.5">
                       <InventoryStatusBadge status={status} />
                     </td>

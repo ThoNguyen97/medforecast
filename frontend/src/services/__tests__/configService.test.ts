@@ -30,30 +30,6 @@ describe('configService', () => {
     expect(api.put).toHaveBeenCalledWith('/config/alert_threshold', { config_value: '200' });
   });
 
-  it('getConversionRatios calls GET /config/conversion-ratios', async () => {
-    vi.mocked(api.get).mockResolvedValueOnce({ data: [] });
-    await configService.getConversionRatios();
-    expect(api.get).toHaveBeenCalledWith('/config/conversion-ratios');
-  });
-
-  it('updateConversionRatios calls PUT /config/conversion-ratios', async () => {
-    vi.mocked(api.put).mockResolvedValueOnce({ data: [] });
-    await configService.updateConversionRatios({ ratios: [] } as any);
-    expect(api.put).toHaveBeenCalledWith('/config/conversion-ratios', { ratios: [] });
-  });
-
-  it('getThresholds calls GET /config/thresholds', async () => {
-    vi.mocked(api.get).mockResolvedValueOnce({ data: [] });
-    await configService.getThresholds();
-    expect(api.get).toHaveBeenCalledWith('/config/thresholds');
-  });
-
-  it('updateThresholds calls PUT /config/thresholds', async () => {
-    vi.mocked(api.put).mockResolvedValueOnce({ data: [] });
-    await configService.updateThresholds({ thresholds: [] } as any);
-    expect(api.put).toHaveBeenCalledWith('/config/thresholds', { thresholds: [] });
-  });
-
   it('getAuditLogs calls GET /audit-logs', async () => {
     vi.mocked(api.get).mockResolvedValueOnce({ data: [] });
     await configService.getAuditLogs({ limit: 50 });

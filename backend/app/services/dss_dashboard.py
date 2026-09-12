@@ -524,6 +524,117 @@ def _ly_do_xam_ten(key: str) -> str:
 # Payload chính
 # ─────────────────────────────────────────────────────────────────────────────
 
+def tang1_tang2(db: Session):
+    """Chuỗi Tầng 1 (chỉ đọc cache) → Tầng 2, dùng chung cho Tổng quan và
+    trang Cảnh báo thiếu hụt để hai trang KHÔNG BAO GIỜ ra hai con số khác
+    nhau về cùng một mã. Trả (fc, thresholds, {code: D_forecast}, meta)."""
+    fc = forecast_payload(db, compute=False)
+    du_bao_nhom = {x["block"]: float(x["point"]) for x in fc["blocks"]} if fc["ready"] else {}
+    th = dss_alerts.get_thresholds(db)
+    nhu_cau: Dict[str, float] = {}
+    nhu_cau_meta: Dict[str, Any] = {"ready": False}
+    if du_bao_nhom:
+        try:
+            dm = dss_demand.demand_by_supply(db, du_bao_nhom,
+                                             horizon_days=int(th.get("horizon_days", 30)))
+            nhu_cau = {r["supply_code"]: r["d_forecast"] for r in dm["rows"]}
+            nhu_cau_meta = {"ready": True, "so_ma": dm["so_ma"],
+                            "horizon_days": dm["horizon_days"],
+                            "nguon_dinh_muc": dm.get("nguon_dinh_muc"),
+                            "nhom_thieu_p_hat": dm["nhom_thieu_p_hat"],
+                            "nhom_thieu_dinh_muc": dm["nhom_thieu_dinh_muc"]}
+        except Exception as exc:                              # noqa: BLE001
+            logger.exception("Tầng 2 lỗi")
+            nhu_cau_meta = {"ready": False, "error": str(exc)}
+    return fc, th, nhu_cau, nhu_cau_meta
+
+
+def _counts(al: Dict[str, Any]) -> Dict[str, Any]:
+    if not al.get("san_sang"):
+        return {"red": 0, "amber": 0, "green": 0, "grey": 0, "total": 0,
+                "zero_stock": 0, "measured": 0, "san_sang": False}
+    t = al["tong_hop"]
+    return {"red": t["red"], "amber": t["amber"], "green": t["green"],
+            "grey": t["grey"], "total": t["tong_ma"], "measured": t["do_duoc"],
+            "zero_stock": sum(1 for r in al["rows"] if r["doi"] == 0.0),
+            "fefo_codes": t.get("so_ma_ap_dung_fefo", 0),
+            "ly_do_xam": t.get("ly_do_xam", {}), "san_sang": True}
+
+
+_THU_TU_MUC = {"red": 0, "amber": 1, "green": 2, "grey": 3}
+
+
+def _dong_canh_bao(r: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "supply_code": r["supply_code"], "ten": r["ten"], "don_vi": r["don_vi"],
+        "nhom": r["nhom"], "danh_muc": r["danh_muc"],
+        "s_total": r["s_total"], "s_usable": r["s_usable"], "s_expiring": r["s_expiring"],
+        "d_daily": r["d_daily"], "d_forecast": r["d_forecast"], "delta_need": r["delta_need"],
+        "doi": r["doi"], "muc": r["muc"], "ly_do_xam": r["ly_do_xam"],
+        "fefo_ap_dung": r["fefo_ap_dung"], "ty_trong_hohap": r["ty_trong_hohap"],
+    }
+
+
+def alerts_payload(db: Session, focus: bool = True, level: Optional[str] = None,
+                   q: Optional[str] = None, danh_muc: Optional[str] = None,
+                   limit: int = 50, offset: int = 0) -> Dict[str, Any]:
+    """Trang Cảnh báo thiếu hụt — CÙNG chuỗi Tầng 1→2→3 với Tổng quan, chỉ
+    khác ở chỗ trả toàn bộ dòng (phân trang server) thay vì top-8.
+
+    `level` None → mọi mức (Đỏ trước); một mức → chỉ mức đó.
+    `q` lọc theo mã / tên hoạt chất; `danh_muc` lọc theo cột danh mục.
+    """
+    if level is not None and level not in LEVELS:
+        raise ValueError(f"level phải thuộc {LEVELS}")
+    fc, th, nhu_cau, nhu_cau_meta = tang1_tang2(db)
+    al = dss_alerts.alert_rows(db, demand=nhu_cau, only_focus=focus)
+    dem = _counts(al)
+    rows = list(al.get("rows") or [])
+    canh_bao = list(al.get("canh_bao") or [])
+    if not al.get("san_sang"):
+        canh_bao.append((al.get("ly_do") or "Chưa có dữ liệu tồn kho / tiêu hao.")
+                        + " Vào Quản trị → Kết nối HIS rồi bấm Đồng bộ để nạp dữ liệu vật tư.")
+
+    if level is not None:
+        rows = [r for r in rows if r["muc"] == level]
+    if danh_muc:
+        rows = [r for r in rows if (r.get("danh_muc") or "Khác") == danh_muc]
+    if q:
+        qq = q.strip().lower()
+        rows = [r for r in rows if qq in r["supply_code"].lower()
+                or qq in str(r.get("ten") or "").lower()]
+    rows.sort(key=lambda r: (_THU_TU_MUC[r["muc"]],
+                             r["doi"] if r["doi"] is not None else 10 ** 9,
+                             -(r["delta_need"] or 0)))
+    danh_muc_co = sorted({(r.get("danh_muc") or "Khác") for r in (al.get("rows") or [])})
+    anchor = ps.get_period_anchor(db)
+    return {
+        "meta": {
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "last_closed_period": anchor["last_closed_period"],
+            "forecast_period": fc.get("target_period") or ps.shift_period(anchor["last_closed_period"], 1),
+            "focus": focus, "level": level, "q": q or "", "danh_muc": danh_muc or "",
+            "limit": limit, "offset": offset,
+            "thresholds": {"red_days": float(th["doi_red_days"]),
+                           "amber_days": float(th["doi_amber_days"])},
+            "horizon_days": int(th.get("horizon_days", 30)),
+            "fefo_window_days": int(th.get("fefo_window_days", 30)),
+            "assumptions_note": "Tồn kho tính trên hàng hiện có, chưa trừ hàng đang về.",
+        },
+        "forecast": {"ready": fc["ready"], "target_period": fc.get("target_period"),
+                     "total": fc["total"], "computed_at": fc.get("computed_at"),
+                     "blocks": [{"block": x["block"], "point": x["point"]} for x in fc["blocks"]]},
+        "demand": nhu_cau_meta,
+        "counts": dem,
+        "basis": "DOI = S_usable(FEFO) / d_daily · Đỏ ≤ %.0f · Vàng ≤ %.0f · Xanh > %.0f ngày"
+                 % (float(th["doi_red_days"]), float(th["doi_amber_days"]), float(th["doi_amber_days"])),
+        "canh_bao": canh_bao,
+        "danh_muc": danh_muc_co,
+        "total": len(rows),
+        "rows": [_dong_canh_bao(r) for r in rows[offset:offset + limit]],
+    }
+
+
 def overview_payload(db: Session, focus: bool = True,
                      level: Optional[str] = None, limit: int = 8) -> Dict[str, Any]:
     """Mọi thứ Dashboard cần, TRỪ việc khớp mô hình dự báo.
@@ -544,40 +655,12 @@ def overview_payload(db: Session, focus: bool = True,
     blocks_closed = ps.cases_by_block(db, last_closed)
 
     # Tầng 1 (chỉ đọc cache) → Tầng 2
-    fc = forecast_payload(db, compute=False)
-    du_bao_nhom = {x["block"]: float(x["point"]) for x in fc["blocks"]} if fc["ready"] else {}
-    th = dss_alerts.get_thresholds(db)
-    nhu_cau: Dict[str, float] = {}
-    nhu_cau_meta: Dict[str, Any] = {"ready": False}
-    if du_bao_nhom:
-        try:
-            dm = dss_demand.demand_by_supply(db, du_bao_nhom,
-                                             horizon_days=int(th.get("horizon_days", 30)))
-            nhu_cau = {r["supply_code"]: r["d_forecast"] for r in dm["rows"]}
-            nhu_cau_meta = {"ready": True, "so_ma": dm["so_ma"],
-                            "horizon_days": dm["horizon_days"],
-                            "nguon_dinh_muc": dm.get("nguon_dinh_muc"),
-                            "nhom_thieu_p_hat": dm["nhom_thieu_p_hat"],
-                            "nhom_thieu_dinh_muc": dm["nhom_thieu_dinh_muc"]}
-        except Exception as exc:                              # noqa: BLE001
-            logger.exception("Tầng 2 lỗi")
-            nhu_cau_meta = {"ready": False, "error": str(exc)}
+    fc, th, nhu_cau, nhu_cau_meta = tang1_tang2(db)
 
     # Tầng 3 — hai tập, đếm cả hai để bộ lọc đổi tức thì
     al_focus = dss_alerts.alert_rows(db, demand=nhu_cau, only_focus=True)
     al_all = dss_alerts.alert_rows(db, demand=nhu_cau, only_focus=False)
     chon = al_focus if focus else al_all
-
-    def _counts(al: Dict[str, Any]) -> Dict[str, Any]:
-        if not al.get("san_sang"):
-            return {"red": 0, "amber": 0, "green": 0, "grey": 0, "total": 0,
-                    "zero_stock": 0, "measured": 0, "san_sang": False}
-        t = al["tong_hop"]
-        return {"red": t["red"], "amber": t["amber"], "green": t["green"],
-                "grey": t["grey"], "total": t["tong_ma"], "measured": t["do_duoc"],
-                "zero_stock": sum(1 for r in al["rows"] if r["doi"] == 0.0),
-                "fefo_codes": t.get("so_ma_ap_dung_fefo", 0),
-                "ly_do_xam": t.get("ly_do_xam", {}), "san_sang": True}
 
     dem_focus, dem_all = _counts(al_focus), _counts(al_all)
     # Chưa có dữ liệu vật tư (cài mới, chưa đồng bộ HIS) → nói rõ lý do, không
@@ -596,18 +679,10 @@ def overview_payload(db: Session, focus: bool = True,
         rows_tbl = [r for r in rows if r["muc"] in ("red", "amber")]
     else:
         rows_tbl = [r for r in rows if r["muc"] == level]
-    thu_tu = {"red": 0, "amber": 1, "green": 2, "grey": 3}
-    rows_tbl.sort(key=lambda r: (thu_tu[r["muc"]],
+    rows_tbl.sort(key=lambda r: (_THU_TU_MUC[r["muc"]],
                                  r["doi"] if r["doi"] is not None else 10 ** 9,
                                  -(r["delta_need"] or 0)))
-    alerts = [{
-        "supply_code": r["supply_code"], "ten": r["ten"], "don_vi": r["don_vi"],
-        "nhom": r["nhom"], "danh_muc": r["danh_muc"],
-        "s_total": r["s_total"], "s_usable": r["s_usable"], "s_expiring": r["s_expiring"],
-        "d_daily": r["d_daily"], "d_forecast": r["d_forecast"], "delta_need": r["delta_need"],
-        "doi": r["doi"], "muc": r["muc"], "ly_do_xam": r["ly_do_xam"],
-        "fefo_ap_dung": r["fefo_ap_dung"], "ty_trong_hohap": r["ty_trong_hohap"],
-    } for r in rows_tbl[:limit]]
+    alerts = [_dong_canh_bao(r) for r in rows_tbl[:limit]]
 
     risk = ps.assess_overall_risk(trend, dem_focus["red"], dem_focus["amber"])
     cat = ps.catalogue_counts(db)

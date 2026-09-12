@@ -1,16 +1,10 @@
 import { ChevronDown, Search } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
-export type SeverityLevel = 'all' | 'mild' | 'moderate' | 'severe';
-
 export interface InventoryFilters {
   search: string;
   category: string; // 'all' | category key
   status: string;   // 'all' | 'normal' | 'low' | 'critical'
-  /** Bệnh dùng để tra định mức 3 cấp độ. Mã ICD, '' = không chọn */
-  disease: string;
-  /** Lọc thuốc theo cấp độ (chỉ hiện thuốc có định mức > 0 ở cấp độ này) */
-  level: SeverityLevel;
 }
 
 interface CategoryOption {
@@ -18,16 +12,10 @@ interface CategoryOption {
   label: string;
 }
 
-interface DiseaseOption {
-  value: string;
-  label: string;
-}
-
 interface Props {
   filters: InventoryFilters;
   onChange: (next: InventoryFilters) => void;
   categories: CategoryOption[];
-  diseases: DiseaseOption[];
 }
 
 const STATUS_OPTIONS: CategoryOption[] = [
@@ -37,16 +25,9 @@ const STATUS_OPTIONS: CategoryOption[] = [
   { key: 'critical', label: 'Nguy cấp' },
 ];
 
-export default function InventoryToolbar({ filters, onChange, categories, diseases }: Props) {
+export default function InventoryToolbar({ filters, onChange, categories }: Props) {
   const update = (patch: Partial<InventoryFilters>) =>
     onChange({ ...filters, ...patch });
-
-  const levelOptions: { key: SeverityLevel; label: string }[] = [
-    { key: 'all', label: 'Tất cả' },
-    { key: 'mild', label: 'Nhẹ' },
-    { key: 'moderate', label: 'TB' },
-    { key: 'severe', label: 'Nặng' },
-  ];
 
   return (
     <div className="space-y-3 px-5 py-4 border-b border-neutral-100">
@@ -76,22 +57,6 @@ export default function InventoryToolbar({ filters, onChange, categories, diseas
             options={STATUS_OPTIONS}
           />
         </div>
-      </div>
-
-      {/* Hàng filter cho định mức 3 cấp độ */}
-      <div className="flex flex-wrap items-center gap-3">
-        <SelectInline
-          label="Bệnh:"
-          value={filters.disease}
-          onChange={(v) => update({ disease: v })}
-          options={diseases.map((d) => ({ key: d.value, label: d.label }))}
-        />
-        <SelectInline
-          label="Cấp độ:"
-          value={filters.level}
-          onChange={(v) => update({ level: v as SeverityLevel })}
-          options={levelOptions.map((o) => ({ key: o.key, label: o.label }))}
-        />
       </div>
     </div>
   );

@@ -43,18 +43,14 @@ function renderSettings() {
 describe('Settings page', () => {
   beforeEach(() => {
     vi.spyOn(useConfigHooks, 'useConfigs').mockReturnValue(makeQueryResult([]));
-    vi.spyOn(useConfigHooks, 'useConversionRatios').mockReturnValue(makeQueryResult([]));
-    vi.spyOn(useConfigHooks, 'useThresholds').mockReturnValue(makeQueryResult([]));
     vi.spyOn(useConfigHooks, 'useAuditLogs').mockReturnValue(makeQueryResult([]));
     vi.spyOn(useConfigHooks, 'useUpdateConfig').mockReturnValue(makeMutation());
-    vi.spyOn(useConfigHooks, 'useUpdateConversionRatios').mockReturnValue(makeMutation());
-    vi.spyOn(useConfigHooks, 'useUpdateThresholds').mockReturnValue(makeMutation());
   });
 
   it('renders page heading for admin', () => {
     useAuthStore.setState({ user: adminUser, isAuthenticated: true });
     renderSettings();
-    expect(screen.getByText('Cài đặt Hệ thống')).toBeInTheDocument();
+    expect(screen.getByText('Quản trị hệ thống')).toBeInTheDocument();
   });
 
   it('redirects non-admin users', () => {
@@ -66,19 +62,16 @@ describe('Settings page', () => {
   it('renders tab navigation', () => {
     useAuthStore.setState({ user: adminUser, isAuthenticated: true });
     renderSettings();
-    expect(screen.getByRole('button', { name: /ngưỡng cảnh báo/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /tỷ lệ quy đổi/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /tham số dss/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /định mức thực nghiệm/i })).toBeInTheDocument();
+    // 12/09/2026: ba tab nối vào bảng mà DSS không đọc đã gỡ
+    expect(screen.queryByRole('button', { name: /ngưỡng cảnh báo/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /nhẹ\/tb\/nặng/i })).not.toBeInTheDocument();
   });
 
   it('shows admin-only badge', () => {
     useAuthStore.setState({ user: adminUser, isAuthenticated: true });
     renderSettings();
-    expect(screen.getByText(/chỉ dành cho admin/i)).toBeInTheDocument();
-  });
-
-  it('shows warning banner', () => {
-    useAuthStore.setState({ user: adminUser, isAuthenticated: true });
-    renderSettings();
-    expect(screen.getByText(/Thay đổi cấu hình sẽ ảnh hưởng/i)).toBeInTheDocument();
+    expect(screen.getByText(/chỉ quản trị viên/i)).toBeInTheDocument();
   });
 });

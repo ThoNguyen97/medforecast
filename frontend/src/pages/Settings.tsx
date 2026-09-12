@@ -4,12 +4,11 @@ import {
   Users,
   ShieldCheck,
   Boxes,
-  AlertTriangle,
   Activity,
   Settings as SettingsIcon,
   Shield,
-  Percent,
-  Pill,
+  SlidersHorizontal,
+  Scale,
   Database,
 } from 'lucide-react';
 import { useUIStore } from '../store/uiStore';
@@ -19,20 +18,24 @@ import { cn } from '../utils/cn';
 import UsersSection from '../components/admin/UsersSection';
 import RolesPermissionsSection from '../components/admin/RolesPermissionsSection';
 import ConfigurationsSection from '../components/admin/ConfigurationsSection';
-import ThresholdsAndRatiosSection from '../components/admin/ThresholdsAndRatiosSection';
 import AuditLogsSection from '../components/admin/AuditLogsSection';
-import SeverityRateSection from '../components/admin/SeverityRateSection';
-import SupplyNormSection from '../components/admin/SupplyNormSection';
 import HisConnectionSection from '../components/admin/HisConnectionSection';
+import DssParamsSection from '../components/admin/DssParamsSection';
+import EmpiricalNormsSection from '../components/admin/EmpiricalNormsSection';
+
+// 12/09/2026: ba tab "Tỷ lệ Nhẹ/TB/Nặng", "Định mức thuốc/vật tư", "Ngưỡng cảnh
+// báo" đã gỡ — chúng sửa ba bảng mà DSS thật không đọc (định mức thực nghiệm
+// thay cho nhập tay; ngưỡng thật là dss.thresholds 18/36 ngày DOI, không phải
+// 3/7/14). Thay bằng "Tham số DSS" (sửa được) và "Định mức thực nghiệm" (chỉ đọc).
+// Mã cũ ở _archive/dinh_muc_nhap_tay/.
 
 type TabKey =
   | 'users'
   | 'roles'
   | 'his-connection'
   | 'configurations'
-  | 'thresholds'
-  | 'severity-rates'
-  | 'supply-norms'
+  | 'dss-params'
+  | 'dss-norms'
   | 'audit-logs';
 
 const TABS: { key: TabKey; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
@@ -40,9 +43,8 @@ const TABS: { key: TabKey; label: string; icon: React.ComponentType<{ className?
   { key: 'roles', label: 'Phân quyền', icon: ShieldCheck },
   { key: 'his-connection', label: 'Kết nối HIS', icon: Database },
   { key: 'configurations', label: 'Cấu hình bệnh & khu vực', icon: Boxes },
-  { key: 'severity-rates', label: 'Tỷ lệ Nhẹ/TB/Nặng', icon: Percent },
-  { key: 'supply-norms', label: 'Định mức thuốc/vật tư', icon: Pill },
-  { key: 'thresholds', label: 'Ngưỡng cảnh báo', icon: AlertTriangle },
+  { key: 'dss-params', label: 'Tham số DSS', icon: SlidersHorizontal },
+  { key: 'dss-norms', label: 'Định mức thực nghiệm', icon: Scale },
   { key: 'audit-logs', label: 'Nhật ký hệ thống', icon: Activity },
 ];
 
@@ -75,7 +77,7 @@ export default function Settings() {
             </span>
           </div>
           <p className="text-sm text-neutral-500 mt-1">
-            Quản lý tài khoản, phân quyền, cấu hình bệnh, khu vực và các tham số hệ thống.
+            Tài khoản, phân quyền, kết nối HIS, cấu hình bệnh/khu vực và tham số của bộ máy DSS.
           </p>
         </div>
         <div className="inline-flex items-center gap-2 text-xs text-neutral-500">
@@ -114,9 +116,8 @@ export default function Settings() {
         {activeTab === 'roles' && <RolesPermissionsSection />}
         {activeTab === 'his-connection' && <HisConnectionSection />}
         {activeTab === 'configurations' && <ConfigurationsSection />}
-        {activeTab === 'severity-rates' && <SeverityRateSection />}
-        {activeTab === 'supply-norms' && <SupplyNormSection />}
-        {activeTab === 'thresholds' && <ThresholdsAndRatiosSection />}
+        {activeTab === 'dss-params' && <DssParamsSection />}
+        {activeTab === 'dss-norms' && <EmpiricalNormsSection />}
         {activeTab === 'audit-logs' && <AuditLogsSection />}
       </div>
     </div>

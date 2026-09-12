@@ -1,13 +1,8 @@
 import api from './api';
-import type {
-  SystemConfig,
-  ConversionRatio,
-  ShortageThreshold,
-  ConfigUpdateRequest,
-  ConversionRatiosUpdateRequest,
-  ThresholdsUpdateRequest,
-  AuditLog,
-} from '../types/config';
+import type { SystemConfig, ConfigUpdateRequest, AuditLog } from '../types/config';
+
+// 12/09/2026: getConversionRatios / getThresholds (3-7-14 ngày) đã gỡ — DSS thật
+// đọc `dss.thresholds` (Đỏ ≤ 18 / Vàng ≤ 36 ngày DOI) qua dssConfigService.
 
 export const configService = {
   /**
@@ -31,38 +26,6 @@ export const configService = {
    */
   async updateConfig(key: string, data: ConfigUpdateRequest): Promise<SystemConfig> {
     const response = await api.put<SystemConfig>(`/config/${key}`, data);
-    return response.data;
-  },
-
-  /**
-   * Get all conversion ratios
-   */
-  async getConversionRatios(): Promise<ConversionRatio[]> {
-    const response = await api.get<ConversionRatio[]>('/config/conversion-ratios');
-    return response.data;
-  },
-
-  /**
-   * Update conversion ratios (Admin only)
-   */
-  async updateConversionRatios(data: ConversionRatiosUpdateRequest): Promise<ConversionRatio[]> {
-    const response = await api.put<ConversionRatio[]>('/config/conversion-ratios', data);
-    return response.data;
-  },
-
-  /**
-   * Get shortage thresholds (global)
-   */
-  async getThresholds(): Promise<ShortageThreshold> {
-    const response = await api.get<ShortageThreshold>('/config/thresholds');
-    return response.data;
-  },
-
-  /**
-   * Update shortage thresholds (Admin only)
-   */
-  async updateThresholds(data: ThresholdsUpdateRequest): Promise<ShortageThreshold> {
-    const response = await api.put<ShortageThreshold>('/config/thresholds', data);
     return response.data;
   },
 
