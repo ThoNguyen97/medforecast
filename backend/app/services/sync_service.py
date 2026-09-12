@@ -91,9 +91,33 @@ def _build_pipeline(db: Optional[Session] = None) -> DataPipeline:
             raise RuntimeError(
                 "Chưa cấu hình kết nối HIS: vào Quản trị → Kết nối HIS, "
                 "hoặc đặt PIPELINE_SQLSERVER_CONN trong .env.")
+        # Biến này phải là URL SQLAlchemy, KHÔNG phải chuỗi ODBC thuần —
+        # connectors.py đưa thẳng vào create_engine. Chuỗi ODBC (DRIVER=...;
+        # SERVER=...) làm SQLAlchemy ném "Could not parse SQLAlchemy URL",
+        # một câu chẳng chỉ ra chỗ sai (12/09/2026).
+        if "://" not in conn:
+            raise RuntimeError(
+                "PIPELINE_SQLSERVER_CONN trong .env đang là chuỗi ODBC thuần. "
+                "Cần URL SQLAlchemy, ví dụ: mssql+pyodbc://user:mat_khau@host:1433/"
+                "MEDFORECAST_DW?driver=ODBC+Driver+17+for+SQL+Server. "
+                "Cách gọn hơn: vào Quản trị → Kết nối HIS và lưu cấu hình ở đó "
+                "(cấu hình trong DB thắng .env, đổi không cần khởi động lại).")
         connector = SqlServerConnector(conn)
     else:
-        connector = FileConnector(os.environ.get("PIPELINE_DATA_DIR", "../data"))
+        # Nguồn tệp là di sản thời chưa nối HIS. Trên một DB vừa dựng lại thì
+        # cả cấu hình DB lẫn thư mục CSV đều không có, và pandas ném
+        # FileNotFoundError tận trong pipeline → nút Đồng bộ trả 500 kèm
+        # traceback, đúng lúc người dùng cần một câu hướng dẫn (12/09/2026).
+        thu_muc = os.environ.get("PIPELINE_DATA_DIR", "../data")
+        connector = FileConnector(thu_muc)
+        thieu = [t for t in (connector.case_file, connector.inventory_file)
+                 if not (connector.data_dir / t).exists()]
+        if thieu:
+            raise RuntimeError(
+                "Chưa cấu hình kết nối HIS. Vào Quản trị → Kết nối HIS, nhập "
+                "thông tin máy chủ STA rồi bấm Kiểm tra kết nối và Lưu, sau đó "
+                "Đồng bộ lại. (Hệ thống đang rơi về nguồn tệp CSV cũ nhưng "
+                f"không thấy {', '.join(thieu)} trong {connector.data_dir}.)")
     return DataPipeline(connector, hier)
 
 

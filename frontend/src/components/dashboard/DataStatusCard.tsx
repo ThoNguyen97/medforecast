@@ -1,4 +1,5 @@
 import { AlertTriangle, CheckCircle2, Database, RefreshCw } from 'lucide-react';
+import { loiMayChu } from '../../utils/formatters';
 import { useNavigate } from 'react-router-dom';
 import { useRunSync, useSyncStatus } from '../../hooks/useSync';
 import { ROUTES } from '../../utils/constants';
@@ -92,7 +93,11 @@ export default function DataStatusCard({ status }: { status: DataStatusSection }
         >
           Cấu hình kết nối
         </button>
-        {runSync.isError && <span className="text-xs text-red-700">Đồng bộ thất bại</span>}
+        {runSync.isError && (
+          <span className="text-xs text-red-700 break-words">
+            {loiMayChu(runSync.error, 'Đồng bộ thất bại')}
+          </span>
+        )}
       </div>
     </div>
   );

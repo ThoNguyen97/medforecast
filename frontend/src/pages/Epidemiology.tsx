@@ -25,6 +25,7 @@ import { useRunSync } from '../hooks/useSync';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 import { DISEASE_TYPE_LABELS, type DiseaseType } from '../types/epidemiology';
 import { VN_PROVINCES, VN_PROVINCES_SET, getDistrictsForRegion, normalizeProvinceName } from '../utils/vietnamRegions';
+import { loiMayChu } from '../utils/formatters';
 
 const PAGE_SIZE = 10;
 
@@ -278,8 +279,8 @@ export default function Epidemiology() {
       const res = await runSync.mutateAsync(false);
       queryClient.invalidateQueries();
       setSyncMsg(`Đã đồng bộ • ${res.rows_ingested} dòng mới • đến kỳ ${res.max_period ?? '—'}`);
-    } catch {
-      setSyncMsg('Đồng bộ thất bại, vui lòng thử lại.');
+    } catch (e) {
+      setSyncMsg(loiMayChu(e, 'Đồng bộ thất bại, vui lòng thử lại.'));
     }
   };
 

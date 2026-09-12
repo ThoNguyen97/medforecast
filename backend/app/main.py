@@ -39,9 +39,10 @@ except Exception as _e:  # noqa: BLE001
 try:
     from app.data_pipeline.views import dam_bao_luoc_do as _dam_bao
     _kq = _dam_bao()
-    _da = [k for k, v in _kq.items() if v == "đã tạo"]
-    _bo = {k: v for k, v in _kq.items() if v != "đã tạo"}
-    logger.info("Lược đồ ngoài ORM: %d/%d nhóm đã tạo %s", len(_da), len(_kq),
+    _xong = ("đã tạo", "đã gieo", "đã có")
+    _da = [k for k, v in _kq.items() if v in _xong]
+    _bo = {k: v for k, v in _kq.items() if v not in _xong}
+    logger.info("Lược đồ ngoài ORM: %d/%d mục sẵn sàng %s", len(_da), len(_kq),
                 ("— chờ dữ liệu: %s" % _bo) if _bo else "")
 except Exception as _e:  # noqa: BLE001
     logger.warning("Bỏ qua dựng lược đồ ngoài ORM (non-fatal): %s", _e)

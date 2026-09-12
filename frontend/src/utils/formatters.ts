@@ -87,3 +87,22 @@ export function truncateText(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
   return `${text.slice(0, maxLength)}...`;
 }
+
+/**
+ * Câu lỗi mà máy chủ thật sự trả về (FastAPI đặt ở `detail`).
+ *
+ * 12/09/2026: nút Đồng bộ HIS bắt lỗi rồi hiện "Đồng bộ thất bại" — nuốt mất
+ * câu hướng dẫn duy nhất người dùng cần ("Chưa cấu hình kết nối HIS. Vào Quản
+ * trị → Kết nối HIS…"). Dùng hàm này thay cho chuỗi cố định.
+ */
+export function loiMayChu(e: unknown, macDinh = 'Có lỗi xảy ra'): string {
+  const err = e as { response?: { data?: { detail?: unknown } }; message?: string };
+  const detail = err?.response?.data?.detail;
+  if (typeof detail === 'string' && detail.trim()) return detail;
+  if (Array.isArray(detail) && detail.length) {
+    // lỗi kiểm tra dữ liệu của FastAPI: [{loc, msg, type}, …]
+    const msg = (detail[0] as { msg?: string })?.msg;
+    if (msg) return msg;
+  }
+  return err?.message || macDinh;
+}

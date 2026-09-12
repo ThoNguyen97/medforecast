@@ -29,6 +29,10 @@ def run_sync(full: bool = Query(False, description="True = nạp lại toàn b�
              _user: User = Depends(get_inventory_manager_or_admin)):
     try:
         return SyncService(db).run_sync(full=full)
+    except RuntimeError as e:
+        # Lỗi CẤU HÌNH (chưa khai báo kết nối, thiếu trường) — người dùng sửa
+        # được, không phải sự cố máy chủ. 400 để giao diện hiện đúng câu này.
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Đồng bộ thất bại: {e}")
 
