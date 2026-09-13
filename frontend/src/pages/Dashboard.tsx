@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowDownRight, ArrowUpRight, Check, Download, Loader2, RefreshCw } from 'lucide-react';
 import { useUIStore } from '../store/uiStore';
-import { useDashboardForecast, useDashboardV2 } from '../hooks/useDashboard';
+import { useDashboardV2 } from '../hooks/useDashboard';
 import { reportsService } from '../services/reportsService';
 import { ROUTES } from '../utils/constants';
 import { cn } from '../utils/cn';
@@ -15,7 +15,7 @@ import CareLevelChart from '../components/dashboard/CareLevelChart';
 import DataStatusCard from '../components/dashboard/DataStatusCard';
 import InsightsCard from '../components/dashboard/InsightsCard';
 import DashboardFilters, { type DashboardFilterState } from '../components/dashboard/DashboardFilters';
-import { BLOCK_LABELS, type DashboardV2 } from '../types/dashboardV2';
+import { BLOCK_LABELS, type DashboardV2, type ForecastSummary } from '../types/dashboardV2';
 
 const ALERT_LIMIT = 8;
 
@@ -34,7 +34,6 @@ export default function Dashboard() {
   const [refreshedAt, setRefreshedAt] = useState<number | null>(null);
 
   const v2 = useDashboardV2({ focus: filters.focus, level: filters.level, limit: ALERT_LIMIT });
-  const fc = useDashboardForecast();
   const data = v2.data;
 
   useEffect(() => {
@@ -53,7 +52,7 @@ export default function Dashboard() {
     if (refreshing) return;
     setManualRefresh(true);
     try {
-      await Promise.all([v2.refetch(), fc.refetch()]);
+      await v2.refetch();
       setRefreshedAt(Date.now());
     } finally {
       setManualRefresh(false);
@@ -91,7 +90,7 @@ export default function Dashboard() {
       })
     : '—';
 
-  const kpi = useMemo(() => buildKpis(data, fc.data, fc.isLoading, filters), [data, fc.data, fc.isLoading, filters]);
+  const kpi = useMemo(() => buildKpis(data, data?.forecast, !data, filters), [data, filters]);
 
   return (
     <div className="space-y-5">
@@ -234,7 +233,7 @@ type KpiProps = React.ComponentProps<typeof KpiTile>;
 
 function buildKpis(
   data: DashboardV2 | undefined,
-  fc: ReturnType<typeof useDashboardForecast>['data'],
+  fc: ForecastSummary | undefined,
   fcLoading: boolean,
   filters: DashboardFilterState,
 ): KpiProps[] {
@@ -251,8 +250,7 @@ function buildKpis(
   const fcPoint = fc?.ready ? (fcBlock ? fcBlock.point : fc.total.point) : null;
   const fcLo = fcBlock ? fcBlock.lower : fc?.total.lower;
   const fcHi = fcBlock ? fcBlock.upper : fc?.total.upper;
-  const members = fc?.blocks[0]?.model.members_used.length ?? null;
-  const fcErr = fc && !fc.ready && fc.errors.length > 0;
+  const fcRecordedAt = fc?.computed_at ?? null;
 
   // 3 · Nguy cơ thiếu hụt
   const c = data?.risk.counts;
@@ -293,27 +291,25 @@ function buildKpis(
     },
     {
       label: `Dự báo kỳ ${fc?.target_period ?? data?.meta.forecast_period ?? 'tới'}`,
-      value: fcLoading ? <span className="text-base font-semibold text-neutral-400">đang tính…</span> : fcErr ? <span className="text-base font-semibold text-red-700">lỗi</span> : n(fcPoint != null ? Math.round(fcPoint) : null),
-      unit: fcLoading || fcErr ? undefined : 'ca',
+      value: fcLoading ? <span className="text-base font-semibold text-neutral-400">đang tải…</span> : n(fcPoint != null ? Math.round(fcPoint) : null),
+      unit: fcLoading ? undefined : 'ca',
       tone: 'blue',
       to: ROUTES.FORECASTING,
-      context: fcLoading ? (
-        <span className="text-neutral-500">Lần đầu khớp ensemble có thể mất tới một phút; các lần sau tức thì.</span>
-      ) : fcErr ? (
-        <span className="text-red-700">{fc?.errors[0]}</span>
-      ) : fcLo != null && fcHi != null ? (
+      context: fcLoading ? undefined : fcLo != null && fcHi != null ? (
         <>
           Khoảng <b className="text-neutral-800 tabular-nums">{n(fcLo)}–{n(fcHi)}</b> · mức {Math.round((fc?.level ?? 0.9) * 100)}%
         </>
       ) : (
-        <span className="text-neutral-500">Chưa đủ bước walk-forward để dựng khoảng</span>
+        <span className="text-neutral-500">Chưa ghi nhận dự báo cho kỳ này ở trang Phân tích</span>
       ),
       footer:
-        fc?.ready && members != null ? (
+        fc?.ready && fcRecordedAt ? (
           <>
-            Ensemble {members} thành viên · top-down động{fc.blocks.some((b) => b.weather_used) ? ' · có thời tiết' : ''}
+            Đã ghi nhận lúc <b className="text-neutral-700">{new Date(fcRecordedAt).toLocaleString('vi-VN')}</b>
             {fc.ghi_chu.some((g) => g.includes('cận')) && <span className="text-amber-700"> · xem diễn giải</span>}
           </>
+        ) : !fc?.ready ? (
+          <span className="text-amber-700">Vào trang Phân tích để ghi nhận dự báo cho kỳ này</span>
         ) : undefined,
     },
     {

@@ -26,6 +26,8 @@ from app.utils.icd_groups import NHOM_ICD, dieu_kien_benh
 from app.models.disease_forecast import DiseaseForecast
 from app.models.environmental_data import EnvironmentalData
 from app.models.user import User
+from app.services.dss_demand import BLOCKS
+from app.services.group_ensemble_service import SO_BUOC_DO_CHINH_XAC
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["forecast-analysis"])
@@ -637,6 +639,9 @@ def analyze_forecast(
         # xem chú thích đầu file và RaSoat_MoHinh_MedForecast_2026-09-09.md.
         model_used = "multivariate_v1"
         ml_accuracy: Dict[str, Any] | None = None
+        # Khoảng tin cậy THẬT (walk-forward) từ ensemble — ghi đè khoảng ±15%
+        # heuristic khi có. None = chưa có ensemble, dùng lại ±15% lúc lưu.
+        ci_interval: Dict[str, Any] | None = None
 
         # ── Engine CHÍNH: ensemble NHÓM đã kiểm chứng walk-forward (09/08/2026) ──
         # Heuristic cùng-kỳ và MonthlyForecaster phía trên chỉ còn là fallback: cả
@@ -656,34 +661,57 @@ def analyze_forecast(
             from app.services.group_ensemble_service import du_bao_nhom
 
             if region is None:
-                # ── TOÀN QUỐC = TỔNG dự báo của từng tỉnh (bottom-up) ──────
-                # Trước đây toàn quốc được mô hình hoá độc lập trên chuỗi đã
-                # gộp, còn các dòng theo tỉnh lại do MonthlyForecaster ghi —
-                # ba con số của cùng một kỳ không khớp nhau (đo thật: toàn
-                # quốc 213, dòng TP.HCM 122, phân tích riêng TP.HCM 168).
-                # Nay chỉ còn MỘT cách tính: mỗi tỉnh chạy đúng engine như khi
-                # phân tích riêng tỉnh đó, rồi cộng lại.
-                tong = 0
-                acc_dai_dien, ca_lon_nhat = None, -1
+                # ── TOÀN QUỐC ──────────────────────────────────────────────
+                # 12/09/2026: bỏ hẳn cách "cộng dự báo từng tỉnh" (bottom-up).
+                # Ensemble phi tuyến nên tổng-các-dự-báo-tỉnh KHÔNG bằng
+                # dự-báo-của-tổng (đo thật T9/2026 J09-J18: cộng tỉnh ra 424,
+                # trong khi Tầng 1/Dashboard fit thẳng trên chuỗi toàn viện
+                # theo khối ra 392 — số đã walk-forward validate cho luận
+                # văn). Hai màn hình từng vì vậy ra hai con số khác nhau cho
+                # cùng một kỳ. Nay Toàn quốc dùng ĐÚNG MỘT hàm với Tầng 1:
+                # HierarchicalForecastService.forecast_group(), chỉ khác là
+                # cho chọn kỳ tuỳ ý (tham số target_year/target_month) thay vì
+                # luôn cố định "kỳ tới" như Dashboard.
+                if disease in BLOCKS:
+                    try:
+                        from app.services.hierarchical_forecast_service import (
+                            HierarchicalForecastService,
+                        )
+                        kq_tq = HierarchicalForecastService(db).forecast_group(
+                            disease, target_year=payload.target_year,
+                            target_month=payload.target_month,
+                        )
+                        predicted = int(round(kq_tq["point"]))
+                        model_used = "top_down_khoi_v1"
+                        if kq_tq.get("lower") is not None:
+                            ci_interval = {"lower": int(round(kq_tq["lower"])),
+                                          "upper": int(round(kq_tq["upper"]))}
+                        wf_tq = kq_tq.get("walk_forward") or {}
+                        acts = [float(a) for a in wf_tq.get("actual", [])][-SO_BUOC_DO_CHINH_XAC:]
+                        preds_tq = [float(p) for p in wf_tq.get("pred", [])][-SO_BUOC_DO_CHINH_XAC:]
+                        sai_so = [abs(p - a) for p, a in zip(preds_tq, acts)]
+                        if sai_so and sum(acts) > 0:
+                            wape = 100.0 * sum(sai_so) / sum(acts)
+                            ml_accuracy = _accuracy_tu_ensemble({
+                                "mae": round(float(mean(sai_so)), 2),
+                                "wape": round(wape, 1),
+                                "accuracy_pct": round(max(0.0, 100.0 - wape), 1),
+                                "n_steps": len(sai_so),
+                            })
+                    except ValueError:
+                        logger.info(
+                            "Chưa đủ dữ liệu MART khối %s cho kỳ %s-%02d — "
+                            "giữ dự báo heuristic làm phương án thay thế.",
+                            disease, payload.target_year, payload.target_month,
+                        )
+                # Vẫn tính dự báo riêng cho TỪNG TỈNH để hiển thị bảng chi
+                # tiết theo tỉnh (giá trị dịch tễ — nơi bệnh nhân cư trú) —
+                # nhưng KHÔNG cộng lại thành dòng Toàn quốc nữa (xem trên).
                 for pp in per_province:
                     kq_t = du_bao_nhom(db, disease, pp["location"],
                                        payload.target_year, payload.target_month)
                     if kq_t is not None:
                         pp["predicted"] = kq_t["predicted"]
-                        if kq_t.get("accuracy") and kq_t["predicted"] > ca_lon_nhat:
-                            ca_lon_nhat = kq_t["predicted"]
-                            acc_dai_dien = kq_t["accuracy"]
-                    # kq_t is None: tỉnh chưa đủ 18 tháng lịch sử → giữ số
-                    # heuristic đã tính ở trên làm ước lượng thay thế.
-                    tong += pp["predicted"]
-
-                if per_province:
-                    predicted = tong
-                    model_used = "tong_hop_tinh_v1"
-                    # Độ chính xác lấy theo tỉnh đóng góp nhiều ca nhất — đại
-                    # diện sát nhất cho tổng, vì tổng do tỉnh đó chi phối.
-                    if acc_dai_dien:
-                        ml_accuracy = _accuracy_tu_ensemble(acc_dai_dien)
             else:
                 kq_ens = du_bao_nhom(db, disease, region,
                                      payload.target_year, payload.target_month)
@@ -692,6 +720,9 @@ def analyze_forecast(
                     model_used = kq_ens["model_used"]
                     if kq_ens.get("accuracy"):
                         ml_accuracy = _accuracy_tu_ensemble(kq_ens["accuracy"])
+                    iv = kq_ens.get("interval") or {}
+                    if iv.get("lower") is not None:
+                        ci_interval = {"lower": iv["lower"], "upper": iv["upper"]}
         except Exception:
             logger.exception("Ensemble nhóm lỗi — dùng dự báo fallback")
     else:
@@ -863,8 +894,10 @@ def analyze_forecast(
             disease_type="respiratory",
             location=region,
             predicted_cases=predicted,
-            confidence_lower=int(predicted * 0.85),
-            confidence_upper=int(predicted * 1.15),
+            # Khoảng thực nghiệm (walk-forward) khi có ensemble; ±15% chỉ còn
+            # là fallback khi chưa đủ dữ liệu chạy ensemble (12/09/2026).
+            confidence_lower=(ci_interval["lower"] if ci_interval else int(predicted * 0.85)),
+            confidence_upper=(ci_interval["upper"] if ci_interval else int(predicted * 1.15)),
             model_used=model_used,
             baseline_cases=int(baseline),
             weather_factor=weather_factor,
@@ -936,18 +969,12 @@ def analyze_forecast(
                 logger.warning("Không cập nhật được dòng toàn quốc: %s", exc)
                 db.rollback()
 
-        # Spec 5 → Bước 5: tự sinh supply_requirements để Module 7 (/alerts) có data
-        try:
-            from app.services.supply_requirement_service import SupplyRequirementService
-
-            SupplyRequirementService(db).generate_requirements_for_forecast(saved.id)
-        except Exception as exc:
-            # Không block kết quả forecast nếu việc sinh requirement gặp lỗi
-            logger.warning(
-                "Failed to auto-generate supply requirements for forecast %s: %s",
-                saved.id,
-                exc,
-            )
+        # (Bước 5 cũ — tự sinh supply_requirements bằng conversion_ratios/
+        #  severity_rate — đã gỡ 12/09/2026: đó là "đường thứ ba" tính nhu cầu
+        #  vật tư song song với dss_demand.py, dùng công thức KHÁC và không
+        #  đọc Định mức thực nghiệm. "Ghi nhận dự báo" giờ chỉ còn một việc:
+        #  lưu vết số ca dự báo. Cảnh báo/nhu cầu vật tư luôn tính lại từ
+        #  dss_demand.py + dss_alerts.py mỗi lần đọc, xem _archive/README.md.)
 
         # (Bước 6 cũ — AlertModule sinh bảng `alerts` theo ngưỡng 3/7/14 — đã gỡ
         #  12/09/2026: cảnh báo thật tính lại mỗi lần đọc ở /dashboard/v2.)
@@ -1070,9 +1097,13 @@ async def get_forecast_history(
                 "disease_type": r.icd_code,
                 "icd_code": r.icd_code,
                 "disease_label": r.disease_name or _disease_label(r.icd_code),
-                "region": r.location or "Toàn thành phố",
-                # Dòng TỔNG (location=NULL) — bảng lịch sử phải loại ra, nếu
-                # không sẽ cộng hai lần vì nó đã là tổng của các tỉnh.
+                "region": "Toàn quốc" if r.location is None else r.location,
+                # location=NULL = bản Toàn quốc, tính bằng công thức top-down
+                # riêng (Tầng 1) — KHÔNG còn là tổng của các tỉnh (đúng trước
+                # 12/09, sai từ khi gộp một công thức). FE dùng cờ này để lấy
+                # số "chính thức" từ bản Toàn quốc thay vì cộng các tỉnh —
+                # cộng các tỉnh lại sẽ ra một tổng khác Tổng quan/Cảnh báo,
+                # lặp lại đúng lỗi 392/424 cũ ở một màn hình khác.
                 "is_nationwide": r.location is None,
                 "predicted_cases": r.predicted_cases,
                 "actual_cases": actual,

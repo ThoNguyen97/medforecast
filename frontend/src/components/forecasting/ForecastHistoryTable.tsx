@@ -45,6 +45,12 @@ function cong(ds: ForecastHistoryItem[]): TongHop {
   return { duBao, ghiNhanLuc };
 }
 
+/** Bản ghi nhận mới nhất trong danh sách (so theo created_at); null nếu rỗng. */
+function moiNhat(ds: ForecastHistoryItem[]): ForecastHistoryItem | null {
+  if (ds.length === 0) return null;
+  return ds.reduce((a, b) => ((b.created_at ?? '') > (a.created_at ?? '') ? b : a));
+}
+
 export default function ForecastHistoryTable({
   rows,
   isLoading,
@@ -86,57 +92,77 @@ export default function ForecastHistoryTable({
 
   const dangXoa = xoaMot.isPending || xoaTatCa.isPending;
 
-  // Bỏ dòng TỔNG toàn quốc: cấp tháng và cấp nhóm bệnh đã tự cộng từ các tỉnh,
-  // giữ lại sẽ thành đếm hai lần.
-  const rowsChiTiet = useMemo(
-    () => rows.filter((r) => !r.is_nationwide),
+  // Toàn bộ bản ghi (kể cả Toàn quốc) dùng để liệt kê tháng/nhóm bệnh cho bộ lọc.
+  const uniqueMonths = useMemo(
+    () => Array.from(new Set(rows.map((r) => r.month))).sort(),
     [rows],
   );
-
-  const uniqueMonths = useMemo(
-    () => Array.from(new Set(rowsChiTiet.map((r) => r.month))).sort(),
-    [rowsChiTiet],
-  );
   const uniqueDiseases = useMemo(
-    () => Array.from(new Set(rowsChiTiet.map((r) => r.disease_label))).sort(),
-    [rowsChiTiet],
+    () => Array.from(new Set(rows.map((r) => r.disease_label))).sort(),
+    [rows],
   );
 
   const filteredRows = useMemo(
     () =>
-      rowsChiTiet.filter((r) => {
+      rows.filter((r) => {
         if (filterMonth !== 'all' && r.month !== filterMonth) return false;
         if (filterDisease !== 'all' && r.disease_label !== filterDisease)
           return false;
         return true;
       }),
-    [rowsChiTiet, filterMonth, filterDisease],
+    [rows, filterMonth, filterDisease],
   );
 
-  /** Cây 3 cấp: tháng → nhóm bệnh → từng tỉnh. */
+  /** Cây 3 cấp: tháng → nhóm bệnh → (Toàn quốc chính thức + chi tiết theo tỉnh).
+   *
+   *  Từ 12/09/2026 bản Toàn quốc (location=NULL) dùng công thức top-down
+   *  riêng (Tầng 1) — KHÔNG còn là tổng của các tỉnh. Vì vậy số "chính thức"
+   *  của tháng/nhóm bệnh LUÔN lấy từ bản Toàn quốc mới nhất (đúng số nuôi
+   *  Tổng quan/Cảnh báo), không phải cộng các tỉnh — cộng các tỉnh sẽ ra một
+   *  tổng khác, lặp lại đúng kiểu lệch 392/424 cũ ở một màn hình khác. Các
+   *  bản theo tỉnh vẫn hiện đầy đủ (kể cả xoá được) nhưng chỉ để tham khảo
+   *  dịch tễ, tách hẳn khỏi con số chính thức.
+   */
   const cay = useMemo(() => {
-    const theoThang = new Map<string, Map<string, ForecastHistoryItem[]>>();
+    type Xo = { toanQuoc: ForecastHistoryItem[]; tinh: ForecastHistoryItem[] };
+    const theoThang = new Map<string, Map<string, Xo>>();
     for (const r of filteredRows) {
       if (!theoThang.has(r.month)) theoThang.set(r.month, new Map());
       const nhom = theoThang.get(r.month)!;
-      if (!nhom.has(r.disease_label)) nhom.set(r.disease_label, []);
-      nhom.get(r.disease_label)!.push(r);
+      if (!nhom.has(r.disease_label)) nhom.set(r.disease_label, { toanQuoc: [], tinh: [] });
+      const xo = nhom.get(r.disease_label)!;
+      (r.is_nationwide ? xo.toanQuoc : xo.tinh).push(r);
     }
     return Array.from(theoThang.entries())
       .sort((a, b) => b[0].localeCompare(a[0])) // tháng mới nhất lên đầu
-      .map(([thang, nhomMap]) => ({
-        thang,
-        tong: cong(Array.from(nhomMap.values()).flat()),
-        nhoms: Array.from(nhomMap.entries())
+      .map(([thang, nhomMap]) => {
+        const nhoms = Array.from(nhomMap.entries())
           .sort((a, b) => a[0].localeCompare(b[0], 'vi'))
-          .map(([tenNhom, ds]) => ({
-            tenNhom,
-            tong: cong(ds),
-            chiTiet: [...ds].sort(
-              (a, b) => (b.predicted_cases ?? 0) - (a.predicted_cases ?? 0),
-            ),
-          })),
-      }));
+          .map(([tenNhom, { toanQuoc, tinh }]) => {
+            const chinhThuc = moiNhat(toanQuoc);
+            // Ghi nhận lại Toàn quốc tạo bản mới chứ không sửa bản cũ — các
+            // bản cũ hơn vẫn hiện (và xoá được) cùng khu vực "theo tỉnh".
+            const toanQuocCu = toanQuoc.filter((r) => r !== chinhThuc);
+            return {
+              tenNhom,
+              chinhThuc,
+              toanQuocCu,
+              tinh: [...tinh].sort(
+                (a, b) => (b.predicted_cases ?? 0) - (a.predicted_cases ?? 0),
+              ),
+              tongTinh: cong(tinh),
+            };
+          });
+        const banChinhThuc = nhoms
+          .map((n) => n.chinhThuc)
+          .filter((x): x is ForecastHistoryItem => !!x);
+        return {
+          thang,
+          nhoms,
+          tong: cong(banChinhThuc),
+          soNhomThieuToanQuoc: nhoms.filter((n) => !n.chinhThuc).length,
+        };
+      });
   }, [filteredRows]);
 
   const bat = (khoa: string) =>
@@ -153,7 +179,7 @@ export default function ForecastHistoryTable({
           Lịch sử dự báo gần đây
         </h3>
         <div className="flex items-center gap-1">
-          {laQuanTri && rowsChiTiet.length > 0 && (
+          {laQuanTri && rows.length > 0 && (
             <button
               type="button"
               onClick={() => {
@@ -258,7 +284,7 @@ export default function ForecastHistoryTable({
                   </div>
                 </td>
               </tr>
-            ) : rowsChiTiet.length === 0 ? (
+            ) : rows.length === 0 ? (
               <tr>
                 <td colSpan={5} className="py-10 text-center text-sm text-neutral-400">
                   Chưa có lịch sử dự báo
@@ -276,7 +302,8 @@ export default function ForecastHistoryTable({
                 const mo = moThang(khoaThang);
                 return (
                   <Fragment key={khoaThang}>
-                    {/* CẤP 1 — tháng */}
+                    {/* CẤP 1 — tháng: số CHÍNH THỨC = tổng các bản Toàn quốc (nuôi
+                        Tổng quan/Cảnh báo), không phải cộng các tỉnh. */}
                     <tr
                       onClick={() => bat(khoaThang)}
                       className="border-t border-neutral-100 bg-neutral-50/70 cursor-pointer hover:bg-neutral-100/70"
@@ -289,6 +316,14 @@ export default function ForecastHistoryTable({
                             <ChevronRight className="w-4 h-4 text-neutral-500" />
                           )}
                           Tháng {thangNode.thang}
+                          {thangNode.soNhomThieuToanQuoc > 0 && (
+                            <span
+                              className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-50 text-amber-700"
+                              title="Số nhóm bệnh chưa có bản Toàn quốc — thiếu trong tổng bên cạnh"
+                            >
+                              thiếu {thangNode.soNhomThieuToanQuoc} nhóm Toàn quốc
+                            </span>
+                          )}
                         </span>
                       </td>
                       <OTong tong={thangNode.tong} dam />
@@ -305,7 +340,8 @@ export default function ForecastHistoryTable({
                         const moN = moNhom(khoaNhom);
                         return (
                           <Fragment key={khoaNhom}>
-                            {/* CẤP 2 — nhóm bệnh */}
+                            {/* CẤP 2 — nhóm bệnh: hiện đúng bản Toàn quốc, không
+                                cộng các tỉnh vào đây. */}
                             <tr
                               onClick={() => bat(khoaNhom)}
                               className="border-t border-neutral-100 cursor-pointer hover:bg-neutral-50"
@@ -320,52 +356,71 @@ export default function ForecastHistoryTable({
                                   {nhomNode.tenNhom}
                                 </span>
                               </td>
-                              <OTong tong={nhomNode.tong} />
-                              <td className="px-5 py-2.5 text-xs text-neutral-500 whitespace-nowrap">
-                                {formatThoiGian(nhomNode.tong.ghiNhanLuc)}
-                              </td>
+                              {nhomNode.chinhThuc ? (
+                                <>
+                                  <td className="px-5 py-2.5 text-right tabular-nums font-medium text-neutral-800">
+                                    {nhomNode.chinhThuc.predicted_cases.toLocaleString('vi-VN')}
+                                  </td>
+                                  <td className="px-5 py-2.5 text-xs text-neutral-500 whitespace-nowrap">
+                                    {formatThoiGian(nhomNode.chinhThuc.created_at)}
+                                  </td>
+                                </>
+                              ) : (
+                                <>
+                                  <td
+                                    className="px-5 py-2.5 text-right text-xs font-medium text-amber-700"
+                                    title="Chưa bấm Ghi nhận dự báo ở mục Toàn quốc cho nhóm bệnh này — số này KHÔNG có trong Tổng quan/Cảnh báo."
+                                  >
+                                    Chưa ghi nhận Toàn quốc
+                                  </td>
+                                  <td />
+                                </>
+                              )}
                               <td />
                               <td />
                             </tr>
 
-                            {/* CẤP 3 — từng tỉnh */}
+                            {/* Bản Toàn quốc cũ hơn (ghi nhận lại, chưa xoá bản trước) */}
                             {moN &&
-                              nhomNode.chiTiet.map((r) => (
-                                <tr
+                              nhomNode.toanQuocCu.map((r) => (
+                                <DongChiTiet
                                   key={r.id}
-                                  className="border-t border-neutral-100"
+                                  r={r}
+                                  nhan="Toàn quốc (bản ghi trước)"
+                                  duocXoa={duocXoa(r)}
+                                  dangXoa={dangXoa}
+                                  onXoa={() => {
+                                    setLoiXoa(null);
+                                    setXacNhanXoa({ kieu: 'mot', row: r });
+                                  }}
+                                />
+                              ))}
+
+                            {/* CẤP 3 — theo tỉnh: CHỈ tham khảo dịch tễ, không
+                                cộng vào số chính thức ở trên. */}
+                            {moN && nhomNode.tinh.length > 0 && (
+                              <tr className="border-t border-neutral-100">
+                                <td
+                                  colSpan={5}
+                                  className="px-5 py-1.5 pl-[4.5rem] text-[11px] text-neutral-400 italic"
                                 >
-                                  <td className="px-5 py-2.5 pl-[4.5rem] text-neutral-600">
-                                    {r.region}
-                                  </td>
-                                  <td className="px-5 py-2.5 text-right tabular-nums text-neutral-700">
-                                    {r.predicted_cases.toLocaleString('vi-VN')}
-                                  </td>
-                                  <td className="px-5 py-2.5 text-xs text-neutral-500 whitespace-nowrap">
-                                    {formatThoiGian(r.created_at)}
-                                  </td>
-                                  <td className="px-5 py-2.5 text-neutral-600 whitespace-nowrap">
-                                    {r.created_by || '—'}
-                                  </td>
-                                  <td className="px-5 py-2.5 text-right">
-                                    <button
-                                      type="button"
-                                      disabled={!duocXoa(r) || dangXoa}
-                                      onClick={() => {
-                                        setLoiXoa(null);
-                                        setXacNhanXoa({ kieu: 'mot', row: r });
-                                      }}
-                                      title={
-                                        duocXoa(r)
-                                          ? 'Xoá lần dự báo này'
-                                          : 'Chỉ người đã ghi nhận hoặc Quản trị viên mới xoá được'
-                                      }
-                                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-red-600 hover:bg-red-50 disabled:text-neutral-300 disabled:hover:bg-transparent disabled:cursor-not-allowed"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
-                                  </td>
-                                </tr>
+                                  Theo tỉnh — tham khảo dịch tễ, không cộng vào Toàn quốc
+                                  (tổng các tỉnh: {nhomNode.tongTinh.duBao.toLocaleString('vi-VN')})
+                                </td>
+                              </tr>
+                            )}
+                            {moN &&
+                              nhomNode.tinh.map((r) => (
+                                <DongChiTiet
+                                  key={r.id}
+                                  r={r}
+                                  duocXoa={duocXoa(r)}
+                                  dangXoa={dangXoa}
+                                  onXoa={() => {
+                                    setLoiXoa(null);
+                                    setXacNhanXoa({ kieu: 'mot', row: r });
+                                  }}
+                                />
                               ))}
                           </Fragment>
                         );
@@ -460,6 +515,54 @@ export default function ForecastHistoryTable({
         </div>
       )}
     </div>
+  );
+}
+
+/** Một dòng chi tiết có thể xoá — dùng cho cả "theo tỉnh" lẫn bản Toàn quốc cũ. */
+function DongChiTiet({
+  r,
+  nhan,
+  duocXoa,
+  dangXoa,
+  onXoa,
+}: {
+  r: ForecastHistoryItem;
+  /** Nhãn thay cho r.region — dùng khi dòng này là bản Toàn quốc cũ. */
+  nhan?: string;
+  duocXoa: boolean;
+  dangXoa: boolean;
+  onXoa: () => void;
+}) {
+  return (
+    <tr className="border-t border-neutral-100">
+      <td className="px-5 py-2.5 pl-[4.5rem] text-neutral-600">
+        {nhan ?? r.region}
+      </td>
+      <td className="px-5 py-2.5 text-right tabular-nums text-neutral-700">
+        {r.predicted_cases.toLocaleString('vi-VN')}
+      </td>
+      <td className="px-5 py-2.5 text-xs text-neutral-500 whitespace-nowrap">
+        {formatThoiGian(r.created_at)}
+      </td>
+      <td className="px-5 py-2.5 text-neutral-600 whitespace-nowrap">
+        {r.created_by || '—'}
+      </td>
+      <td className="px-5 py-2.5 text-right">
+        <button
+          type="button"
+          disabled={!duocXoa || dangXoa}
+          onClick={onXoa}
+          title={
+            duocXoa
+              ? 'Xoá lần dự báo này'
+              : 'Chỉ người đã ghi nhận hoặc Quản trị viên mới xoá được'
+          }
+          className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-red-600 hover:bg-red-50 disabled:text-neutral-300 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+      </td>
+    </tr>
   );
 }
 

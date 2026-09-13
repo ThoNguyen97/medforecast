@@ -1056,9 +1056,14 @@ def _render_turnover_pdf(items: list, start: date, end: date) -> Response:
 
 
 async def _build_dashboard_summary_data(db: Session) -> Dict:
-    """Tổng hợp toàn bộ chỉ số đang hiển thị trên Dashboard."""
-    from app.models.alert import Alert
+    """Tổng hợp toàn bộ chỉ số đang hiển thị trên Dashboard.
+
+    Dùng lại đúng chuỗi Tầng 1→2→3 của `dss_dashboard` (bản đã Ghi nhận →
+    demand_by_supply → alert_rows) thay vì tự tính lại từ DiseaseForecast /
+    SupplyRequirement / Alert — để báo cáo xuất ra KHÔNG BAO GIỜ lệch với
+    Tổng quan / Cảnh báo thiếu hụt trên giao diện."""
     from app.models.disease_case import DiseaseCase
+    from app.services import dss_dashboard, dss_alerts, period_service as ps
 
     today = date.today()
     first_of_this_month = today.replace(day=1)
@@ -1110,43 +1115,25 @@ async def _build_dashboard_summary_data(db: Session) -> Dict:
             month=first_of_next.month + 1,
         ) - timedelta(days=1)
 
-    predicted_next = (
-        db.query(func.coalesce(func.sum(DiseaseForecast.predicted_cases), 0))
-        .filter(
-            DiseaseForecast.forecast_date >= first_of_next,
-            DiseaseForecast.forecast_date <= end_of_next,
-        )
-        .scalar()
-        or 0
-    )
+    # Dự báo kỳ tới: đọc từ bản ĐÃ GHI NHẬN ở trang Phân tích (Tầng 1, cùng
+    # nguồn với Dashboard/Cảnh báo) — không tự cộng DiseaseForecast.predicted_cases
+    # (bảng đó có cả bản ghi Toàn quốc lẫn theo tỉnh/mã ICD cũ, cộng thô sẽ trùng).
+    fc, th, nhu_cau, nhu_cau_meta = dss_dashboard.tang1_tang2(db)
+    predicted_next = int(round(fc["total"]["point"])) if fc.get("ready") and fc.get("total") else 0
     predicted_trend = (
         round(100.0 * (int(predicted_next) - int(total_current)) / int(total_current), 1)
-        if total_current > 0 else 0.0
+        if total_current > 0 and fc.get("ready") else 0.0
     )
 
-    # KPI: số vật tư ĐANG HẾT HÀNG.
-    #
-    # Trước 09/09/2026 điều kiện là `safety_stock > 0 AND current_stock <
-    # safety_stock * 0.3`. Vì safety_stock đã bị vô hiệu hoá (5.007/5.041 dòng
-    # = 0), vế đầu luôn sai → shortage_count LUÔN BẰNG 0, và "mức nguy cơ chung"
-    # bên dưới luôn được đánh giá thấp hơn thực tế mà không có dấu hiệu nào.
-    #
-    # Nay đếm điều kiện không cần ngưỡng và không thể sai: tồn <= 0.
-    # Cảnh báo đầy đủ theo DOI + FEFO thuộc tầng dss_alerts.
-    shortage_count = (
-        db.query(func.count(Inventory.id))
-        .filter(Inventory.current_stock <= 0)
-        .scalar()
-        or 0
-    )
+    # KPI: số vật tư đang ở mức Đỏ/Vàng theo DOI (tập trọng tâm hô hấp) —
+    # cùng ngưỡng và cùng công thức với trang Cảnh báo thiếu hụt.
+    al_focus = dss_alerts.alert_rows(db, demand=nhu_cau, only_focus=True)
+    dem_focus = dss_dashboard._counts(al_focus)
+    shortage_count = dem_focus["red"] + dem_focus["amber"]
 
-    # Mức nguy cơ chung (cùng công thức như endpoint /dashboard/summary)
-    if predicted_trend >= 15 and shortage_count >= 5:
-        overall_risk = "Cao"
-    elif predicted_trend >= 5 or shortage_count >= 2:
-        overall_risk = "Trung bình"
-    else:
-        overall_risk = "Thấp"
+    # Mức nguy cơ chung — cùng hàm `assess_overall_risk` mà Tổng quan dùng.
+    overall_risk_info = ps.assess_overall_risk(cases_trend, dem_focus["red"], dem_focus["amber"])
+    overall_risk = overall_risk_info["level"]
 
     # Xu hướng 6 tháng (this year + last year)
     trend_rows = []
@@ -1175,59 +1162,39 @@ async def _build_dashboard_summary_data(db: Session) -> Dict:
         )
         trend_rows.append({"month": f"T{month}", "this_year": int(this_y), "last_year": int(last_y)})
 
-    # Top 5 vật tư demand vs stock
-    end_demand = today + timedelta(days=60)
-    demand_rows_raw = (
-        db.query(
-            MedicalSupply.id,
-            MedicalSupply.name,
-            MedicalSupply.unit,
-            func.coalesce(func.sum(SupplyRequirement.required_quantity), 0).label("demand"),
-        )
-        .join(SupplyRequirement, SupplyRequirement.supply_id == MedicalSupply.id)
-        .filter(
-            SupplyRequirement.requirement_date >= today,
-            SupplyRequirement.requirement_date <= end_demand,
-        )
-        .group_by(MedicalSupply.id, MedicalSupply.name, MedicalSupply.unit)
-        .order_by(func.sum(SupplyRequirement.required_quantity).desc())
-        .limit(5)
-        .all()
-    )
-    demand_rows = []
-    for row in demand_rows_raw:
-        stock = (
-            db.query(func.coalesce(func.sum(Inventory.current_stock), 0))
-            .filter(Inventory.supply_id == row.id)
-            .scalar()
-            or 0
-        )
-        demand_rows.append({
-            "supply_name": row.name,
-            "unit": row.unit,
-            "demand": int(row.demand),
-            "stock": int(stock),
-        })
+    # Top 5 vật tư demand vs stock — cùng bảng "Nhu cầu 30 ngày" của Cảnh báo
+    # thiếu hụt (delta_need = max(0, d_forecast - s_usable)), không phải
+    # SupplyRequirement (đã dừng sinh dữ liệu — xem _archive/README.md).
+    focus_rows = list(al_focus.get("rows") or [])
+    top_demand = sorted(
+        (r for r in focus_rows if r.get("d_forecast") is not None),
+        key=lambda r: -(r.get("delta_need") or 0),
+    )[:5]
+    demand_rows = [
+        {
+            "supply_name": r["ten"] or r["supply_code"],
+            "unit": r["don_vi"],
+            "demand": int(round(r["d_forecast"] or 0)),
+            "stock": int(round(r["s_usable"] or 0)),
+        }
+        for r in top_demand
+    ]
 
-    # Bảng cảnh báo top 5 (critical + high)
-    alert_rows = (
-        db.query(Alert)
-        .filter(
-            Alert.is_resolved == False,  # noqa: E712
-            Alert.severity.in_(["critical", "high"]),
-        )
-        .order_by(Alert.severity.asc(), Alert.created_at.desc())
-        .limit(5)
-        .all()
-    )
+    # Bảng cảnh báo top 5 (Đỏ trước, Vàng sau) — cùng thứ tự với trang Cảnh báo.
+    _thu_tu = {"red": 0, "amber": 1, "green": 2, "grey": 3}
+    _severity_vi = {"red": "critical", "amber": "high"}
+    top_alerts = sorted(
+        (r for r in focus_rows if r.get("muc") in ("red", "amber")),
+        key=lambda r: (_thu_tu[r["muc"]], r["doi"] if r["doi"] is not None else 10 ** 9),
+    )[:5]
     alerts_list = [
         {
-            "supply_name": a.supply.name if a.supply else f"Supply #{a.supply_id}",
-            "current_stock": a.current_stock or 0,
-            "required_stock": a.required_stock or 0,
-            "severity": a.severity,
+            "supply_name": r["ten"] or r["supply_code"],
+            "current_stock": int(round(r["s_usable"] or 0)),
+            "required_stock": int(round(r["d_forecast"])) if r.get("d_forecast") is not None else 0,
+            "severity": _severity_vi.get(r["muc"], r["muc"]),
         }
-        for a in alert_rows
+        for r in top_alerts
     ]
 
     return {
@@ -1574,46 +1541,33 @@ async def _build_shortage_data(
     end: date,
     disease_type: Optional[str],
 ) -> Dict:
-    """Báo cáo Thiếu hụt vật tư: vật tư có shortage > 0 trong kỳ."""
-    from app.models.medical_supply import MedicalSupply
-    from app.models.inventory import Inventory as InventoryModel
+    """Báo cáo Thiếu hụt vật tư — đọc từ CÙNG tầng Cảnh báo thiếu hụt
+    (dss_dashboard.tang1_tang2 → dss_alerts.alert_rows) thay vì SupplyRequirement
+    (bảng đã dừng sinh dữ liệu — xem _archive/README.md).
 
-    demand_q = db.query(
-        SupplyRequirement.supply_id,
-        func.sum(SupplyRequirement.required_quantity).label("total_required"),
-    ).filter(
-        SupplyRequirement.requirement_date >= start,
-        SupplyRequirement.requirement_date <= end,
-    )
-    if disease_type:
-        demand_q = demand_q.filter(SupplyRequirement.disease_type == disease_type)
-    demand_map = {row.supply_id: int(row.total_required or 0) for row in demand_q.group_by(SupplyRequirement.supply_id).all()}
+    Đây là ảnh chụp TẠI THỜI ĐIỂM XUẤT báo cáo (Đỏ/Vàng theo DOI, nhu cầu dự
+    báo `horizon_days` ngày tới), không phải tổng dồn theo khoảng [start, end]
+    như bản cũ — công thức DSS hợp nhất không tách vật tư theo từng bệnh nên
+    `disease_type` không còn áp dụng để lọc (bỏ qua nếu có truyền).
+    """
+    from app.services import dss_dashboard, dss_alerts
 
-    if not demand_map:
-        return {"items": [], "summary": {"total": 0, "total_shortage": 0}}
-
-    supplies = (
-        db.query(MedicalSupply, Inventory.current_stock)
-        .outerjoin(Inventory, Inventory.supply_id == MedicalSupply.id)
-        .filter(MedicalSupply.id.in_(demand_map.keys()))
-        .all()
-    )
+    _, _, nhu_cau, _ = dss_dashboard.tang1_tang2(db)
+    al = dss_alerts.alert_rows(db, demand=nhu_cau, only_focus=False)
 
     items = []
-    for s, stock in supplies:
-        demand = demand_map.get(s.id, 0)
-        cur = int(stock or 0)
-        shortage = max(0, demand - cur)
-        if shortage <= 0:
+    for r in (al.get("rows") or []):
+        shortage = r.get("delta_need")
+        if not shortage or shortage <= 0:
             continue
         items.append(
             {
-                "supply_name": s.name,
-                "category": _vi_category(s.category),
-                "unit": s.unit,
-                "demand": demand,
-                "stock": cur,
-                "shortage": shortage,
+                "supply_name": r["ten"] or r["supply_code"],
+                "category": _vi_category(r.get("danh_muc")),
+                "unit": r["don_vi"],
+                "demand": int(round(r["d_forecast"])) if r.get("d_forecast") is not None else 0,
+                "stock": int(round(r["s_usable"] or 0)),
+                "shortage": int(round(shortage)),
             }
         )
     items.sort(key=lambda x: -x["shortage"])

@@ -491,8 +491,9 @@ def _insights(anchor, cases_last, cases_prev, trend, fc, sig, tap, doi_cat,
                 ins.append({"tone": "warn", "text": g})
     else:
         ins.append({"tone": "warn", "text":
-                    "Chưa có dự báo cho kỳ tới — thẻ dự báo đang tính; cột \"Thiếu hụt dự kiến\" "
-                    "để trống. DOI vẫn đúng vì mẫu số lấy từ tiêu hao 12 kỳ."})
+                    "Chưa ghi nhận dự báo cho kỳ tới ở trang Phân tích — cột "
+                    "\"Thiếu hụt dự kiến\" để trống. DOI vẫn đúng vì mẫu số lấy từ "
+                    "tiêu hao 12 kỳ, không phụ thuộc dự báo."})
     if sig.get("measured"):
         ins.append({"tone": "critical" if sig["red"] else "info", "text":
                     f"{sig['red']} mã Đỏ (DOI ≤ {sig['nguong']['red_days']:.0f} ngày) và "
@@ -524,11 +525,95 @@ def _ly_do_xam_ten(key: str) -> str:
 # Payload chính
 # ─────────────────────────────────────────────────────────────────────────────
 
+def recorded_forecast_payload(db: Session) -> Dict[str, Any]:
+    """Ŷ_g ba khối cho "kỳ tới", lấy từ bản ĐÃ GHI NHẬN ở trang Phân tích
+    (`disease_forecasts`, location IS NULL = Toàn quốc) — KHÔNG tự tính.
+
+    12/09/2026: trước đây Tầng 2/3 (nhu cầu vật tư, cảnh báo, thẻ "Dự báo kỳ
+    tới") lấy số từ `forecast_payload()` (Tầng 1 tự động, tính lại mỗi khi
+    dữ liệu đổi) — ĐỘC LẬP với con số người dùng bấm "Ghi nhận dự báo" ở
+    trang Phân tích. Hai nơi vì vậy có thể ra hai số khác nhau cho cùng một
+    kỳ dù dùng chung công thức dự báo. Từ nay CHỈ MỘT nguồn: bản đã ghi nhận.
+    Khối/kỳ nào chưa ai ghi nhận thì vắng mặt — báo rõ trạng thái ở `ready`/
+    `missing`, không suy diễn hay dùng 0. `forecast_payload()` (Tầng 1 tự
+    động) vẫn còn, dùng cho endpoint xem trước /dashboard/v2/forecast — công
+    cụ tham khảo cho trang Phân tích, không nuôi Cảnh báo/Tổng quan nữa.
+    """
+    from app.models.disease_forecast import DiseaseForecast
+
+    anchor = ps.get_period_anchor(db)
+    target = ps.shift_period(anchor.get("last_closed_period"), 1)
+
+    blocks: List[Dict[str, Any]] = []
+    missing: List[str] = []
+    if target:
+        ty, tm = (int(x) for x in target.split("-"))
+        target_date = f"{ty:04d}-{tm:02d}-01"
+        rows = (
+            db.query(DiseaseForecast)
+            .filter(
+                DiseaseForecast.icd_code.in_(BLOCKS),
+                DiseaseForecast.location.is_(None),
+                DiseaseForecast.forecast_month == target_date,
+            )
+            .all()
+        )
+        by_block = {r.icd_code: r for r in rows}
+        for b in BLOCKS:
+            r = by_block.get(b)
+            if r is None:
+                missing.append(b)
+                continue
+            blocks.append({
+                "block": b,
+                "target_period": target,
+                "point": float(r.predicted_cases),
+                "lower": (int(r.confidence_lower) if r.confidence_lower is not None else None),
+                "upper": (int(r.confidence_upper) if r.confidence_upper is not None else None),
+                "recorded_at": r.created_at.isoformat() if r.created_at else None,
+                "recorded_by": r.created_by,
+            })
+    else:
+        missing = list(BLOCKS)
+
+    ready = bool(target) and len(blocks) == len(BLOCKS)
+    tong: Dict[str, Any] = {"point": None, "lower": None, "upper": None}
+    if blocks:
+        tong["point"] = int(round(sum(float(x["point"]) for x in blocks)))
+        if all(x.get("lower") is not None for x in blocks):
+            tong["lower"] = int(sum(int(x["lower"]) for x in blocks))
+            tong["upper"] = int(sum(int(x["upper"]) for x in blocks))
+
+    ghi_chu: List[str] = []
+    if not ready and target:
+        ten_thieu = ", ".join(missing)
+        ghi_chu.append(
+            f"Chưa ghi nhận dự báo Toàn quốc cho kỳ {target}: {ten_thieu}. "
+            "Vào trang Phân tích, chọn Toàn quốc, bấm \"Ghi nhận dự báo\" cho "
+            "từng nhóm bệnh còn thiếu."
+        )
+
+    recorded_ats = [b["recorded_at"] for b in blocks if b.get("recorded_at")]
+    return {
+        "ready": ready,
+        "blocks": blocks,
+        "missing": missing,
+        "errors": [],
+        "total": tong,
+        "target_period": target,
+        "anchor_period": anchor.get("last_closed_period"),
+        "level": PRODUCTION_CONFIG.interval_level,
+        "computed_at": max(recorded_ats) if recorded_ats else None,
+        "recorded_at": max(recorded_ats) if recorded_ats else None,
+        "ghi_chu": ghi_chu,
+    }
+
+
 def tang1_tang2(db: Session):
-    """Chuỗi Tầng 1 (chỉ đọc cache) → Tầng 2, dùng chung cho Tổng quan và
+    """Chuỗi Tầng 1 (bản đã Ghi nhận) → Tầng 2, dùng chung cho Tổng quan và
     trang Cảnh báo thiếu hụt để hai trang KHÔNG BAO GIỜ ra hai con số khác
     nhau về cùng một mã. Trả (fc, thresholds, {code: D_forecast}, meta)."""
-    fc = forecast_payload(db, compute=False)
+    fc = recorded_forecast_payload(db)
     du_bao_nhom = {x["block"]: float(x["point"]) for x in fc["blocks"]} if fc["ready"] else {}
     th = dss_alerts.get_thresholds(db)
     nhu_cau: Dict[str, float] = {}

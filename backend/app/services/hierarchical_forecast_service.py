@@ -18,6 +18,7 @@ from app.forecasting.config import PRODUCTION_CONFIG
 from app.forecasting.models import build_production_ensemble
 from app.forecasting.group_forecast import forecast_group_next
 from app.forecasting.hierarchical import ewma_shares, reconcile_ols, split_topdown
+from app.services.group_ensemble_service import SO_THANG_TOI_THIEU
 
 TOAN_QUOC = "TOAN_QUOC"
 METHODS = ("top_down_dynamic", "top_down_fixed", "bottom_up", "mint")
@@ -180,19 +181,39 @@ class HierarchicalForecastService:
         }
 
     # ── dự báo MỨC NHÓM, không chia mã (Dashboard) ─────────────
-    def forecast_group(self, block: str, region: str = TOAN_QUOC) -> dict:
+    def forecast_group(self, block: str, region: str = TOAN_QUOC,
+                       target_year: Optional[int] = None,
+                       target_month: Optional[int] = None) -> dict:
         """Ŷ_g + khoảng tin cậy cho MỘT nhóm, bỏ qua bước chia về từng mã.
 
         Dashboard chỉ cần con số mức nhóm; `forecast()` đầy đủ còn khớp thêm
         một ensemble cho MỖI mã (hàng chục mã × 4 thành viên) — tốn gấp nhiều
         lần mà Dashboard không dùng đến. Cùng ensemble, cùng PRODUCTION_CONFIG,
         cùng cách dựng khoảng với `forecast()`, nên hai màn hình không lệch số.
+
+        `target_year`/`target_month` — CÙNG một hàm này phục vụ luôn trang
+        Phân tích (kỳ tuỳ chọn, kể cả quá khứ để đối chiếu) thay vì để trang
+        đó tự cộng dự báo từng tỉnh (khác công thức, sinh lệch số 392/424).
+        Bỏ trống = hành vi cũ, luôn là "kỳ tới" ngay sau dữ liệu đã chốt mới
+        nhất (dùng cho Tầng 1 / /dashboard/v2/forecast).
         """
         group = self._group_df(block, region)
         if group.empty:
             raise ValueError(f"Chưa có dữ liệu MART cho nhóm {block}. Hãy chạy pipeline.")
-        last = group.iloc[-1]
-        ty, tm = _next_month(int(last["year"]), int(last["month"]))
+
+        if target_year is not None and target_month is not None:
+            moc = f"{target_year:04d}-{target_month:02d}"
+            group = group[group["period"] < moc].reset_index(drop=True)
+            if group.empty or len(group) < SO_THANG_TOI_THIEU:
+                raise ValueError(
+                    f"Chỉ có {len(group)} tháng dữ liệu trước kỳ {moc} cho nhóm "
+                    f"{block} — dưới ngưỡng {SO_THANG_TOI_THIEU} tháng, không đủ tin cậy "
+                    "để chạy ensemble.")
+            last = group.iloc[-1]
+            ty, tm = target_year, target_month
+        else:
+            last = group.iloc[-1]
+            ty, tm = _next_month(int(last["year"]), int(last["month"]))
 
         cfg = PRODUCTION_CONFIG
         wdf = self._weather_df(region)
@@ -221,6 +242,10 @@ class HierarchicalForecastService:
             "model": {"members_used": gf["members_used"], "members_failed": gf["members_failed"],
                       "weights": gf["weights"], "bias_factor": gf["bias_factor"],
                       "point_raw": round(gf["point_raw"], 1), "config": cfg.as_record()},
+            # Cho phép caller (vd. trang Phân tích khi chọn Toàn quốc) tự tính
+            # "độ chính xác tại chỗ" giống hệt cách du_bao_nhom() đang làm,
+            # thay vì phải fit lại lần hai.
+            "walk_forward": gf.get("walk_forward"),
         }
 
     def group_series_fingerprint(self, block: str, region: str = TOAN_QUOC) -> str:

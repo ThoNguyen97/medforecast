@@ -793,8 +793,8 @@ def get_case_supply_usage(
     from app.models.medical_supply import MedicalSupply
     from app.models.conversion_ratio import ConversionRatio
     from app.models.case_supply_usage import CaseSupplyUsage
-    from app.models.severity_rate import SeverityRate
-    from app.models.disease_supply_norm import DiseaseSupplyNorm
+    from app.utils.icd_groups import nhom_cua_ma
+    from app.services import dss_demand
     from sqlalchemy import extract
 
     case = db.query(DiseaseCase).filter(DiseaseCase.id == case_id).first()
@@ -807,80 +807,51 @@ def get_case_supply_usage(
     supplies: list[dict] = []
     severity_breakdown: dict | None = None
 
-    # Bước 1: Tính theo severity_rate × disease_supply_norm (logic chuẩn)
-    severity = (
-        db.query(SeverityRate)
-        .filter(SeverityRate.icd_code == case.icd_code)
-        .first()
-    )
-    norms = (
-        db.query(DiseaseSupplyNorm, MedicalSupply)
-        .join(MedicalSupply, MedicalSupply.id == DiseaseSupplyNorm.supply_id)
-        .filter(DiseaseSupplyNorm.icd_code == case.icd_code)
-        .all()
-    )
+    # Bước 1: Định mức thực nghiệm theo khối bệnh (engine DSS thống nhất —
+    # cùng công thức norm_hieu_dung(i,g) = Σ_ro p̂(g,ro)·Norm(i,g,ro) dùng
+    # để tính nhu cầu vật tư ở dss_demand/dss_alerts). Thay cho SeverityRate ×
+    # DiseaseSupplyNorm (đã archive — xem _archive/README.md).
+    khoi = nhom_cua_ma(case.icd_code)
+    if khoi:
+        try:
+            emp_payload = dss_demand.norms_payload(db, khoi, limit=100000)
+            emp_rows = emp_payload.get("rows", [])
+        except Exception:
+            emp_rows = []
 
-    if severity and norms:
-        # Phân bổ số ca theo mức độ
-        mild_cases = round(case.case_count * float(severity.mild_rate) / 100)
-        moderate_cases = round(case.case_count * float(severity.moderate_rate) / 100)
-        severe_cases = case.case_count - mild_cases - moderate_cases  # đảm bảo tổng = case_count
-        if severe_cases < 0:
-            severe_cases = 0
+        supply_codes = [r["supply_code"] for r in emp_rows if float(r.get("norm_hieu_dung") or 0) > 0]
+        supply_by_code: dict[str, MedicalSupply] = {}
+        if supply_codes:
+            for s in (
+                db.query(MedicalSupply)
+                .filter(MedicalSupply.supply_code.in_(supply_codes))
+                .all()
+            ):
+                supply_by_code[s.supply_code] = s
 
-        severity_breakdown = {
-            "mild_rate": float(severity.mild_rate),
-            "moderate_rate": float(severity.moderate_rate),
-            "severe_rate": float(severity.severe_rate),
-            "mild_cases": mild_cases,
-            "moderate_cases": moderate_cases,
-            "severe_cases": severe_cases,
-        }
-
-        # Gộp định mức theo (supply_id)
-        supply_norms: dict[int, dict] = {}
-        for norm, supply in norms:
-            sid = supply.id
-            if sid not in supply_norms:
-                supply_norms[sid] = {
-                    "supply": supply,
-                    "mild": 0,
-                    "moderate": 0,
-                    "severe": 0,
-                }
-            if norm.severity == "mild":
-                supply_norms[sid]["mild"] = norm.quantity_per_case
-            elif norm.severity == "moderate":
-                supply_norms[sid]["moderate"] = norm.quantity_per_case
-            elif norm.severity == "severe":
-                supply_norms[sid]["severe"] = norm.quantity_per_case
-
-        # Tính tổng nhu cầu cho từng thuốc
-        for sid, data in supply_norms.items():
-            supply = data["supply"]
-            total = (
-                mild_cases * data["mild"]
-                + moderate_cases * data["moderate"]
-                + severe_cases * data["severe"]
-            )
-            if total <= 0:
-                # Bỏ qua thuốc không dùng cho bệnh này
+        for r in emp_rows:
+            norm_hieu_dung = float(r.get("norm_hieu_dung") or 0)
+            if norm_hieu_dung <= 0:
                 continue
-            ratio = round(total / case.case_count, 4) if case.case_count > 0 else 0.0
+            code = r["supply_code"]
+            supply = supply_by_code.get(code)
+            used_qty = int(round(case.case_count * norm_hieu_dung))
+            if used_qty <= 0:
+                continue
             supplies.append({
-                "supply_id": supply.id,
-                "code": supply.supply_code or f"VT{supply.id:03d}",
-                "drug_code": supply.drug_code,
-                "name": supply.ten_hoat_chat,
-                "category": supply.group_name or supply.category or "Khác",
-                "unit": supply.unit,
-                "description": supply.description,
-                "ratio": ratio,
-                "used_quantity": int(total),
-                "norm_mild": data["mild"],
-                "norm_moderate": data["moderate"],
-                "norm_severe": data["severe"],
+                "supply_id": supply.id if supply else None,
+                "code": code,
+                "drug_code": supply.drug_code if supply else None,
+                "name": (supply.ten_hoat_chat if supply else None) or r.get("ten") or code,
+                "category": (
+                    (supply.group_name or supply.category) if supply else None
+                ) or r.get("nhom") or "Khác",
+                "unit": (supply.unit if supply else None) or r.get("don_vi"),
+                "description": supply.description if supply else None,
+                "ratio": round(norm_hieu_dung, 4),
+                "used_quantity": used_qty,
                 "disease_label": case.disease_name,
+                "khoi": khoi,
                 "source": "norm",
             })
 
