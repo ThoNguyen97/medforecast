@@ -17,7 +17,7 @@ Hai quy tắc dữ liệu:
 from __future__ import annotations
 
 import logging
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from statistics import mean
 from typing import Any, Dict, List, Optional
 
@@ -464,7 +464,7 @@ def analyze_forecast(
             "conflict": True,
             "message": (
                 f"Kỳ này đã có dự báo được ghi nhận lúc "
-                f"{cached.created_at.strftime('%d/%m/%Y %H:%M') if cached.created_at else '—'}"
+                f"{_gio_dia_phuong(cached.created_at)}"
                 f" ({cached.predicted_cases} ca). Ghi đè bản cũ?"
             ),
             "existing": {
@@ -943,6 +943,21 @@ def load_saved_forecast(
     payload.overwrite = False
     # analyze_forecast là hàm đồng bộ (Tuần 1) — `await` một dict là TypeError → 500.
     return analyze_forecast(payload, db, current_user)
+
+
+_MUI_GIO_VN = timezone(timedelta(hours=7))
+
+
+def _gio_dia_phuong(dt: Optional[datetime]) -> str:
+    """datetime của DB (UTC, naive) → chuỗi "dd/mm/YYYY HH:MM" giờ Việt Nam.
+
+    SQLite ghi ``CURRENT_TIMESTAMP`` theo UTC và SQLAlchemy trả về datetime
+    KHÔNG có tzinfo; ``strftime`` thẳng sẽ ra giờ UTC, lệch 7 tiếng.
+    """
+    if dt is None:
+        return "—"
+    aware = dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
+    return aware.astimezone(_MUI_GIO_VN).strftime("%d/%m/%Y %H:%M")
 
 
 @router.get("/history")

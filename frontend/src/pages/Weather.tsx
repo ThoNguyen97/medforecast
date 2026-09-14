@@ -5,7 +5,6 @@ import {
   Search,
   Download,
   Upload,
-  Plus,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -13,7 +12,6 @@ import {
   Edit3,
   Trash2,
   Cloud,
-  RefreshCw,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -321,22 +319,6 @@ export default function Weather() {
     }
   };
 
-  const openAddForm = () => {
-    setEditing(null);
-    setForm({
-      month: new Date().toISOString().slice(0, 7),
-      province: 'TP. Hồ Chí Minh',
-      district: '',
-      temp: 30,
-      humidity: 75,
-      rainfall: 0,
-      aqi: 0,
-      pm25: 0,
-    });
-    setFormError('');
-    setShowForm(true);
-  };
-
   const openEditForm = (row: EnvRow) => {
     setEditing(row);
     setForm({
@@ -464,18 +446,6 @@ export default function Weather() {
         </div>
         <div className="flex flex-wrap gap-2">
           <button
-            onClick={() => {
-              loadData();
-              loadDistinctValues();
-              loadTrend();
-            }}
-            disabled={loading}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-neutral-200 rounded-xl text-sm font-medium hover:bg-neutral-50 disabled:opacity-50"
-            title="Nạp lại từ database"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Tải lại
-          </button>
-          <button
             onClick={downloadTemplate}
             className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-neutral-200 rounded-xl text-sm font-medium hover:bg-neutral-50"
           >
@@ -497,12 +467,6 @@ export default function Weather() {
           >
             <Cloud className="w-4 h-4" />
             {syncingOpenMeteo ? 'Đang đồng bộ…' : 'Đồng bộ Open-Meteo'}
-          </button>
-          <button
-            onClick={openAddForm}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700"
-          >
-            <Plus className="w-4 h-4" /> Thêm dữ liệu mới
           </button>
         </div>
       </div>

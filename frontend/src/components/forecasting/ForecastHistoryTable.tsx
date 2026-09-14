@@ -13,6 +13,7 @@ import {
   type ForecastHistoryItem,
 } from '../../services/forecastAnalysisService';
 import { useAuthStore } from '../../store/authStore';
+import { formatThoiGianMayChu } from '../../utils/formatters';
 
 interface Props {
   rows: ForecastHistoryItem[];
@@ -31,18 +32,22 @@ interface TongHop {
   duBao: number;
   /** Thời điểm ghi nhận gần nhất trong nhánh. */
   ghiNhanLuc: string | null;
+  /** Tài khoản của bản ghi nhận gần nhất trong nhánh. */
+  nguoiGhiNhan: string | null;
 }
 
 function cong(ds: ForecastHistoryItem[]): TongHop {
   let duBao = 0;
   let ghiNhanLuc: string | null = null;
+  let nguoiGhiNhan: string | null = null;
   for (const r of ds) {
     duBao += r.predicted_cases ?? 0;
     if (r.created_at && (!ghiNhanLuc || r.created_at > ghiNhanLuc)) {
       ghiNhanLuc = r.created_at;
+      nguoiGhiNhan = r.created_by ?? null;
     }
   }
-  return { duBao, ghiNhanLuc };
+  return { duBao, ghiNhanLuc, nguoiGhiNhan };
 }
 
 /** Bản ghi nhận mới nhất trong danh sách (so theo created_at); null nếu rỗng. */
@@ -328,9 +333,11 @@ export default function ForecastHistoryTable({
                       </td>
                       <OTong tong={thangNode.tong} dam />
                       <td className="px-5 py-3 text-xs text-neutral-500 whitespace-nowrap">
-                        {formatThoiGian(thangNode.tong.ghiNhanLuc)}
+                        {formatThoiGianMayChu(thangNode.tong.ghiNhanLuc)}
                       </td>
-                      <td />
+                      <td className="px-5 py-3 text-xs text-neutral-600 whitespace-nowrap">
+                        {thangNode.tong.nguoiGhiNhan || '—'}
+                      </td>
                       <td />
                     </tr>
 
@@ -362,7 +369,10 @@ export default function ForecastHistoryTable({
                                     {nhomNode.chinhThuc.predicted_cases.toLocaleString('vi-VN')}
                                   </td>
                                   <td className="px-5 py-2.5 text-xs text-neutral-500 whitespace-nowrap">
-                                    {formatThoiGian(nhomNode.chinhThuc.created_at)}
+                                    {formatThoiGianMayChu(nhomNode.chinhThuc.created_at)}
+                                  </td>
+                                  <td className="px-5 py-2.5 text-xs text-neutral-600 whitespace-nowrap">
+                                    {nhomNode.chinhThuc.created_by || '—'}
                                   </td>
                                 </>
                               ) : (
@@ -374,9 +384,9 @@ export default function ForecastHistoryTable({
                                     Chưa ghi nhận Toàn quốc
                                   </td>
                                   <td />
+                                  <td />
                                 </>
                               )}
-                              <td />
                               <td />
                             </tr>
 
@@ -542,7 +552,7 @@ function DongChiTiet({
         {r.predicted_cases.toLocaleString('vi-VN')}
       </td>
       <td className="px-5 py-2.5 text-xs text-neutral-500 whitespace-nowrap">
-        {formatThoiGian(r.created_at)}
+        {formatThoiGianMayChu(r.created_at)}
       </td>
       <td className="px-5 py-2.5 text-neutral-600 whitespace-nowrap">
         {r.created_by || '—'}
@@ -574,17 +584,4 @@ function OTong({ tong, dam = false }: { tong: TongHop; dam?: boolean }) {
       {tong.duBao.toLocaleString('vi-VN')}
     </td>
   );
-}
-
-/** ISO → "dd/mm/yyyy hh:mm" theo giờ địa phương; '—' nếu không có. */
-function formatThoiGian(iso: string | null): string {
-  if (!iso) return '—';
-  try {
-    return new Date(iso).toLocaleString('vi-VN', {
-      dateStyle: 'short',
-      timeStyle: 'short',
-    });
-  } catch {
-    return '—';
-  }
 }

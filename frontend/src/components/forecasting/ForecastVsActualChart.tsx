@@ -164,7 +164,12 @@ export default function ForecastVsActualChart({
               fontSize={11}
               tickLine={false}
               axisLine={false}
-              width={40}
+              width={44}
+              allowDecimals={false}
+              // Mặc định recharts lấy đúng dataMax làm trần → đỉnh cao nhất
+              // (2024 ở T1) chạm mép trên và bị cắt mất. Chừa ~12% khoảng
+              // trống rồi làm tròn lên bội số 20 cho vạch chia đọc gọn.
+              domain={[0, (dataMax: number) => Math.max(20, Math.ceil((dataMax * 1.12) / 20) * 20)]}
             />
             <Tooltip
               content={<CustomTooltip targetYear={targetYear} prevYear={prevYear} />}

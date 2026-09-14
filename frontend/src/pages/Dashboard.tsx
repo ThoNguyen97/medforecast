@@ -15,9 +15,24 @@ import CareLevelChart from '../components/dashboard/CareLevelChart';
 import DataStatusCard from '../components/dashboard/DataStatusCard';
 import InsightsCard from '../components/dashboard/InsightsCard';
 import DashboardFilters, { type DashboardFilterState } from '../components/dashboard/DashboardFilters';
-import { BLOCK_LABELS, type DashboardV2, type ForecastSummary } from '../types/dashboardV2';
+import {
+  BLOCK_LABELS,
+  OPERATIONAL_LEVEL_LABELS,
+  type AlertLevel,
+  type DashboardV2,
+  type ForecastSummary,
+} from '../types/dashboardV2';
 
 const ALERT_LIMIT = 8;
+
+/** Bốn mức DOI → dải màu của thẻ KPI. Xám dùng dải trung tính: chưa đo được
+ *  KHÔNG phải an toàn, nên không được tô xanh. */
+const RISK_TONE: Record<AlertLevel, KpiTone> = {
+  red: 'red',
+  amber: 'amber',
+  green: 'green',
+  grey: 'neutral',
+};
 
 /**
  * Tổng quan — Tuần 3 (11/09/2026).
@@ -100,7 +115,6 @@ export default function Dashboard() {
           <h2 className="text-2xl font-extrabold text-neutral-900">Tổng quan</h2>
           <p className="text-sm text-neutral-500 mt-0.5">
             Dữ liệu tính lúc {lastUpdated}
-            {data?.meta.assumptions_note && <span className="text-neutral-400"> · {data.meta.assumptions_note}</span>}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -255,9 +269,10 @@ function buildKpis(
   // 3 · Nguy cơ thiếu hụt
   const c = data?.risk.counts;
 
-  // 4 · Mức nguy cơ chung
+  // 4 · Mức cảnh báo vận hành — lấy nguyên trạng thái backend đã ánh xạ từ bộ
+  //     đếm DOI (Đỏ ≤ red_days · Vàng ≤ amber_days), không suy diễn lại ở FE.
   const risk = data?.risk.overall;
-  const riskTone: KpiTone = risk?.level === 'Cao' ? 'red' : risk?.level === 'Trung bình' ? 'amber' : risk ? 'green' : 'neutral';
+  const riskTone: KpiTone = risk ? RISK_TONE[risk.level] : 'neutral';
 
   // 5 · Chất lượng dự báo
   const q = data?.quality;
@@ -338,13 +353,20 @@ function buildKpis(
       ) : undefined,
     },
     {
-      label: 'Mức nguy cơ chung',
-      value: risk?.level ?? '—',
+      label: 'Mức cảnh báo vận hành',
+      // Trạng thái là chữ, không phải số — hạ cỡ để "CHƯA ĐỦ DỮ LIỆU" không tràn thẻ.
+      value: risk ? (
+        <span className="text-[22px] leading-tight font-extrabold">
+          {risk.label || OPERATIONAL_LEVEL_LABELS[risk.level]}
+        </span>
+      ) : (
+        '—'
+      ),
       tone: riskTone,
       to: ROUTES.ALERTS,
       loading: !data,
-      context: risk ? <span className="text-neutral-500">{risk.basis}</span> : undefined,
-      footer: risk?.is_provisional ? 'Tạm tính theo quy tắc, chưa phải suy luận thống kê' : undefined,
+      context: risk ? <span className="text-neutral-600">{risk.detail}</span> : undefined,
+      footer: risk?.basis,
     },
     {
       label: 'Chất lượng dự báo',

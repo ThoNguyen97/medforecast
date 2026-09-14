@@ -565,7 +565,8 @@ async def _build_dashboard_summary_data(db: Session) -> Dict:
     al_focus = dss_alerts.alert_rows(db, demand=nhu_cau, only_focus=True)
     dem_focus = dss_dashboard._counts(al_focus)
     shortage_count = dem_focus["red"] + dem_focus["amber"]
-    overall_risk = ps.assess_overall_risk(cases_trend, dem_focus["red"], dem_focus["amber"])["level"]
+    muc_canh_bao = ps.danh_gia_muc_canh_bao(
+        dem_focus, (al_focus.get("tong_hop") or {}).get("nguong"), last_closed)
 
     # Xu hướng 6 kỳ đã chốt, kèm cùng kỳ năm trước — cùng nguồn mart.
     trend_rows = []
@@ -624,7 +625,9 @@ async def _build_dashboard_summary_data(db: Session) -> Dict:
             "predicted_cases_next_month": int(predicted_next),
             "predicted_trend_pct": predicted_trend,
             "shortage_supplies_count": int(shortage_count),
-            "overall_risk": overall_risk,
+            "overall_risk": muc_canh_bao["label"],
+            "overall_risk_level": muc_canh_bao["level"],
+            "overall_risk_basis": muc_canh_bao["basis"],
         },
         "case_trend": trend_rows,
         "demand_vs_stock": demand_rows,
@@ -684,7 +687,7 @@ def _render_dashboard_summary_pdf(data: Dict) -> Response:
                 f"{kpi['shortage_supplies_count']:,} mục",
                 "—",
             ],
-            ["Mức nguy cơ chung", kpi["overall_risk"], "—"],
+            ["Mức cảnh báo vận hành", kpi["overall_risk"], "—"],
         ],
         colWidths=[8 * cm, 5 * cm, 4 * cm],
         repeatRows=1,
@@ -1451,7 +1454,7 @@ def _render_dashboard_summary_excel(data: Dict) -> Response:
         ("Tổng số ca hiện tại", kpi["total_cases_current"], f"{kpi['cases_trend_pct']:+.1f}%"),
         ("Số ca dự báo tháng tới", kpi["predicted_cases_next_month"], f"{kpi['predicted_trend_pct']:+.1f}%"),
         ("Thuốc thiếu hụt", f"{kpi['shortage_supplies_count']} mục", "—"),
-        ("Mức nguy cơ chung", kpi["overall_risk"], "—"),
+        ("Mức cảnh báo vận hành", kpi["overall_risk"], "—"),
     ]
     for r in kpi_rows:
         for c, v in enumerate(r, 1):

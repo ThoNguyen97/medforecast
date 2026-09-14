@@ -119,6 +119,11 @@ export default function RecentMonthDataTable({ currentMonth, currentYear, diseas
   const [filterDisease, setFilterDisease] = useState<string>(initialDisease);
   const [filterLocation, setFilterLocation] = useState<string>(initialLocation);
   const [currentPage, setCurrentPage] = useState(1);
+  // "Ghi nhận dự báo" ở mục Toàn quốc ghi kèm một bản cho MỖI tỉnh (bottom-up,
+  // tham khảo dịch tễ). Tỉnh không có chuỗi lịch sử nhận predicted_cases = 0 và
+  // thường cũng không có dòng ca bệnh nào trong tháng → dòng 0/0/— không mang
+  // thông tin gì. Ẩn mặc định, bật lại bằng ô dưới đây.
+  const [hienDongTrong, setHienDongTrong] = useState(false);
   const itemsPerPage = 10;
 
   // Tính tháng gần nhất (tháng trước tháng dự báo)
@@ -267,13 +272,27 @@ export default function RecentMonthDataTable({ currentMonth, currentYear, diseas
     ) {
       return false;
     }
+    // 4. Dòng rỗng: không ca thực tế VÀ không dự báo (hoặc dự báo = 0).
+    //    Đây là các tỉnh đi kèm bản ghi nhận Toàn quốc, không có số liệu để đọc.
+    if (!hienDongTrong && item.total_cases === 0 && !item.predicted_cases) {
+      return false;
+    }
     return true;
   });
+
+  /** Số dòng đang bị ẩn vì không có số liệu — nói rõ để không ai tưởng mất dữ liệu. */
+  const soDongTrong = data.filter((item) => {
+    if (filterMonth === 'latest' ? item.month !== latestMonth
+        : filterMonth !== 'all' && item.month !== filterMonth) return false;
+    if (filterDisease !== 'all' && (item.disease_name ?? '').trim() !== filterDisease.trim()) return false;
+    if (filterLocation !== 'all' && (item.location ?? '').trim() !== filterLocation.trim()) return false;
+    return item.total_cases === 0 && !item.predicted_cases;
+  }).length;
 
   // Reset trang về 1 khi filter thay đổi
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterMonth, filterDisease, filterLocation]);
+  }, [filterMonth, filterDisease, filterLocation, hienDongTrong]);
 
   // Phân trang
   const totalPages = Math.ceil(filteredData.length / itemsPerPage);
@@ -389,6 +408,19 @@ export default function RecentMonthDataTable({ currentMonth, currentYear, diseas
                 Đặt lại bộ lọc
               </button>
             )}
+
+            <label className="inline-flex items-center gap-1.5 ml-auto text-xs text-neutral-600 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={hienDongTrong}
+                onChange={(e) => setHienDongTrong(e.target.checked)}
+                className="w-3.5 h-3.5 rounded border-neutral-300 text-blue-600 focus:ring-blue-500/30"
+              />
+              Hiện cả dòng không có số liệu
+              {soDongTrong > 0 && !hienDongTrong && (
+                <span className="text-neutral-400">({soDongTrong} dòng đang ẩn)</span>
+              )}
+            </label>
           </div>
         </div>
 
@@ -398,9 +430,18 @@ export default function RecentMonthDataTable({ currentMonth, currentYear, diseas
             <th className="text-left px-5 py-3 font-medium">Tháng</th>
             <th className="text-left px-5 py-3 font-medium">Bệnh</th>
             <th className="text-left px-5 py-3 font-medium">Khu vực</th>
-            <th className="text-right px-5 py-3 font-medium">Số ca thực tế</th>
+            {/* Thứ tự Dự báo → Thực tế → Độ lệch khớp đúng chiều đọc của công
+                thức (dự báo − thực tế) / thực tế ở cột cuối. */}
             <th className="text-right px-5 py-3 font-medium">Số ca dự báo</th>
-            <th className="text-right px-5 py-3 font-medium">Độ lệch</th>
+            <th className="text-right px-5 py-3 font-medium">Số ca thực tế</th>
+            <th
+              className="text-right px-5 py-3 font-medium"
+              title="Độ lệch = (Số ca dự báo − Số ca thực tế) / Số ca thực tế × 100%. Dương = dự báo cao hơn thực tế; âm = dự báo thấp hơn. Để trống khi số ca thực tế bằng 0."
+            >
+              <span className="underline decoration-dotted decoration-neutral-300 underline-offset-4 cursor-help">
+                Độ lệch
+              </span>
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -431,13 +472,20 @@ export default function RecentMonthDataTable({ currentMonth, currentYear, diseas
                 <td className="px-5 py-3.5 text-neutral-700">Tháng {item.month}</td>
                 <td className="px-5 py-3.5 text-neutral-700">{item.disease_name}</td>
                 <td className="px-5 py-3.5 text-neutral-500 text-xs">{item.location}</td>
-                <td className="px-5 py-3.5 text-right text-neutral-900 font-semibold tabular-nums">
-                  {item.total_cases.toLocaleString('vi-VN')}
-                </td>
                 <td className="px-5 py-3.5 text-right text-blue-600 font-semibold tabular-nums">
                   {item.predicted_cases != null ? item.predicted_cases.toLocaleString('vi-VN') : '—'}
                 </td>
-                <td className="px-5 py-3.5 text-right font-semibold tabular-nums">
+                <td className="px-5 py-3.5 text-right text-neutral-900 font-semibold tabular-nums">
+                  {item.total_cases.toLocaleString('vi-VN')}
+                </td>
+                <td
+                  className="px-5 py-3.5 text-right font-semibold tabular-nums"
+                  title={
+                    item.deviation_pct != null
+                      ? `(${item.predicted_cases ?? 0} − ${item.total_cases}) / ${item.total_cases} × 100% = ${item.deviation_pct.toFixed(1)}%`
+                      : 'Không tính được: số ca thực tế bằng 0'
+                  }
+                >
                   {item.deviation_pct != null ? (
                     <span className={
                       Math.abs(item.deviation_pct) <= 10 

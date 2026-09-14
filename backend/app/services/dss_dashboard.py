@@ -769,7 +769,9 @@ def overview_payload(db: Session, focus: bool = True,
                                  -(r["delta_need"] or 0)))
     alerts = [_dong_canh_bao(r) for r in rows_tbl[:limit]]
 
-    risk = ps.assess_overall_risk(trend, dem_focus["red"], dem_focus["amber"])
+    # Mức cảnh báo vận hành: ánh xạ thẳng từ bộ đếm DOI của tập trọng tâm —
+    # cùng một nguồn với bảng Cảnh báo thiếu hụt, không trộn xu hướng số ca.
+    risk = ps.danh_gia_muc_canh_bao(dem_focus, sig["nguong"], last_closed)
     cat = ps.catalogue_counts(db)
 
     # Tình trạng dữ liệu (phần rẻ; STA lấy qua /sync/status)

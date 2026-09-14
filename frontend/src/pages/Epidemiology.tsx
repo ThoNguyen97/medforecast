@@ -469,9 +469,6 @@ export default function Epidemiology() {
           <h2 className="text-3xl font-extrabold text-neutral-900">
             Danh sách số ca bệnh dịch tễ
           </h2>
-          <p className="text-sm text-neutral-500 mt-1">
-            Quản lý và theo dõi các ca bệnh truyền nhiễm theo khu vực.
-          </p>
           {syncMsg && <p className="text-sm text-emerald-600 mt-1">{syncMsg}</p>}
         </div>
         <div className="flex flex-wrap gap-2">

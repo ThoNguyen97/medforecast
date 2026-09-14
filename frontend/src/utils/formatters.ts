@@ -106,3 +106,31 @@ export function loiMayChu(e: unknown, macDinh = 'Có lỗi xảy ra'): string {
   }
   return err?.message || macDinh;
 }
+
+/**
+ * Chuỗi thời gian do máy chủ trả về → Date đúng múi giờ.
+ *
+ * SQLite ghi `CURRENT_TIMESTAMP` theo **UTC**, còn `datetime.isoformat()` của
+ * Python KHÔNG kèm offset ("2026-09-13T10:22:33"). Theo chuẩn ECMAScript,
+ * chuỗi date-time không offset bị hiểu là GIỜ ĐỊA PHƯƠNG → ở Việt Nam hiển thị
+ * lệch đúng 7 tiếng. Hàm này gắn 'Z' khi chuỗi thiếu offset để luôn quy về UTC
+ * rồi mới đổi sang giờ máy người dùng.
+ */
+export function parseThoiGianMayChu(iso: string | null | undefined): Date | null {
+  if (!iso) return null;
+  const s = String(iso).trim();
+  if (!s) return null;
+  const coOffset = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(s);
+  const d = new Date(coOffset ? s : `${s.replace(' ', 'T')}Z`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** ISO máy chủ → "dd/mm/yyyy hh:mm" giờ địa phương; `khiTrong` nếu không có. */
+export function formatThoiGianMayChu(
+  iso: string | null | undefined,
+  khiTrong = '—',
+): string {
+  const d = parseThoiGianMayChu(iso);
+  if (!d) return khiTrong;
+  return d.toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
+}

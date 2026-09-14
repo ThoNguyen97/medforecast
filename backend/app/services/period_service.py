@@ -323,32 +323,77 @@ def stock_signal_counts(db: Session) -> Dict[str, Any]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Mức nguy cơ chung
+# Mức cảnh báo vận hành
 # ─────────────────────────────────────────────────────────────────────────────
 
-def assess_overall_risk(trend_pct_value: Optional[float],
-                        red_count: int, amber_count: int) -> Dict[str, Any]:
-    """Thay cho `_classify_risk` cũ trong dashboard.py.
+#: Bốn trạng thái vận hành, dùng CHUNG thang màu với nhãn từng mã thuốc
+#: (``AlertLevel`` ở frontend) để một màu chỉ mang một nghĩa trên toàn hệ thống.
+NHAN_MUC_CANH_BAO: Dict[str, str] = {
+    "red": "NGUY CẤP",
+    "amber": "CẢNH BÁO",
+    "green": "AN TOÀN",
+    "grey": "CHƯA ĐỦ DỮ LIỆU",
+}
 
-    Hàm cũ KHÔNG sai về quy tắc — nó sai vì ĐẦU VÀO: nhận
-    `predicted_trend_pct = 6500` (do so kỳ đang mở với kỳ đã chốt) nên luôn trả
-    "Cao". Ở đây đầu vào là xu hướng giữa hai kỳ ĐÃ CHỐT, và ngưỡng tồn kho lấy
-    từ đếm DOI thay vì từ `safety_stock` đã bị vô hiệu hoá.
 
-    Vẫn là quy tắc do người đặt, chưa phải suy ra từ dữ liệu — nên trả kèm
-    `basis` để giao diện nói rõ căn cứ. G2 sẽ thay bằng so sánh với khoảng dự
-    báo, lúc đó "Cao" mới có nghĩa thống kê.
+def danh_gia_muc_canh_bao(
+    counts: Dict[str, Any],
+    thresholds: Optional[Dict[str, Any]] = None,
+    period: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Mức cảnh báo vận hành của danh mục — tổng hợp từ bộ đếm DOI của Tầng 3.
+
+    Chỉ có MỘT căn cứ: số mã theo ngưỡng DOI trong ``system_config.dss``
+    (Đỏ ≤ ``doi_red_days`` · Vàng ≤ ``doi_amber_days``). Không trộn xu hướng số
+    ca, không có hệ số do người đặt riêng cho ô này — vì vậy trạng thái ở đây
+    luôn khớp với bảng Cảnh báo thiếu hụt và với báo cáo Tồn kho thuốc.
+
+    Quy tắc ánh xạ, theo thứ tự:
+
+    ==============================  ===================
+    Điều kiện                       Trạng thái
+    ==============================  ===================
+    không có mã nào đo được DOI     CHƯA ĐỦ DỮ LIỆU
+    có ≥ 1 mã Đỏ                    NGUY CẤP
+    không Đỏ, có ≥ 1 mã Vàng        CẢNH BÁO
+    còn lại                         AN TOÀN
+    ==============================  ===================
+
+    Tham số ``counts`` nhận nguyên dict của ``dss_dashboard._counts`` (khoá
+    ``red`` / ``amber`` / ``measured``) hoặc ``tong_hop`` của
+    ``dss_alerts.alert_rows`` (khoá ``do_duoc``).
     """
-    t = float(trend_pct_value or 0.0)
-    if t >= 15 and red_count >= 5:
-        level = "Cao"
-    elif t >= 5 or red_count >= 2 or amber_count >= 20:
-        level = "Trung bình"
+    red = int(counts.get("red") or 0)
+    amber = int(counts.get("amber") or 0)
+    do_duoc = int(counts.get("measured", counts.get("do_duoc")) or 0)
+
+    if do_duoc <= 0:
+        muc = "grey"
+    elif red > 0:
+        muc = "red"
+    elif amber > 0:
+        muc = "amber"
     else:
-        level = "Thấp"
+        muc = "green"
+
+    th = thresholds or {}
+    red_days = float(th.get("red_days") or 0)
+    amber_days = float(th.get("amber_days") or 0)
+
+    if muc == "grey":
+        chi_tiet = ("Không mã nào đo được DOI — thiếu định mức, dự báo kỳ tới "
+                    "hoặc ảnh chụp tồn kho.")
+    else:
+        chi_tiet = (f"{red} mã Đỏ · {amber} mã Vàng trên {do_duoc} mã đo được "
+                    f"(Đỏ ≤ {red_days:.0f} ngày · Vàng ≤ {amber_days:.0f} ngày)")
+
+    ky = f" trên kỳ chốt {period}" if period else " trên kỳ chốt"
     return {
-        "level": level,
-        "basis": (f"xu hướng {t:+.1f}% giữa hai kỳ đã chốt · "
-                  f"{red_count} mã đỏ, {amber_count} mã vàng theo DOI tạm thời"),
-        "is_provisional": True,
+        "level": muc,
+        "label": NHAN_MUC_CANH_BAO[muc],
+        "basis": "Đánh giá theo số ngày đáp ứng kho (DOI)" + ky,
+        "detail": chi_tiet,
+        "red": red,
+        "amber": amber,
+        "measured": do_duoc,
     }

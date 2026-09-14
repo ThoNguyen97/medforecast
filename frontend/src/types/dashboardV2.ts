@@ -111,10 +111,25 @@ export interface LevelCounts {
   san_sang: boolean;
 }
 
-export interface OverallRisk {
-  level: 'Thấp' | 'Trung bình' | 'Cao';
+/**
+ * Mức cảnh báo vận hành của danh mục — tổng hợp từ bộ đếm DOI của Tầng 3.
+ *
+ * Dùng CHUNG thang bốn mức với từng mã thuốc (`AlertLevel`) để một màu chỉ
+ * mang một nghĩa trên toàn hệ thống: `red` = NGUY CẤP, `amber` = CẢNH BÁO,
+ * `green` = AN TOÀN, `grey` = CHƯA ĐỦ DỮ LIỆU (không mã nào đo được DOI).
+ * Nguồn: `period_service.danh_gia_muc_canh_bao`.
+ */
+export interface OperationalAlert {
+  level: AlertLevel;
+  /** Nhãn trạng thái viết hoa, do backend phát — xem OPERATIONAL_LEVEL_LABELS. */
+  label: string;
+  /** Cơ chế căn cứ, một dòng. */
   basis: string;
-  is_provisional: boolean;
+  /** Số mã Đỏ/Vàng trên tổng mã đo được, kèm ngưỡng ngày. */
+  detail: string;
+  red: number;
+  amber: number;
+  measured: number;
 }
 
 export interface RiskSection {
@@ -122,7 +137,7 @@ export interface RiskSection {
   counts: LevelCounts & { nguong: Thresholds };
   focus: LevelCounts;
   all: LevelCounts;
-  overall: OverallRisk;
+  overall: OperationalAlert;
   basis: string;
   canh_bao: string[];
 }
@@ -326,6 +341,14 @@ export const LEVEL_LABELS: Record<AlertLevel, string> = {
   amber: 'Vàng',
   green: 'Xanh',
   grey: 'Xám',
+};
+
+/** Nhãn trạng thái vận hành — dự phòng khi backend chưa gửi `label`. */
+export const OPERATIONAL_LEVEL_LABELS: Record<AlertLevel, string> = {
+  red: 'NGUY CẤP',
+  amber: 'CẢNH BÁO',
+  green: 'AN TOÀN',
+  grey: 'CHƯA ĐỦ DỮ LIỆU',
 };
 
 export const GREY_REASON_LABELS: Record<GreyReason, string> = {

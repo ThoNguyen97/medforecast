@@ -31,6 +31,7 @@ import CorrelationChart from '../components/forecasting/CorrelationChart';
 import RecentMonthDataTable from '../components/forecasting/RecentMonthDataTable';
 import ForecastHistoryTable from '../components/forecasting/ForecastHistoryTable';
 import { cn } from '../utils/cn';
+import { formatThoiGianMayChu } from '../utils/formatters';
 
 /** Khoá sessionStorage giữ bản phân tích chưa ghi nhận (kèm khoá bộ lọc). */
 const KHOA_PHAN_TICH_TAM = 'forecast_phan_tich_tam';
@@ -269,17 +270,12 @@ export default function Forecasting() {
 
   const daGhiNhan = !!displayResult?.forecast.is_recorded;
 
+  // created_at do máy chủ trả về là UTC KHÔNG kèm offset — phải qua
+  // formatThoiGianMayChu, nếu không trình duyệt hiểu là giờ địa phương và
+  // hiển thị lệch 7 tiếng.
   const analyzedAtLabel = useMemo(() => {
-    const iso = displayResult?.forecast.recorded_at;
-    if (!iso) return null;
-    try {
-      return new Date(iso).toLocaleString('vi-VN', {
-        dateStyle: 'short',
-        timeStyle: 'short',
-      });
-    } catch {
-      return null;
-    }
+    const nhan = formatThoiGianMayChu(displayResult?.forecast.recorded_at, '');
+    return nhan || null;
   }, [displayResult?.forecast.recorded_at]);
 
   const history = useForecastHistory({ limit: 200 }, { enabled: tab === 'lich-su' });
