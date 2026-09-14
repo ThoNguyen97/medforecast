@@ -230,7 +230,7 @@ def alert_rows(db: Session,
                demand: Optional[Dict[str, float]] = None,
                only_focus: bool = False,
                hom_nay: Optional[date] = None) -> Dict[str, Any]:
-    """Một dòng cho mỗi mã vật tư: S_usable · D_forecast · DOI · nhãn màu.
+    """Một dòng cho mỗi mã thuốc: S_usable · D_forecast · DOI · nhãn màu.
 
     `demand` là {supply_code: nhu cầu dự báo trong horizon_days}, lấy từ
     `dss_demand.demand_by_supply()`. Bỏ trống thì DOI vẫn tính được (mẫu số lấy

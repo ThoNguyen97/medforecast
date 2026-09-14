@@ -1,28 +1,15 @@
-"""DASHBOARD v2 — MỘT PAYLOAD DỰNG ĐỦ MÀN HÌNH TỔNG QUAN (Tuần 3, 11/09/2026).
+"""Payload cho Tổng quan (/dashboard/v2) và Cảnh báo thiếu hụt (/v2/alerts).
 
-Đặt tại: backend/app/services/dss_dashboard.py
+    overview_payload(db, ...)   số ca kỳ chốt, dự báo đã ghi nhận, DOI + cảnh báo,
+                                phân cấp chăm sóc, chất lượng mô hình, tình trạng dữ liệu
+    alerts_payload(db, ...)     cùng chuỗi Tầng 1→2→3, trả toàn bộ dòng có phân trang
+    forecast_payload(db, ...)   Ŷ_g ba khối bằng ensemble PRODUCTION_CONFIG (xem trước),
+                                cache trong `dss_forecast_cache` theo dấu vân tay dữ liệu
+    tang1_tang2(db)             Tầng 1 (bản đã Ghi nhận) → Tầng 2, dùng chung cho mọi
+                                nơi hiển thị nhu cầu để không bao giờ ra hai con số
 
-Hai hàm công khai, ứng với hai endpoint:
-
-    overview_payload(db, ...)   nhanh — số ca, DOI, cảnh báo, phân cấp, chất lượng
-    forecast_payload(db, ...)   chậm lần đầu — Ŷ_g cho 3 khối bằng ensemble
-                                PRODUCTION_CONFIG, cache trong `dss_forecast_cache`
-
-VÌ SAO TÁCH HAI
-Ensemble mức nhóm phải khớp lại ~25 lần cho mỗi khối để dựng khoảng thực
-nghiệm (interval_n_back = 24). Có SARIMAX thì mất vài chục giây ở lần đầu.
-Nếu gộp vào một endpoint, người dùng nhìn màn hình trắng chừng ấy thời gian.
-Tách ra thì thẻ KPI và bảng cảnh báo hiện ngay, riêng thẻ dự báo hiện "đang
-tính" — và sau lần đầu, khoá cache theo DẤU VÂN TAY dữ liệu nên các lần sau
-là tức thì. Khoá đổi khi chuỗi ca / thời tiết / cấu hình đổi, nên không cần
-xoá cache tay sau khi đồng bộ.
-
-Tầng 1 ở đây dùng CÙNG ensemble với trang Kế hoạch (`forecast_group()` của
-HierarchicalForecastService), thay cho `topdown.py` (Ridge riêng, chưa từng
-có trong bảng so sánh — M11). Hai màn hình không còn hai con số.
-
-HỢP ĐỒNG: không có trường nào thuộc phân hệ mua sắm (PO, ROP, lead time,
-safety_stock). Cột "thiếu hụt dự kiến" là Δ_need = max(0, D_forecast − S_usable).
+Hợp đồng: không có trường nào thuộc phân hệ mua sắm. Cột "thiếu hụt dự kiến"
+là Δ_need = max(0, D_forecast − S_usable).
 """
 from __future__ import annotations
 
@@ -38,7 +25,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.forecasting.config import PRODUCTION_CONFIG
-from app.services import dss_alerts, dss_demand, dss_runner, period_service as ps
+from app.services import dss_alerts, dss_demand, period_service as ps
 from app.services.hierarchical_forecast_service import HierarchicalForecastService
 
 logger = logging.getLogger(__name__)
@@ -94,13 +81,8 @@ def _ensure_cache(db: Session) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# LƯU VẾT HUẤN LUYỆN (Tuần 4c, 11/09/2026)
-#
-# Mỗi lần app khớp mô hình cho một khối (cache miss) là một dòng: kỳ đích, điểm,
-# khoảng, trọng số, hệ số lệch, thành viên, cấu hình. Khi kỳ đích chốt (sau đồng
-# bộ), `fill_actuals` điền thực tế và sai số. Đây là "sổ theo dõi" sống của mô
-# hình trong vận hành — khác backtest ở chỗ nó ghi đúng con số màn hình đã hiện
-# vào thời điểm đó, không thể chỉnh lại sau.
+# Sổ theo dõi mô hình: mỗi lần khớp (cache miss) một dòng forecast_runs; kỳ đích
+# chốt thì `fill_actuals` điền thực tế + sai số. Ghi đúng con số màn hình đã hiện.
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _log_run(db: Session, block: str, fp: str, payload: Dict[str, Any]) -> None:
@@ -253,7 +235,7 @@ def forecast_payload(db: Session, compute: bool = True,
             try:
                 hit = svc.forecast_group(b)
                 _write_cache(db, b, fp, hit)
-                _log_run(db, b, fp, hit)                   # Tuần 4c: sổ theo dõi
+                _log_run(db, b, fp, hit)
                 hit["computed_at"] = datetime.now().isoformat(timespec="seconds")
                 hit["from_cache"] = False
             except Exception as exc:                          # noqa: BLE001
@@ -526,18 +508,12 @@ def _ly_do_xam_ten(key: str) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def recorded_forecast_payload(db: Session) -> Dict[str, Any]:
-    """Ŷ_g ba khối cho "kỳ tới", lấy từ bản ĐÃ GHI NHẬN ở trang Phân tích
-    (`disease_forecasts`, location IS NULL = Toàn quốc) — KHÔNG tự tính.
+    """Ŷ_g ba khối cho kỳ tới, lấy từ bản ĐÃ GHI NHẬN ở trang Phân tích
+    (`disease_forecasts`, location IS NULL = Toàn quốc) — không tự tính.
 
-    12/09/2026: trước đây Tầng 2/3 (nhu cầu vật tư, cảnh báo, thẻ "Dự báo kỳ
-    tới") lấy số từ `forecast_payload()` (Tầng 1 tự động, tính lại mỗi khi
-    dữ liệu đổi) — ĐỘC LẬP với con số người dùng bấm "Ghi nhận dự báo" ở
-    trang Phân tích. Hai nơi vì vậy có thể ra hai số khác nhau cho cùng một
-    kỳ dù dùng chung công thức dự báo. Từ nay CHỈ MỘT nguồn: bản đã ghi nhận.
-    Khối/kỳ nào chưa ai ghi nhận thì vắng mặt — báo rõ trạng thái ở `ready`/
-    `missing`, không suy diễn hay dùng 0. `forecast_payload()` (Tầng 1 tự
-    động) vẫn còn, dùng cho endpoint xem trước /dashboard/v2/forecast — công
-    cụ tham khảo cho trang Phân tích, không nuôi Cảnh báo/Tổng quan nữa.
+    Đây là nguồn DUY NHẤT nuôi Tầng 2/3. Khối/kỳ chưa ai ghi nhận thì vắng
+    mặt và được báo ở `ready`/`missing`, không suy diễn hay dùng 0.
+    `forecast_payload()` chỉ phục vụ xem trước ở /dashboard/v2/forecast.
     """
     from app.models.disease_forecast import DiseaseForecast
 
@@ -609,6 +585,29 @@ def recorded_forecast_payload(db: Session) -> Dict[str, Any]:
     }
 
 
+def care_level_payload(db: Session) -> Dict[str, Any]:
+    """Tỷ trọng phân cấp chăm sóc p̂(g,ro) đã co ngót cho biểu đồ Tầng 2, kèm
+    cửa sổ tính và chẩn đoán định mức (nhóm thiếu định mức, rổ mẫu nhỏ)."""
+    shares = dss_demand.care_level_shares(db)
+    cua_so: Dict[str, Any] = {}
+    if dss_alerts._has(db, "v_care_level_share"):
+        r = db.execute(text("SELECT MIN(tu_ky) AS tu, MAX(den_ky) AS den, "
+                            "MAX(so_ky) AS so_ky FROM v_care_level_share")).first()
+        if r:
+            cua_so = {"tu_ky": r.tu, "den_ky": r.den, "so_ky": r.so_ky}
+    cfg = dss_demand.care_cfg(db)
+    return {
+        "shares": [{"block_code": g, "ro": ro, "share_pct": round(p * 100, 2)}
+                   for g, d in shares.items() for ro, p in sorted(d.items())],
+        "cua_so": cua_so,
+        "ten_ro": dss_demand.RO_LABEL,
+        "chan_doan_dinh_muc": dss_demand.chan_doan_dinh_muc(db),
+        "ghi_chu": (f"p̂(g,ro) tính trên cửa sổ trượt {cfg.get('window_periods')} kỳ đã chốt "
+                    f"từ {cfg.get('min_period')} (Đ11: đứt gãy chế độ ghi nhận đầu 2025), "
+                    "rổ mẫu nhỏ đã co ngót."),
+    }
+
+
 def tang1_tang2(db: Session):
     """Chuỗi Tầng 1 (bản đã Ghi nhận) → Tầng 2, dùng chung cho Tổng quan và
     trang Cảnh báo thiếu hụt để hai trang KHÔNG BAO GIỜ ra hai con số khác
@@ -643,6 +642,7 @@ def _counts(al: Dict[str, Any]) -> Dict[str, Any]:
             "grey": t["grey"], "total": t["tong_ma"], "measured": t["do_duoc"],
             "zero_stock": sum(1 for r in al["rows"] if r["doi"] == 0.0),
             "fefo_codes": t.get("so_ma_ap_dung_fefo", 0),
+            "stock_source": t.get("nguon_ton_kho"),   # vd fact_inventory_lot@2026-09-13
             "ly_do_xam": t.get("ly_do_xam", {}), "san_sang": True}
 
 
@@ -678,7 +678,7 @@ def alerts_payload(db: Session, focus: bool = True, level: Optional[str] = None,
     canh_bao = list(al.get("canh_bao") or [])
     if not al.get("san_sang"):
         canh_bao.append((al.get("ly_do") or "Chưa có dữ liệu tồn kho / tiêu hao.")
-                        + " Vào Quản trị → Kết nối HIS rồi bấm Đồng bộ để nạp dữ liệu vật tư.")
+                        + " Vào Quản trị → Kết nối HIS rồi bấm Đồng bộ để nạp dữ liệu thuốc.")
 
     if level is not None:
         rows = [r for r in rows if r["muc"] == level]
@@ -748,13 +748,13 @@ def overview_payload(db: Session, focus: bool = True,
     chon = al_focus if focus else al_all
 
     dem_focus, dem_all = _counts(al_focus), _counts(al_all)
-    # Chưa có dữ liệu vật tư (cài mới, chưa đồng bộ HIS) → nói rõ lý do, không
+    # Chưa có dữ liệu thuốc (cài mới, chưa đồng bộ HIS) → nói rõ lý do, không
     # để màn hình hiện 0/0/0/0 như thể kho không có mã nào cần theo dõi.
     canh_bao_tang3 = list(chon.get("canh_bao") or [])
     if not chon.get("san_sang"):
         canh_bao_tang3.append(
             (chon.get("ly_do") or "Chưa có dữ liệu tồn kho / tiêu hao.")
-            + " Vào Quản trị → Kết nối HIS rồi bấm Đồng bộ để nạp dữ liệu vật tư.")
+            + " Vào Quản trị → Kết nối HIS rồi bấm Đồng bộ để nạp dữ liệu thuốc.")
     dem = dem_focus if focus else dem_all
     sig = {**dem, "nguong": {"red_days": float(th["doi_red_days"]),
                              "amber_days": float(th["doi_amber_days"])}}
@@ -843,7 +843,7 @@ def overview_payload(db: Session, focus: bool = True,
         "alerts_total_matched": len(rows_tbl),
         "doi_by_category": doi_cat,
         "trend": _trend_series(db, open_p or last_closed, 12),
-        "care_level": dss_runner.care_level_payload(db),
+        "care_level": care_level_payload(db),
         "quality": quality,
         "data_status": {"dss_tables": dss_tables, "last_sync": last_sync,
                         "fefo": {"codes": dem_all.get("fefo_codes", 0), "total": dem_all["total"]},

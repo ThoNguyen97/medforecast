@@ -8,16 +8,30 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from app.config import settings
 
 
-def _ensure_db_dir() -> None:
-    """Create the directory that will hold the SQLite file if it doesn't exist."""
+# .../backend/ — neo theo vị trí file, không theo thư mục làm việc.
+_BACKEND_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _neo_duong_dan_sqlite() -> None:
+    """Biến đường dẫn SQLite tương đối thành tuyệt đối theo backend/.
+
+    "sqlite:///./data/medforecast.db" được resolve theo THƯ MỤC LÀM VIỆC của
+    tiến trình. Chạy uvicorn từ chỗ khác backend/ là âm thầm dùng một file DB
+    khác — _ensure_db_dir() còn mkdir hộ nên không có lỗi nào để mà thấy; mọi
+    truy vấn vẫn chạy, chỉ là trên dữ liệu khác. Đã mất một buổi vì chuyện này:
+    UI đọc một DB, DB Browser mở một DB khác.
+    """
     url = settings.DATABASE_URL
-    # sqlite:///./data/medforecast.db  →  ./data/medforecast.db
-    if url.startswith("sqlite:///"):
-        db_path = url[len("sqlite:///"):]
-        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+    if not url.startswith("sqlite:///"):
+        return
+    p = Path(url[len("sqlite:///"):])
+    if not p.is_absolute():
+        p = (_BACKEND_ROOT / p).resolve()
+        settings.DATABASE_URL = f"sqlite:///{p.as_posix()}"
+    p.parent.mkdir(parents=True, exist_ok=True)
 
 
-_ensure_db_dir()
+_neo_duong_dan_sqlite()
 
 # check_same_thread=False chỉ dành cho SQLite + FastAPI; Postgres/MySQL không nhận
 # tham số này nên phải đặt connect_args theo loại DB.

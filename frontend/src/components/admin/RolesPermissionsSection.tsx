@@ -41,7 +41,7 @@ const FEATURES: {
     ],
   },
   {
-    group: 'Vật tư & kho',
+    group: 'Thuốc & kho',
     items: [
       {
         key: 'inventory',
@@ -56,24 +56,13 @@ const FEATURES: {
       },
       {
         key: 'alerts',
-        label: 'Xem cảnh báo & lập kế hoạch cung ứng',
+        label: 'Xem cảnh báo thiếu hụt',
         perms: {
           Administrator: true,
           Pharmacist: false,
           Inventory_Manager: true,
           Manager: true,
           Viewer: true,
-        },
-      },
-      {
-        key: 'approve-plan',
-        label: 'Duyệt kế hoạch cung ứng',
-        perms: {
-          Administrator: true,
-          Pharmacist: false,
-          Inventory_Manager: false,
-          Manager: true,
-          Viewer: false,
         },
       },
     ],
@@ -94,7 +83,7 @@ const FEATURES: {
       },
       {
         key: 'config',
-        label: 'Cấu hình định mức vật tư',
+        label: 'Cấu hình định mức thuốc',
         perms: {
           Administrator: true,
           Pharmacist: true,

@@ -1,8 +1,8 @@
-"""Admin catalog endpoints — manage disease list, disease-group list, region
-list, safety rate.
+"""Danh mục quản trị: bệnh, nhóm bệnh, khu vực — lưu JSON trong system_config.
 
-Lưu danh mục dưới dạng JSON trong bảng ``system_config`` để không phải migrate
-schema khi mở rộng. Endpoint chỉ dành cho Administrator.
+Đọc: mọi người dùng đã đăng nhập; ghi: Administrator. GET không ghi DB.
+`admin.safety_rate` (hệ số dự phòng) gỡ 13/09/2026: không service nào đọc,
+núm vặn DSS chỉ nằm ở /dss/params.
 
 Routes
 ------
@@ -20,9 +20,6 @@ GET    /api/v1/admin/regions                – Lấy danh sách khu vực
 POST   /api/v1/admin/regions                – Thêm khu vực
 DELETE /api/v1/admin/regions/{name}         – Xoá khu vực
 
-GET    /api/v1/admin/safety-rate            – Lấy hệ số dự phòng (%)
-PUT    /api/v1/admin/safety-rate            – Cập nhật hệ số dự phòng
-
 Lưu ý về "Danh mục nhóm bệnh" (admin.disease_groups): đây là danh mục THAM
 KHẢO/hiển thị (giống admin.diseases) — sửa ở đây KHÔNG tự động đổi 3 nhóm ICD
 mà mô hình dự báo đang dùng thật (NHOM_ICD cố định trong app/utils/icd_groups.py,
@@ -35,7 +32,7 @@ import json
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -52,20 +49,19 @@ router = APIRouter(tags=["admin-catalog"])
 DISEASES_KEY = "admin.diseases"
 DISEASE_GROUPS_KEY = "admin.disease_groups"
 REGIONS_KEY = "admin.regions"
-SAFETY_RATE_KEY = "admin.safety_rate"
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
 
 def _get_or_init(db: Session, key: str, default: str) -> SystemConfig:
+    """Dòng cấu hình theo khoá; chưa có thì trả bản mặc định CHƯA GHI DB.
+    Endpoint GET vì thế không có tác dụng phụ; dòng chỉ được persist khi một
+    endpoint PUT/POST/DELETE gọi `_save_list` (add + commit)."""
     cfg = db.query(SystemConfig).filter(SystemConfig.config_key == key).first()
     if cfg:
         return cfg
-    cfg = SystemConfig(config_key=key, config_value=default, description=f"Auto-created {key}")
-    db.add(cfg)
-    db.commit()
-    db.refresh(cfg)
-    return cfg
+    return SystemConfig(config_key=key, config_value=default,
+                        description=f"Danh mục quản trị {key}")
 
 
 def _parse_list(cfg: SystemConfig) -> List[Dict[str, Any]]:
@@ -78,6 +74,8 @@ def _parse_list(cfg: SystemConfig) -> List[Dict[str, Any]]:
 
 def _save_list(db: Session, cfg: SystemConfig, items: List[Dict[str, Any]], user_id: int) -> None:
     cfg.config_value = json.dumps(items, ensure_ascii=False)
+    if cfg.id is None:
+        db.add(cfg)
     cfg.updated_by = user_id
     db.commit()
 
@@ -303,36 +301,3 @@ def _seed_regions() -> List[Dict[str, Any]]:
         {"name": "Quận 7", "province": "TP. Hồ Chí Minh", "description": ""},
         {"name": "Thành phố Thủ Đức", "province": "TP. Hồ Chí Minh", "description": ""},
     ]
-
-
-# ── Safety rate ─────────────────────────────────────────────────────────────
-
-
-class SafetyRatePayload(BaseModel):
-    safety_rate: float = Field(..., ge=0, le=1.0, description="Tỷ lệ dự phòng 0..1 (vd 0.15 = 15%)")
-
-
-@router.get("/safety-rate")
-def get_safety_rate(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> Dict[str, float]:
-    cfg = _get_or_init(db, SAFETY_RATE_KEY, default="0.15")
-    try:
-        rate = float(cfg.config_value)
-    except (TypeError, ValueError):
-        rate = 0.15
-    return {"safety_rate": rate}
-
-
-@router.put("/safety-rate")
-def update_safety_rate(
-    payload: SafetyRatePayload = Body(...),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_admin_user),
-) -> Dict[str, float]:
-    cfg = _get_or_init(db, SAFETY_RATE_KEY, default="0.15")
-    cfg.config_value = str(payload.safety_rate)
-    cfg.updated_by = current_user.id
-    db.commit()
-    return {"safety_rate": payload.safety_rate}

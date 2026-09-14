@@ -176,7 +176,8 @@ class TestGetCurrentUser:
 
 class TestRefreshToken:
     def test_refresh_token_returns_new_token(self, client, active_admin):
-        token = create_access_token(data={"sub": active_admin.username})
+        # /refresh chỉ nhận REFRESH token (type = "refresh")
+        token = create_access_token(data={"sub": active_admin.username, "type": "refresh"})
         resp = client.post(
             "/api/v1/auth/refresh",
             headers={"Authorization": f"Bearer {token}"},
@@ -186,6 +187,17 @@ class TestRefreshToken:
         assert "access_token" in data
         assert data["token_type"] == "bearer"
         assert len(data["access_token"]) > 0
+
+    def test_refresh_with_access_token_returns_401(self, client, active_admin):
+        token = create_access_token(data={"sub": active_admin.username})
+        resp = client.post("/api/v1/auth/refresh",
+                           headers={"Authorization": f"Bearer {token}"})
+        assert resp.status_code == 401
+
+    def test_refresh_token_cannot_call_protected_endpoint(self, client, active_admin):
+        token = create_access_token(data={"sub": active_admin.username, "type": "refresh"})
+        resp = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+        assert resp.status_code == 401
 
     def test_refresh_token_invalid_token_returns_401(self, client):
         resp = client.post(
@@ -220,14 +232,14 @@ class TestLogout:
 
 class TestProtectedRoutes:
     def test_protected_route_requires_authentication(self, client):
-        """Supplies list requires auth."""
-        resp = client.get("/api/v1/supplies")
+        """Inventory list requires auth."""
+        resp = client.get("/api/v1/inventory/")
         assert resp.status_code == 401
 
     def test_protected_route_accepts_valid_token(self, client, active_admin):
         token = create_access_token(data={"sub": active_admin.username})
         resp = client.get(
-            "/api/v1/supplies",
+            "/api/v1/inventory/",
             headers={"Authorization": f"Bearer {token}"},
         )
         # 200 (no supplies) — authenticated access granted

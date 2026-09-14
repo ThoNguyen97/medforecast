@@ -39,7 +39,7 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BACKEND_DIR))
 
 TOAN_QUOC = "TOAN_QUOC"
-TINH_MAC_DINH = "Thành phố Hồ Chí Minh"
+TINH_MAC_DINH = "TP. Hồ Chí Minh"   # tên CHUẨN, khớp dropdown/master + Open-Meteo
 
 
 # ── 1. .env ──────────────────────────────────────────────────────────────────

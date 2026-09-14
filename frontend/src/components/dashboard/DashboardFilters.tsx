@@ -64,7 +64,7 @@ export default function DashboardFilters({
       </div>
       <div>
         <label htmlFor="dash-focus" className={labelCls}>
-          Tập vật tư
+          Tập thuốc
         </label>
         <select
           id="dash-focus"

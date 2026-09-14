@@ -1,18 +1,15 @@
-"""
-Reports API endpoints.
-
-Provides analytical reports for the MedForecast AI system, including
-consumption analytics, forecast accuracy over time, inventory turnover,
-and PDF export functionality.
-
-All report endpoints support date range and location filtering.
+"""Báo cáo — xem trước JSON và xuất PDF/Excel.
 
 Routes
 ------
-GET  /api/v1/reports/consumption         – Consumption report by supply category
-GET  /api/v1/reports/forecast-accuracy   – Forecast accuracy metrics over time
-GET  /api/v1/reports/inventory-turnover  – Inventory turnover rates
-POST /api/v1/reports/export              – Export any report to PDF
+GET  /api/v1/reports/forecast-accuracy   độ lệch dự báo/thực tế theo bản ghi disease_forecasts
+POST /api/v1/reports/export              xuất một trong 6 loại: epidemic, forecast, inventory,
+                                         shortage, forecast-accuracy, dashboard-summary
+
+Mọi con số về ca bệnh neo vào kỳ ĐÃ CHỐT (period_service); mọi con số về thiếu
+hụt đi qua đúng chuỗi Tầng 1→2→3 của dss_dashboard/dss_alerts — báo cáo xuất ra
+không được lệch với màn hình. Hai báo cáo cũ `consumption` và `inventory-turnover`
+(đọc bảng supply_requirements đã ngừng sinh dữ liệu) gỡ 13/09/2026.
 """
 
 import io
@@ -22,43 +19,30 @@ from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
-from sqlalchemy import func, or_
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-
-# ── Biểu thức định dạng tháng chạy được trên cả SQLite lẫn PostgreSQL ──────────
-# SQLite dùng strftime('%m/%Y'), Postgres dùng to_char(col,'MM/YYYY').
-from app.database import engine as _engine
-
-
-def _month_expr(col, fmt: str):
-    """fmt: '%m/%Y' hoặc '%Y-%m' — trả biểu thức phù hợp dialect DB đang chạy."""
-    if _engine.dialect.name == "sqlite":
-        return func.strftime(fmt, col)
-    pg_fmt = {"%m/%Y": "MM/YYYY", "%Y-%m": "YYYY-MM"}[fmt]
-    return func.to_char(col, pg_fmt)
-
 from app.dependencies import get_current_user
 from app.models.disease_forecast import DiseaseForecast
 from app.models.inventory import Inventory
 from app.models.medical_supply import MedicalSupply
-from app.models.supply_requirement import SupplyRequirement
 from app.models.user import User
+
+
+def _month_expr(col, fmt: str):
+    """Định dạng tháng trên SQLite ('%m/%Y' hoặc '%Y-%m'). Hệ thống chỉ chạy
+    SQLite (Postgres đã archive), không còn nhánh dialect."""
+    return func.strftime(fmt, col)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["reports"])
 
-# ── Ngưỡng phân loại tồn kho (09/09/2026) ────────────────────────────────────
-# Dùng SỐ NGÀY TỒN PHỦ NHU CẦU (DOI), cùng ngưỡng với tầng cảnh báo DSS
-# (app/services/dss_alerts.py: THRESHOLDS_DEFAULT).
-#
-# KHÔNG dùng Inventory.safety_stock để phân loại: cột này đã bị vô hiệu hoá
-# trong phạm vi DSS — 5.007/5.041 dòng có giá trị 0 — nên mọi so sánh với nó
-# đều xếp vật tư vào "an toàn" và báo cáo thiếu hụt luôn rỗng MÀ KHÔNG BÁO LỖI.
-DOI_DO_NGAY = 18       # ≤ 18 ngày: nguy cơ thiếu hụt
-DOI_VANG_NGAY = 36     # ≤ 36 ngày: cần theo dõi sát
+# Ngưỡng DOI mặc định — chỉ dùng làm nhãn trong báo cáo tồn kho khi chưa đọc
+# được dss.thresholds; phân loại thiếu hụt thật đi qua dss_alerts.
+DOI_DO_NGAY = 18
+DOI_VANG_NGAY = 36
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -69,11 +53,7 @@ def _default_date_range(
     default_days_back: int = 30,
     default_days_forward: int = 60,
 ):
-    """Return (start, end) dates spanning past consumption + future forecast.
-
-    Mặc định mở rộng đến ngày hiện tại + 60 ngày để bao gồm cả các yêu cầu vật
-    tư đã được dự báo cho tương lai (supply_requirements / disease_forecasts).
-    """
+    """Khoảng ngày mặc định: 30 ngày lùi → 60 ngày tới (bao cả kỳ dự báo)."""
     today = date.today()
     end = end_date or (today + timedelta(days=default_days_forward))
     start = start_date or (today - timedelta(days=default_days_back))
@@ -81,106 +61,6 @@ def _default_date_range(
 
 
 # ── Consumption Report ────────────────────────────────────────────────────────
-
-@router.get("/consumption")
-async def get_consumption_report(
-    start_date: Optional[date] = Query(None, description="Report start date (YYYY-MM-DD)"),
-    end_date: Optional[date] = Query(None, description="Report end date (YYYY-MM-DD)"),
-    location: Optional[str] = Query(None, description="Filter by inventory location"),
-    category: Optional[str] = Query(None, description="Filter by supply category"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> Dict:
-    """
-    Return a consumption report showing supply usage aggregated by category.
-
-    The report is built from ``supply_requirements`` records, which represent
-    forecasted demand (i.e., how much of each supply is expected to be consumed).
-
-    Filters
-    -------
-    start_date : beginning of the reporting period (default: 30 days ago)
-    end_date   : end of the reporting period (default: today)
-    location   : filter inventory by warehouse / location field
-    category   : filter supplies by category
-    """
-    start, end = _default_date_range(start_date, end_date)
-
-    logger.info(
-        "Consumption report requested by user=%s period=%s to %s location=%s category=%s",
-        current_user.username, start, end, location, category,
-    )
-
-    # Aggregate required quantities grouped by category and supply
-    query = (
-        db.query(
-            MedicalSupply.category,
-            MedicalSupply.name.label("supply_name"),
-            MedicalSupply.unit,
-            func.sum(SupplyRequirement.required_quantity).label("total_required"),
-            func.count(func.distinct(SupplyRequirement.requirement_date)).label("active_days"),
-        )
-        .join(SupplyRequirement, SupplyRequirement.supply_id == MedicalSupply.id)
-        .filter(
-            SupplyRequirement.requirement_date >= start,
-            SupplyRequirement.requirement_date <= end,
-        )
-    )
-
-    if category:
-        query = query.filter(MedicalSupply.category == category)
-
-    # Location filter: join inventory if location is provided
-    if location:
-        query = query.join(
-            Inventory,
-            Inventory.supply_id == MedicalSupply.id,
-        ).filter(Inventory.location == location)
-
-    rows = (
-        query
-        .group_by(MedicalSupply.category, MedicalSupply.name, MedicalSupply.unit)
-        .order_by(MedicalSupply.category, MedicalSupply.name)
-        .all()
-    )
-
-    # Group into category buckets
-    category_map: Dict[str, Dict] = {}
-    for row in rows:
-        cat = row.category
-        if cat not in category_map:
-            category_map[cat] = {
-                "category": cat,
-                "total_required": 0,
-                "supplies": [],
-            }
-        item = {
-            "supply_name": row.supply_name,
-            "unit": row.unit,
-            "total_required": int(row.total_required or 0),
-            "active_days": int(row.active_days or 0),
-            "avg_daily_consumption": round(
-                (row.total_required or 0) / max(int(row.active_days or 1), 1), 2
-            ),
-        }
-        category_map[cat]["supplies"].append(item)
-        category_map[cat]["total_required"] += item["total_required"]
-
-    categories_list = sorted(category_map.values(), key=lambda c: -c["total_required"])
-    grand_total = sum(c["total_required"] for c in categories_list)
-
-    return {
-        "report_type": "consumption",
-        "period": {"start_date": str(start), "end_date": str(end)},
-        "filters": {"location": location, "category": category},
-        "summary": {
-            "total_required_across_all_categories": grand_total,
-            "categories_count": len(categories_list),
-        },
-        "categories": categories_list,
-        "generated_at": datetime.utcnow().isoformat(),
-    }
-
 
 # ── Forecast Accuracy Report ──────────────────────────────────────────────────
 
@@ -323,152 +203,6 @@ async def get_forecast_accuracy_report(
 
 # ── Inventory Turnover Report ─────────────────────────────────────────────────
 
-@router.get("/inventory-turnover")
-async def get_inventory_turnover_report(
-    start_date: Optional[date] = Query(None, description="Report start date (YYYY-MM-DD)"),
-    end_date: Optional[date] = Query(None, description="Report end date (YYYY-MM-DD)"),
-    location: Optional[str] = Query(None, description="Filter by inventory location"),
-    category: Optional[str] = Query(None, description="Filter by supply category"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-) -> Dict:
-    """
-    Return inventory turnover rates for all (or filtered) supplies.
-
-    Turnover rate is calculated as:
-        turnover_rate = total_required / avg_current_stock
-
-    A higher value means the supply is consumed faster relative to on-hand
-    stock.  Supplies with zero stock are marked as "out_of_stock".
-
-    Filters
-    -------
-    start_date : start of the demand period used for the numerator (default: 30 days ago)
-    end_date   : end of the demand period (default: today)
-    location   : filter by inventory location
-    category   : filter by supply category
-    """
-    start, end = _default_date_range(start_date, end_date)
-    period_days = max((end - start).days, 1)
-
-    logger.info(
-        "Inventory turnover report requested by user=%s period=%s to %s "
-        "location=%s category=%s",
-        current_user.username, start, end, location, category,
-    )
-
-    # Build base query: join inventory → supply, optionally filter location
-    inv_query = (
-        db.query(
-            Inventory.supply_id,
-            Inventory.current_stock,
-            Inventory.safety_stock,
-            Inventory.location,
-            MedicalSupply.name.label("supply_name"),
-            MedicalSupply.category,
-            MedicalSupply.unit,
-            MedicalSupply.unit_price,
-        )
-        .join(MedicalSupply, MedicalSupply.id == Inventory.supply_id)
-    )
-
-    if location:
-        inv_query = inv_query.filter(Inventory.location == location)
-    if category:
-        inv_query = inv_query.filter(MedicalSupply.category == category)
-
-    inventory_rows = inv_query.all()
-
-    # Get total demand per supply over the period
-    demand_query = (
-        db.query(
-            SupplyRequirement.supply_id,
-            func.sum(SupplyRequirement.required_quantity).label("total_required"),
-        )
-        .filter(
-            SupplyRequirement.requirement_date >= start,
-            SupplyRequirement.requirement_date <= end,
-        )
-        .group_by(SupplyRequirement.supply_id)
-    )
-    demand_map: Dict[int, int] = {
-        row.supply_id: int(row.total_required or 0) for row in demand_query.all()
-    }
-
-    items = []
-    for row in inventory_rows:
-        sid = row.supply_id
-        total_required = demand_map.get(sid, 0)
-        current_stock = row.current_stock or 0
-        safety_stock = row.safety_stock or 0
-        unit_price = float(row.unit_price) if row.unit_price else 0.0
-
-        if current_stock > 0:
-            turnover_rate = round(total_required / current_stock, 4)
-        else:
-            turnover_rate = None  # out of stock
-
-        days_of_supply = None
-        if total_required > 0 and current_stock > 0:
-            daily_demand = total_required / period_days
-            days_of_supply = round(current_stock / daily_demand, 1)
-
-        if current_stock <= 0:
-            stock_status = "out_of_stock"
-        elif days_of_supply is None:
-            # Chưa có nhu cầu dự báo để quy đổi ra số ngày phủ → nói rõ là
-            # CHƯA XÁC ĐỊNH, không được mặc định coi là an toàn.
-            stock_status = "unknown"
-        elif days_of_supply <= DOI_DO_NGAY:
-            stock_status = "critical"
-        elif days_of_supply <= DOI_VANG_NGAY:
-            stock_status = "low"
-        else:
-            stock_status = "safe"
-
-        items.append({
-            "supply_id": sid,
-            "supply_name": row.supply_name,
-            "category": row.category,
-            "unit": row.unit,
-            "location": row.location,
-            "current_stock": current_stock,
-            "safety_stock": safety_stock,
-            "total_required_in_period": total_required,
-            "turnover_rate": turnover_rate,
-            "days_of_supply": days_of_supply,
-            "stock_value": round(current_stock * unit_price, 2),
-            "stock_status": stock_status,
-        })
-
-    # Sort: highest turnover first (None at end)
-    items.sort(
-        key=lambda x: (x["turnover_rate"] is None, -(x["turnover_rate"] or 0))
-    )
-
-    high_turnover = [i for i in items if i["turnover_rate"] is not None and i["turnover_rate"] > 1.0]
-    out_of_stock = [i for i in items if i["stock_status"] == "out_of_stock"]
-    avg_turnover = (
-        round(sum(i["turnover_rate"] for i in items if i["turnover_rate"] is not None)
-              / max(len([i for i in items if i["turnover_rate"] is not None]), 1), 4)
-        if items else 0.0
-    )
-
-    return {
-        "report_type": "inventory-turnover",
-        "period": {"start_date": str(start), "end_date": str(end), "period_days": period_days},
-        "filters": {"location": location, "category": category},
-        "summary": {
-            "total_items": len(items),
-            "avg_turnover_rate": avg_turnover,
-            "high_turnover_items": len(high_turnover),
-            "out_of_stock_items": len(out_of_stock),
-        },
-        "items": items,
-        "generated_at": datetime.utcnow().isoformat(),
-    }
-
-
 # ── Export Report ─────────────────────────────────────────────────────────────
 
 class ReportExportRequest:
@@ -479,14 +213,10 @@ from pydantic import BaseModel
 
 
 class ExportReportRequest(BaseModel):
-    """Request body for PDF/Excel report export."""
+    """Body của POST /export."""
 
-    report_type: str
-    """One of: consumption, forecast-accuracy, inventory-turnover, dashboard-summary,
-    epidemic, forecast, inventory, shortage."""
-
-    format: str = "pdf"
-    """Export format: 'pdf' or 'excel' (default 'pdf')."""
+    report_type: str          # epidemic | forecast | inventory | shortage | forecast-accuracy | dashboard-summary
+    format: str = "pdf"       # pdf | excel
 
     start_date: Optional[date] = None
     end_date: Optional[date] = None
@@ -502,33 +232,12 @@ async def export_report(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Response:
-    """
-    Generate a formatted PDF or Excel report for the requested report type.
-
-    Supported report types (theo Module 8 - Smart Medical spec):
-    - ``epidemic``            – Tình hình dịch bệnh
-    - ``forecast``            – Dự báo ca bệnh
-    - ``inventory``           – Tồn kho vật tư
-    - ``shortage``            – Thiếu hụt vật tư
-    - ``forecast-accuracy``   – Độ chính xác dự báo (alias 'accuracy')
-
-    Legacy types vẫn được hỗ trợ:
-    - ``consumption``, ``inventory-turnover``, ``dashboard-summary``
-
-    `format` = 'pdf' (default) hoặc 'excel'.
-    """
+    """Xuất PDF/Excel: epidemic (tình hình dịch bệnh), forecast (dự báo ca),
+    inventory (tồn kho), shortage (thiếu hụt), forecast-accuracy (độ lệch
+    dự báo), dashboard-summary (toàn bộ KPI Tổng quan)."""
     SUPPORTED_TYPES = {
-        # Smart Medical Module 8.2 — 6 loại chính
-        "epidemic",
-        "forecast",
-        "inventory",
-        "shortage",
-        # "procurement" — gỡ ở G0 (phạm vi DSS); mã dựng báo cáo đã xoá ở Tuần 3.
-        "forecast-accuracy",
-        # Legacy types
-        "consumption",
-        "inventory-turnover",
-        "dashboard-summary",
+        "epidemic", "forecast", "inventory", "shortage",
+        "forecast-accuracy", "dashboard-summary",
     }
     if payload.report_type not in SUPPORTED_TYPES:
         raise HTTPException(
@@ -550,16 +259,7 @@ async def export_report(
 
     start, end = _default_date_range(payload.start_date, payload.end_date)
 
-    # Dispatch theo loại
-    if payload.report_type in ("consumption",):
-        data = await _build_consumption_data(db, start, end, payload.location, payload.category)
-        return (
-            _render_consumption_pdf(data, start, end)
-            if payload.format == "pdf"
-            else _render_consumption_excel(data, start, end)
-        )
-
-    if payload.report_type in ("forecast-accuracy",):
+    if payload.report_type == "forecast-accuracy":
         data = await _build_accuracy_data(db, start, end, payload.disease_type, payload.model_used)
         return (
             _render_accuracy_pdf(data, start, end)
@@ -575,15 +275,6 @@ async def export_report(
             else _render_dashboard_summary_excel(data)
         )
 
-    if payload.report_type == "inventory-turnover":
-        data = await _build_turnover_data(db, start, end, payload.location, payload.category)
-        return (
-            _render_turnover_pdf(data, start, end)
-            if payload.format == "pdf"
-            else _render_turnover_excel(data, start, end)
-        )
-
-    # Smart Medical Module 8 — 5 loại mới
     if payload.report_type == "epidemic":
         data = await _build_epidemic_data(db, start, end, payload.disease_type, payload.location)
         return (
@@ -623,37 +314,6 @@ async def export_report(
 
 # ── Internal data-fetching helpers (reused by export) ────────────────────────
 
-async def _build_consumption_data(
-    db: Session,
-    start: date,
-    end: date,
-    location: Optional[str],
-    category: Optional[str],
-) -> List[Dict]:
-    query = (
-        db.query(
-            MedicalSupply.category,
-            MedicalSupply.name.label("supply_name"),
-            MedicalSupply.unit,
-            func.sum(SupplyRequirement.required_quantity).label("total_required"),
-        )
-        .join(SupplyRequirement, SupplyRequirement.supply_id == MedicalSupply.id)
-        .filter(
-            SupplyRequirement.requirement_date >= start,
-            SupplyRequirement.requirement_date <= end,
-        )
-    )
-    if category:
-        query = query.filter(MedicalSupply.category == category)
-    if location:
-        query = query.join(Inventory, Inventory.supply_id == MedicalSupply.id).filter(
-            Inventory.location == location
-        )
-    return query.group_by(
-        MedicalSupply.category, MedicalSupply.name, MedicalSupply.unit
-    ).order_by(MedicalSupply.category, MedicalSupply.name).all()
-
-
 async def _build_accuracy_data(
     db: Session,
     start: date,
@@ -670,66 +330,6 @@ async def _build_accuracy_data(
     if model_used:
         query = query.filter(DiseaseForecast.model_used == model_used)
     return query.order_by(DiseaseForecast.forecast_date).all()
-
-
-async def _build_turnover_data(
-    db: Session,
-    start: date,
-    end: date,
-    location: Optional[str],
-    category: Optional[str],
-) -> list:
-    inv_query = (
-        db.query(
-            Inventory.supply_id,
-            Inventory.current_stock,
-            Inventory.safety_stock,
-            Inventory.location,
-            MedicalSupply.name.label("supply_name"),
-            MedicalSupply.category,
-            MedicalSupply.unit,
-        )
-        .join(MedicalSupply, MedicalSupply.id == Inventory.supply_id)
-    )
-    if location:
-        inv_query = inv_query.filter(Inventory.location == location)
-    if category:
-        inv_query = inv_query.filter(MedicalSupply.category == category)
-
-    rows = inv_query.all()
-
-    demand_map: Dict[int, int] = {
-        row.supply_id: int(row.total_required or 0)
-        for row in db.query(
-            SupplyRequirement.supply_id,
-            func.sum(SupplyRequirement.required_quantity).label("total_required"),
-        )
-        .filter(
-            SupplyRequirement.requirement_date >= start,
-            SupplyRequirement.requirement_date <= end,
-        )
-        .group_by(SupplyRequirement.supply_id)
-        .all()
-    }
-
-    period_days = max((end - start).days, 1)
-    result = []
-    for row in rows:
-        total_req = demand_map.get(row.supply_id, 0)
-        cs = row.current_stock or 0
-        turnover = round(total_req / cs, 4) if cs > 0 else None
-        result.append({
-            "supply_name": row.supply_name,
-            "category": row.category,
-            "unit": row.unit,
-            "location": row.location or "",
-            "current_stock": cs,
-            "safety_stock": row.safety_stock or 0,
-            "total_required": total_req,
-            "turnover_rate": turnover,
-        })
-    result.sort(key=lambda x: (x["turnover_rate"] is None, -(x["turnover_rate"] or 0)))
-    return result
 
 
 # ── PDF rendering helpers ─────────────────────────────────────────────────────
@@ -881,56 +481,6 @@ def _base_table_style(colors):
     ]
 
 
-def _render_consumption_pdf(rows: list, start: date, end: date) -> Response:
-    colors, A4, landscape, getSampleStyleSheet, cm, SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer = _get_reportlab()
-
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buf,
-        pagesize=landscape(A4),
-        leftMargin=1 * cm,
-        rightMargin=1 * cm,
-        topMargin=1.5 * cm,
-        bottomMargin=1.5 * cm,
-    )
-    styles = getSampleStyleSheet()
-    _patch_styles_for_unicode(styles)
-    story = [
-        Paragraph(
-            f"Consumption Report – {start} to {end}  "
-            f"(Generated {datetime.now().strftime('%Y-%m-%d %H:%M')})",
-            styles["Title"],
-        ),
-        Spacer(1, 0.4 * cm),
-    ]
-
-    table_data = [["Category", "Supply Name", "Unit", "Total Required"]]
-    for row in rows:
-        table_data.append([
-            row.category,
-            row.supply_name,
-            row.unit,
-            str(int(row.total_required or 0)),
-        ])
-
-    if len(table_data) == 1:
-        story.append(Paragraph("No consumption data found for the selected period.", styles["Normal"]))
-    else:
-        col_widths = [5 * cm, 8 * cm, 3 * cm, 4 * cm]
-        tbl = Table(table_data, colWidths=col_widths, repeatRows=1)
-        tbl.setStyle(TableStyle(_base_table_style(colors)))
-        story.append(tbl)
-
-    doc.build(story)
-    buf.seek(0)
-    filename = f"consumption_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-    return Response(
-        content=buf.getvalue(),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
 def _render_accuracy_pdf(forecasts: list, start: date, end: date) -> Response:
     colors, A4, landscape, getSampleStyleSheet, cm, SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer = _get_reportlab()
 
@@ -984,185 +534,50 @@ def _render_accuracy_pdf(forecasts: list, start: date, end: date) -> Response:
     )
 
 
-def _render_turnover_pdf(items: list, start: date, end: date) -> Response:
-    colors, A4, landscape, getSampleStyleSheet, cm, SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer = _get_reportlab()
-
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buf,
-        pagesize=landscape(A4),
-        leftMargin=1 * cm,
-        rightMargin=1 * cm,
-        topMargin=1.5 * cm,
-        bottomMargin=1.5 * cm,
-    )
-    styles = getSampleStyleSheet()
-    _patch_styles_for_unicode(styles)
-    story = [
-        Paragraph(
-            f"Inventory Turnover Report – {start} to {end}  "
-            f"(Generated {datetime.now().strftime('%Y-%m-%d %H:%M')})",
-            styles["Title"],
-        ),
-        Spacer(1, 0.4 * cm),
-    ]
-
-    table_data = [["Supply Name", "Category", "Unit", "Location", "Current Stock", "Safety Stock", "Required", "Turnover Rate"]]
-    for item in items:
-        turnover = f"{item['turnover_rate']:.4f}" if item["turnover_rate"] is not None else "N/A"
-        table_data.append([
-            item["supply_name"],
-            item["category"],
-            item["unit"],
-            item["location"],
-            str(item["current_stock"]),
-            str(item["safety_stock"]),
-            str(item["total_required"]),
-            turnover,
-        ])
-
-    if len(table_data) == 1:
-        story.append(Paragraph("No inventory data found for the selected filters.", styles["Normal"]))
-    else:
-        col_widths = [5 * cm, 3.5 * cm, 2 * cm, 3 * cm, 3 * cm, 3 * cm, 3 * cm, 3.5 * cm]
-        tbl = Table(table_data, colWidths=col_widths, repeatRows=1)
-        style = _base_table_style(colors)
-        # Colour turnover column: green > 1, orange 0.5-1, red < 0.5
-        for row_num, item in enumerate(items, 1):
-            rate = item["turnover_rate"]
-            if rate is not None:
-                if rate >= 1.0:
-                    c = colors.green
-                elif rate >= 0.5:
-                    c = colors.orange
-                else:
-                    c = colors.red
-                style.append(("TEXTCOLOR", (7, row_num), (7, row_num), c))
-                style.append(("FONTNAME", (7, row_num), (7, row_num), PDF_FONT_BOLD))
-        tbl.setStyle(TableStyle(style))
-        story.append(tbl)
-
-    doc.build(story)
-    buf.seek(0)
-    filename = f"inventory_turnover_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-    return Response(
-        content=buf.getvalue(),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
 # ── Dashboard Summary Export ─────────────────────────────────────────────────
 
 
 async def _build_dashboard_summary_data(db: Session) -> Dict:
-    """Tổng hợp toàn bộ chỉ số đang hiển thị trên Dashboard.
+    """Toàn bộ chỉ số của trang Tổng quan cho báo cáo `dashboard-summary`.
 
-    Dùng lại đúng chuỗi Tầng 1→2→3 của `dss_dashboard` (bản đã Ghi nhận →
-    demand_by_supply → alert_rows) thay vì tự tính lại từ DiseaseForecast /
-    SupplyRequirement / Alert — để báo cáo xuất ra KHÔNG BAO GIỜ lệch với
-    Tổng quan / Cảnh báo thiếu hụt trên giao diện."""
-    from app.models.disease_case import DiseaseCase
+    Số ca neo vào KỲ ĐÃ CHỐT gần nhất (period_service ← mart_monthly_cases_by_block,
+    is_complete = 1), không phải tháng lịch hiện tại: tháng đang chạy mới có vài
+    ngày dữ liệu, so với nó thì "xu hướng" và "dự báo/thực tế" đều ra hàng
+    nghìn phần trăm. Nhu cầu và cảnh báo đi đúng chuỗi Tầng 1→2→3 của
+    dss_dashboard để báo cáo không lệch màn hình.
+    """
     from app.services import dss_dashboard, dss_alerts, period_service as ps
 
     today = date.today()
-    first_of_this_month = today.replace(day=1)
-    if first_of_this_month.month == 1:
-        first_of_last_month = first_of_this_month.replace(
-            year=first_of_this_month.year - 1, month=12,
-        )
-    else:
-        first_of_last_month = first_of_this_month.replace(
-            month=first_of_this_month.month - 1,
-        )
+    anchor = ps.get_period_anchor(db)
+    last_closed, prev_closed = anchor["last_closed_period"], anchor["prev_closed_period"]
 
-    # KPI: tổng ca tháng này / tháng trước
-    total_current = (
-        db.query(func.coalesce(func.sum(DiseaseCase.case_count), 0))
-        .filter(DiseaseCase.recorded_at >= first_of_this_month)
-        .scalar()
-        or 0
-    )
-    total_last = (
-        db.query(func.coalesce(func.sum(DiseaseCase.case_count), 0))
-        .filter(
-            DiseaseCase.recorded_at >= first_of_last_month,
-            DiseaseCase.recorded_at < first_of_this_month,
-        )
-        .scalar()
-        or 0
-    )
-    cases_trend = (
-        round(100.0 * (int(total_current) - int(total_last)) / int(total_last), 1)
-        if total_last > 0 else 0.0
-    )
+    total_current = ps.cases_in_period(db, last_closed)
+    cases_trend = ps.trend_pct(db, last_closed, prev_closed) or 0.0
 
-    # KPI: dự báo tháng tới
-    if first_of_this_month.month == 12:
-        first_of_next = first_of_this_month.replace(
-            year=first_of_this_month.year + 1, month=1,
-        )
-    else:
-        first_of_next = first_of_this_month.replace(
-            month=first_of_this_month.month + 1,
-        )
-    if first_of_next.month == 12:
-        end_of_next = first_of_next.replace(
-            year=first_of_next.year + 1, month=1,
-        ) - timedelta(days=1)
-    else:
-        end_of_next = first_of_next.replace(
-            month=first_of_next.month + 1,
-        ) - timedelta(days=1)
-
-    # Dự báo kỳ tới: đọc từ bản ĐÃ GHI NHẬN ở trang Phân tích (Tầng 1, cùng
-    # nguồn với Dashboard/Cảnh báo) — không tự cộng DiseaseForecast.predicted_cases
-    # (bảng đó có cả bản ghi Toàn quốc lẫn theo tỉnh/mã ICD cũ, cộng thô sẽ trùng).
     fc, th, nhu_cau, nhu_cau_meta = dss_dashboard.tang1_tang2(db)
-    predicted_next = int(round(fc["total"]["point"])) if fc.get("ready") and fc.get("total") else 0
+    predicted_next = int(round(fc["total"]["point"])) if fc.get("ready") and fc["total"].get("point") is not None else 0
     predicted_trend = (
-        round(100.0 * (int(predicted_next) - int(total_current)) / int(total_current), 1)
+        round(100.0 * (predicted_next - total_current) / total_current, 1)
         if total_current > 0 and fc.get("ready") else 0.0
     )
 
-    # KPI: số vật tư đang ở mức Đỏ/Vàng theo DOI (tập trọng tâm hô hấp) —
-    # cùng ngưỡng và cùng công thức với trang Cảnh báo thiếu hụt.
     al_focus = dss_alerts.alert_rows(db, demand=nhu_cau, only_focus=True)
     dem_focus = dss_dashboard._counts(al_focus)
     shortage_count = dem_focus["red"] + dem_focus["amber"]
+    overall_risk = ps.assess_overall_risk(cases_trend, dem_focus["red"], dem_focus["amber"])["level"]
 
-    # Mức nguy cơ chung — cùng hàm `assess_overall_risk` mà Tổng quan dùng.
-    overall_risk_info = ps.assess_overall_risk(cases_trend, dem_focus["red"], dem_focus["amber"])
-    overall_risk = overall_risk_info["level"]
-
-    # Xu hướng 6 tháng (this year + last year)
+    # Xu hướng 6 kỳ đã chốt, kèm cùng kỳ năm trước — cùng nguồn mart.
     trend_rows = []
-    for i in range(5, -1, -1):
-        year = today.year
-        month = today.month - i
-        while month <= 0:
-            month += 12
-            year -= 1
-        start_m = date(year, month, 1)
-        end_m = date(year + (1 if month == 12 else 0), (month % 12) + 1, 1) - timedelta(days=1)
-        this_y = (
-            db.query(func.coalesce(func.sum(DiseaseCase.case_count), 0))
-            .filter(DiseaseCase.recorded_at >= start_m, DiseaseCase.recorded_at <= end_m)
-            .scalar()
-            or 0
-        )
-        last_y = (
-            db.query(func.coalesce(func.sum(DiseaseCase.case_count), 0))
-            .filter(
-                DiseaseCase.recorded_at >= start_m.replace(year=start_m.year - 1),
-                DiseaseCase.recorded_at <= end_m.replace(year=end_m.year - 1),
-            )
-            .scalar()
-            or 0
-        )
-        trend_rows.append({"month": f"T{month}", "this_year": int(this_y), "last_year": int(last_y)})
+    for row in ps.case_series(db, n_periods=6, end_period=last_closed):
+        p = row["period"]
+        trend_rows.append({
+            "month": f"T{int(p[5:7])}", "period": p,
+            "this_year": int(row["cases"] or 0),
+            "last_year": int(ps.cases_in_period(db, ps.shift_period(p, -12)) or 0),
+        })
 
-    # Top 5 vật tư demand vs stock — cùng bảng "Nhu cầu 30 ngày" của Cảnh báo
+    # Top 5 thuốc demand vs stock — cùng bảng "Nhu cầu 30 ngày" của Cảnh báo
     # thiếu hụt (delta_need = max(0, d_forecast - s_usable)), không phải
     # SupplyRequirement (đã dừng sinh dữ liệu — xem _archive/README.md).
     focus_rows = list(al_focus.get("rows") or [])
@@ -1199,7 +614,10 @@ async def _build_dashboard_summary_data(db: Session) -> Dict:
 
     return {
         "as_of": today.isoformat(),
-        "month_label": first_of_this_month.strftime("%m/%Y"),
+        "month_label": f"{last_closed[5:7]}/{last_closed[:4]}" if last_closed else "—",
+        "last_closed_period": last_closed,
+        "open_period": anchor["open_period"],
+        "forecast_period": fc.get("target_period"),
         "kpi": {
             "total_cases_current": int(total_current),
             "cases_trend_pct": cases_trend,
@@ -1262,7 +680,7 @@ def _render_dashboard_summary_pdf(data: Dict) -> Response:
                 f"{kpi['predicted_trend_pct']:+.1f}%",
             ],
             [
-                "Vật tư thiếu hụt",
+                "Thuốc thiếu hụt",
                 f"{kpi['shortage_supplies_count']:,} mục",
                 "—",
             ],
@@ -1301,7 +719,7 @@ def _render_dashboard_summary_pdf(data: Dict) -> Response:
     )
 
     if data["demand_vs_stock"]:
-        ds_data = [["Vật tư", "Đơn vị", "Tồn kho", "Nhu cầu"]]
+        ds_data = [["Thuốc", "Đơn vị", "Tồn kho", "Nhu cầu"]]
         for r in data["demand_vs_stock"]:
             ds_data.append([
                 Paragraph(r["supply_name"], cell_style),
@@ -1317,10 +735,10 @@ def _render_dashboard_summary_pdf(data: Dict) -> Response:
     story.append(Spacer(1, 0.5 * cm))
 
     # 4. Alerts table
-    story.append(Paragraph("<b>IV. Cảnh báo thiếu hụt vật tư (Top 5)</b>", styles["Heading2"]))
+    story.append(Paragraph("<b>IV. Cảnh báo thiếu hụt thuốc (Top 5)</b>", styles["Heading2"]))
     if data["alerts"]:
         severity_label = {"critical": "Nguy hiểm", "high": "Thiếu hụt", "medium": "Cảnh báo"}
-        a_data = [["Vật tư", "Tồn hiện tại", "Định mức", "Trạng thái"]]
+        a_data = [["Thuốc", "Tồn hiện tại", "Định mức", "Trạng thái"]]
         for a in data["alerts"]:
             a_data.append([
                 Paragraph(a["supply_name"], cell_style),
@@ -1478,61 +896,57 @@ async def _build_inventory_data(
     db: Session,
     category: Optional[str],
 ) -> Dict:
-    """Báo cáo Tồn kho: vật tư + tồn kho + ngưỡng AT + trạng thái."""
-    from app.models.medical_supply import MedicalSupply
-    from app.models.inventory import Inventory as InventoryModel
+    """Báo cáo Tồn kho thuốc — CÙNG chuỗi với trang Quản lý thuốc và Cảnh báo
+    (dss_alerts.alert_rows, toàn danh mục): tồn hữu dụng FEFO, tiêu hao/ngày,
+    DOI và nhãn Đỏ/Vàng/Xanh/Xám. Trước 13/09/2026 báo cáo này xếp loại theo
+    `inventory.safety_stock` — cột chỉ có giá trị ở 34/5.051 dòng — nên ra một
+    hệ nhãn thứ hai mâu thuẫn với trang Cảnh báo.
 
-    q = db.query(
-        Inventory.id,
-        Inventory.current_stock,
-        Inventory.safety_stock,
-        Inventory.expiry_date,
-        MedicalSupply.id.label("supply_id"),
-        MedicalSupply.name,
-        MedicalSupply.category,
-        MedicalSupply.unit,
-    ).join(MedicalSupply, MedicalSupply.id == Inventory.supply_id)
-    if category:
-        q = q.filter(MedicalSupply.category == category)
-    rows = q.order_by(MedicalSupply.name).all()
+    Chỉ gồm mã có tiêu hao trong 12 kỳ đã chốt (mã chưa từng xuất không có
+    mẫu số nên không đo được DOI, không đưa vào báo cáo).
+    """
+    from app.services import dss_alerts
+
+    al = dss_alerts.alert_rows(db, only_focus=False)
+    th = al.get("tong_hop") or {}
+    nguong = th.get("nguong") or {}
 
     items = []
-    for r in rows:
-        cur = r.current_stock or 0
-        saf = r.safety_stock or 0
-        # saf = 0 với gần như toàn bộ danh mục (xem chú thích DOI_DO_NGAY),
-        # nên nhánh "Bình thường" cũ là một khẳng định vô căn cứ. Khi không có
-        # ngưỡng thì nói rõ là chưa xác định.
-        if cur <= 0:
-            status_text = "Hết hàng"
-        elif saf <= 0:
-            status_text = "Chưa xác định ngưỡng"
-        elif cur < saf * 0.3:
-            status_text = "Nguy cấp"
-        elif cur <= saf:
-            status_text = "Dưới ngưỡng"
-        else:
-            status_text = "Bình thường"
+    for r in (al.get("rows") or []):
+        dm = r.get("danh_muc") or "Khác"
+        if category and dm != category:
+            continue
         items.append(
             {
-                "supply_name": r.name,
-                "category": _vi_category(r.category),
-                "unit": r.unit,
-                "current_stock": cur,
-                "safety_stock": saf,
-                "status": status_text,
-                "expiry_date": r.expiry_date.strftime("%d/%m/%Y") if r.expiry_date else "",
+                "supply_code": r["supply_code"],
+                "supply_name": r["ten"] or r["supply_code"],
+                "category": dm,
+                "unit": r["don_vi"] or "",
+                "current_stock": int(round(r["s_total"] or 0)),
+                "usable_stock": int(round(r["s_usable"] or 0)),
+                "d_daily": round(float(r["d_daily"] or 0), 2),
+                "doi": round(float(r["doi"]), 1) if r.get("doi") is not None else None,
+                "status": _NHAN_MUC[r["muc"]],
             }
         )
+    thu_tu = {"Đỏ": 0, "Vàng": 1, "Xanh": 2, "Xám": 3}
+    items.sort(key=lambda x: (thu_tu[x["status"]], x["doi"] if x["doi"] is not None else 10 ** 9))
     return {
         "items": items,
         "summary": {
             "total": len(items),
-            "critical": sum(1 for x in items if x["status"] == "Nguy cấp"),
-            "low": sum(1 for x in items if x["status"] == "Dưới ngưỡng"),
-            "safe": sum(1 for x in items if x["status"] == "Bình thường"),
+            "red": sum(1 for x in items if x["status"] == "Đỏ"),
+            "amber": sum(1 for x in items if x["status"] == "Vàng"),
+            "green": sum(1 for x in items if x["status"] == "Xanh"),
+            "grey": sum(1 for x in items if x["status"] == "Xám"),
+            "red_days": float(nguong.get("red_days") or 18),
+            "amber_days": float(nguong.get("amber_days") or 36),
+            "stock_source": th.get("nguon_ton_kho") or "khong_co",
         },
     }
+
+
+_NHAN_MUC = {"red": "Đỏ", "amber": "Vàng", "green": "Xanh", "grey": "Xám"}
 
 
 async def _build_shortage_data(
@@ -1541,13 +955,13 @@ async def _build_shortage_data(
     end: date,
     disease_type: Optional[str],
 ) -> Dict:
-    """Báo cáo Thiếu hụt vật tư — đọc từ CÙNG tầng Cảnh báo thiếu hụt
+    """Báo cáo Thiếu hụt thuốc — đọc từ CÙNG tầng Cảnh báo thiếu hụt
     (dss_dashboard.tang1_tang2 → dss_alerts.alert_rows) thay vì SupplyRequirement
     (bảng đã dừng sinh dữ liệu — xem _archive/README.md).
 
     Đây là ảnh chụp TẠI THỜI ĐIỂM XUẤT báo cáo (Đỏ/Vàng theo DOI, nhu cầu dự
     báo `horizon_days` ngày tới), không phải tổng dồn theo khoảng [start, end]
-    như bản cũ — công thức DSS hợp nhất không tách vật tư theo từng bệnh nên
+    như bản cũ — công thức DSS hợp nhất không tách thuốc theo từng bệnh nên
     `disease_type` không còn áp dụng để lọc (bỏ qua nếu có truyền).
     """
     from app.services import dss_dashboard, dss_alerts
@@ -1750,28 +1164,31 @@ def _render_forecast_pdf(data: Dict, start: date, end: date) -> Response:
 def _render_inventory_pdf(data: Dict) -> Response:
     rows = [
         [
+            it["supply_code"],
             it["supply_name"],
             it["category"],
             it["unit"],
             f"{it['current_stock']:,}",
-            f"{it['safety_stock']:,}",
+            f"{it['usable_stock']:,}",
+            f"{it['d_daily']:,.2f}",
+            "—" if it["doi"] is None else f"{it['doi']:,.1f}",
             it["status"],
-            it["expiry_date"],
         ]
         for it in data["items"]
     ]
     s = data["summary"]
     return _generic_pdf(
-        title="Báo cáo Tồn kho Vật tư",
+        title="Báo cáo Tồn kho Thuốc",
         period_label=datetime.now().strftime("%d/%m/%Y"),
-        headers=["Vật tư", "Loại", "ĐVT", "Tồn kho", "Ngưỡng AT", "Trạng thái", "Hạn dùng"],
+        headers=["Mã", "Thuốc", "Danh mục", "ĐVT", "Tồn kho", "Tồn hữu dụng", "Tiêu hao/ngày", "DOI (ngày)", "Nhãn"],
         rows=rows,
-        col_widths_cm=[7, 3, 1.8, 2.2, 2.2, 3, 2.5],
+        col_widths_cm=[1.8, 6.2, 3.0, 1.6, 2.0, 2.2, 2.2, 2.0, 1.6],
         summary_lines=[
-            f"<b>Tổng vật tư:</b> {s['total']:,} | "
-            f"<b>An toàn:</b> {s['safe']:,} | "
-            f"<b>Dưới ngưỡng:</b> {s['low']:,} | "
-            f"<b>Nguy cấp:</b> {s['critical']:,}"
+            f"<b>Tổng thuốc:</b> {s['total']:,} | "
+            f"<b>Đỏ:</b> {s['red']:,} | <b>Vàng:</b> {s['amber']:,} | "
+            f"<b>Xanh:</b> {s['green']:,} | <b>Xám:</b> {s['grey']:,}",
+            f"DOI = tồn hữu dụng (FEFO) / tiêu hao ngày · Đỏ ≤ {s['red_days']:.0f} · "
+            f"Vàng ≤ {s['amber_days']:.0f} ngày · Nguồn tồn: {s['stock_source']}",
         ],
     )
 
@@ -1790,13 +1207,13 @@ def _render_shortage_pdf(data: Dict, start: date, end: date) -> Response:
     ]
     s = data["summary"]
     return _generic_pdf(
-        title="Báo cáo Thiếu hụt Vật tư",
+        title="Báo cáo Thiếu hụt Thuốc",
         period_label=f"{start.strftime('%d/%m/%Y')} - {end.strftime('%d/%m/%Y')}",
-        headers=["Vật tư", "Loại", "ĐVT", "Nhu cầu", "Tồn kho", "Mức thiếu"],
+        headers=["Thuốc", "Loại", "ĐVT", "Nhu cầu", "Tồn kho", "Mức thiếu"],
         rows=rows,
         col_widths_cm=[7.5, 3, 2, 2.5, 2.5, 2.5],
         summary_lines=[
-            f"<b>Số vật tư thiếu:</b> {s['total']:,} | "
+            f"<b>Số thuốc thiếu:</b> {s['total']:,} | "
             f"<b>Tổng lượng thiếu:</b> {s['total_shortage']:,}"
         ],
     )
@@ -1922,23 +1339,27 @@ def _render_forecast_excel(data: Dict, start: date, end: date) -> Response:
 def _render_inventory_excel(data: Dict) -> Response:
     rows = [
         [
+            it["supply_code"],
             it["supply_name"],
             it["category"],
             it["unit"],
             it["current_stock"],
-            it["safety_stock"],
+            it["usable_stock"],
+            it["d_daily"],
+            it["doi"],
             it["status"],
-            it["expiry_date"],
         ]
         for it in data["items"]
     ]
+    s = data["summary"]
     return _generic_excel(
-        sheet_title="Tồn kho",
-        headers=["Vật tư", "Loại", "ĐVT", "Tồn kho", "Ngưỡng AT", "Trạng thái", "Hạn dùng"],
+        sheet_title="Tồn kho thuốc",
+        headers=["Mã", "Thuốc", "Danh mục", "ĐVT", "Tồn kho", "Tồn hữu dụng (FEFO)", "Tiêu hao/ngày", "DOI (ngày)", "Nhãn"],
         rows=rows,
-        column_widths=[40, 14, 8, 12, 12, 16, 14],
-        filename_prefix="bao_cao_ton_kho",
-        title_line=f"Báo cáo Tồn kho Vật tư — {datetime.now().strftime('%d/%m/%Y')}",
+        column_widths=[10, 40, 18, 8, 12, 16, 14, 12, 8],
+        filename_prefix="bao_cao_ton_kho_thuoc",
+        title_line=(f"Báo cáo Tồn kho Thuốc — {datetime.now().strftime('%d/%m/%Y')} · "
+                    f"Đỏ ≤ {s['red_days']:.0f} · Vàng ≤ {s['amber_days']:.0f} ngày"),
     )
 
 
@@ -1956,33 +1377,17 @@ def _render_shortage_excel(data: Dict, start: date, end: date) -> Response:
     ]
     return _generic_excel(
         sheet_title="Thiếu hụt",
-        headers=["Vật tư", "Loại", "ĐVT", "Nhu cầu", "Tồn kho", "Mức thiếu"],
+        headers=["Thuốc", "Loại", "ĐVT", "Nhu cầu", "Tồn kho", "Mức thiếu"],
         rows=rows,
         column_widths=[40, 14, 8, 14, 14, 14],
         filename_prefix="bao_cao_thieu_hut",
-        title_line=f"Báo cáo Thiếu hụt Vật tư — {start.strftime('%d/%m/%Y')} đến {end.strftime('%d/%m/%Y')}",
+        title_line=f"Báo cáo Thiếu hụt Thuốc — {start.strftime('%d/%m/%Y')} đến {end.strftime('%d/%m/%Y')}",
     )
 
 
 
 
 # ── Excel cho 4 loại legacy ─────────────────────────────────────────────────
-
-
-def _render_consumption_excel(rows_query, start: date, end: date) -> Response:
-    """rows_query là kết quả SQL — chuyển sang list."""
-    rows = [
-        [r.category, r.supply_name, r.unit, int(r.total_required or 0)]
-        for r in rows_query
-    ]
-    return _generic_excel(
-        sheet_title="Tiêu thụ",
-        headers=["Loại", "Vật tư", "ĐVT", "Tổng yêu cầu"],
-        rows=rows,
-        column_widths=[14, 40, 8, 14],
-        filename_prefix="bao_cao_tieu_thu",
-        title_line=f"Báo cáo Tiêu thụ — {start.strftime('%d/%m/%Y')} đến {end.strftime('%d/%m/%Y')}",
-    )
 
 
 def _render_accuracy_excel(forecasts, start: date, end: date) -> Response:
@@ -2005,30 +1410,6 @@ def _render_accuracy_excel(forecasts, start: date, end: date) -> Response:
         column_widths=[12, 22, 14, 12, 12, 12, 12],
         filename_prefix="bao_cao_chinh_xac",
         title_line=f"Báo cáo Độ chính xác Dự báo — {start.strftime('%d/%m/%Y')} đến {end.strftime('%d/%m/%Y')}",
-    )
-
-
-def _render_turnover_excel(items: list, start: date, end: date) -> Response:
-    rows = [
-        [
-            it["supply_name"],
-            it["category"],
-            it["unit"],
-            it["location"],
-            it["current_stock"],
-            it["safety_stock"],
-            it["total_required"],
-            it["turnover_rate"],
-        ]
-        for it in items
-    ]
-    return _generic_excel(
-        sheet_title="Vòng quay",
-        headers=["Vật tư", "Loại", "ĐVT", "Khu vực", "Tồn kho", "Ngưỡng AT", "Yêu cầu", "Vòng quay"],
-        rows=rows,
-        column_widths=[36, 14, 8, 14, 12, 14, 12, 14],
-        filename_prefix="bao_cao_vong_quay",
-        title_line=f"Báo cáo Vòng quay Tồn kho — {start.strftime('%d/%m/%Y')} đến {end.strftime('%d/%m/%Y')}",
     )
 
 
@@ -2069,7 +1450,7 @@ def _render_dashboard_summary_excel(data: Dict) -> Response:
     kpi_rows = [
         ("Tổng số ca hiện tại", kpi["total_cases_current"], f"{kpi['cases_trend_pct']:+.1f}%"),
         ("Số ca dự báo tháng tới", kpi["predicted_cases_next_month"], f"{kpi['predicted_trend_pct']:+.1f}%"),
-        ("Vật tư thiếu hụt", f"{kpi['shortage_supplies_count']} mục", "—"),
+        ("Thuốc thiếu hụt", f"{kpi['shortage_supplies_count']} mục", "—"),
         ("Mức nguy cơ chung", kpi["overall_risk"], "—"),
     ]
     for r in kpi_rows:
@@ -2096,7 +1477,7 @@ def _render_dashboard_summary_excel(data: Dict) -> Response:
     # Phần III: Demand vs Stock
     ws.cell(row=row, column=1, value="III. Nhu cầu vs Tồn kho (Top 5)").font = section_font
     row += 1
-    for c, h in enumerate(["Vật tư", "ĐVT", "Tồn kho", "Nhu cầu"], 1):
+    for c, h in enumerate(["Thuốc", "ĐVT", "Tồn kho", "Nhu cầu"], 1):
         cell = ws.cell(row=row, column=c, value=h)
         cell.fill = header_fill
         cell.font = header_font
@@ -2110,9 +1491,9 @@ def _render_dashboard_summary_excel(data: Dict) -> Response:
     row += 1
 
     # Phần IV: Cảnh báo
-    ws.cell(row=row, column=1, value="IV. Cảnh báo thiếu hụt vật tư (Top 5)").font = section_font
+    ws.cell(row=row, column=1, value="IV. Cảnh báo thiếu hụt thuốc (Top 5)").font = section_font
     row += 1
-    for c, h in enumerate(["Vật tư", "Tồn hiện tại", "Định mức", "Trạng thái"], 1):
+    for c, h in enumerate(["Thuốc", "Tồn hiện tại", "Định mức", "Trạng thái"], 1):
         cell = ws.cell(row=row, column=c, value=h)
         cell.fill = header_fill
         cell.font = header_font

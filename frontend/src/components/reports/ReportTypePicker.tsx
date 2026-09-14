@@ -37,8 +37,8 @@ export const REPORT_TYPES: ReportTypeMeta[] = [
   },
   {
     key: 'inventory',
-    title: 'Tồn kho vật tư',
-    description: 'Danh sách vật tư, ngưỡng an toàn và trạng thái.',
+    title: 'Tồn kho thuốc',
+    description: 'Tồn hữu dụng FEFO, DOI và nhãn Đỏ/Vàng/Xanh/Xám toàn danh mục.',
     icon: Boxes,
     accent: 'emerald',
   },

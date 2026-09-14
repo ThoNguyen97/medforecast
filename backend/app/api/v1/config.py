@@ -19,7 +19,7 @@ bản ghi này sửa qua /api/v1/dss/params (có kiểm khoảng và mô tả h�
 import logging
 from typing import Any, List
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -49,12 +49,7 @@ def list_configs(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    """
-    Return all system configuration entries.
-
-    All authenticated users can read configuration values.
-    """
-    logger.info(f"List configs requested by user={current_user.username}")
+    """Mọi dòng system_config (mật khẩu HIS đã che)."""
     service = ConfigService(db)
     return service.get_all_configs()
 
@@ -65,15 +60,7 @@ def get_config_by_key(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    """
-    Return a single configuration entry by its key.
-
-    Returns 404 if the key does not exist.
-    All authenticated users can read configuration values.
-    """
-    logger.info(
-        f"Get config key='{key}' requested by user={current_user.username}"
-    )
+    """Một dòng theo khoá; 404 nếu không có (mật khẩu HIS đã che)."""
     service = ConfigService(db)
     return service.get_config_by_key(key)
 
@@ -86,16 +73,18 @@ def update_config_by_key(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_admin_user),
 ) -> Any:
-    """
-    Create or update a configuration entry by key.
+    """Tạo/sửa một dòng cấu hình (Admin), ghi audit_logs.
 
-    Requires Administrator role.
-    If the key does not exist it will be created.
-    Changes are recorded in audit_logs with old and new values.
+    Ba khoá có endpoint riêng kèm kiểm tra dữ liệu bị chặn ở đây, để không
+    ai ghi đè ngưỡng DSS hay mật khẩu HIS bằng chuỗi tự do:
+    `dss.thresholds`, `dss.care_level` → PUT /dss/params;
+    `his_sync.connection` → PUT /sync/config.
     """
-    logger.info(
-        f"Update config key='{key}' requested by user={current_user.username}"
-    )
+    if key in ("dss.thresholds", "dss.care_level", "his_sync.connection"):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Khoá '{key}' phải sửa qua endpoint chuyên biệt (/dss/params hoặc /sync/config).",
+        )
     service = ConfigService(db)
     return service.update_config(
         key=key,

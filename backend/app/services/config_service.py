@@ -4,7 +4,7 @@ import logging
 from typing import List, Optional
 
 from fastapi import HTTPException, status
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 from app.models.audit_log import AuditLog
 from app.models.system_config import SystemConfig
@@ -21,11 +21,12 @@ class ConfigService:
     # ── SystemConfig helpers ──────────────────────────────────────────────────
 
     def get_all_configs(self) -> List[SystemConfig]:
-        """Return all system config entries."""
-        return self.db.query(SystemConfig).order_by(SystemConfig.config_key).all()
+        """Mọi dòng system_config, mật khẩu HIS đã che (xem `_che_mat_khau`)."""
+        rows = self.db.query(SystemConfig).order_by(SystemConfig.config_key).all()
+        return [self._che_mat_khau(r) for r in rows]
 
     def get_config_by_key(self, key: str) -> SystemConfig:
-        """Return a single config entry by key, raising 404 if absent."""
+        """Một dòng theo khoá; 404 nếu không có. Mật khẩu HIS đã che."""
         cfg = (
             self.db.query(SystemConfig)
             .filter(SystemConfig.config_key == key)
@@ -36,6 +37,23 @@ class ConfigService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Configuration key '{key}' not found",
             )
+        return self._che_mat_khau(cfg)
+
+    def _che_mat_khau(self, cfg: SystemConfig) -> SystemConfig:
+        """`his_sync.connection` chứa `password_enc`. Endpoint /config đọc được
+        bởi mọi người dùng đã đăng nhập, nên trả về bản đã bỏ khoá đó (tách
+        khỏi session để không vô tình ghi đè). Bản đầy đủ chỉ SyncService đọc."""
+        if cfg.config_key != "his_sync.connection":
+            return cfg
+        try:
+            d = json.loads(cfg.config_value or "{}")
+        except (TypeError, ValueError):
+            return cfg
+        if "password_enc" not in d:
+            return cfg
+        d["has_password"] = bool(d.pop("password_enc"))
+        self.db.expunge(cfg)
+        cfg.config_value = json.dumps(d, ensure_ascii=False)
         return cfg
 
     def update_config(

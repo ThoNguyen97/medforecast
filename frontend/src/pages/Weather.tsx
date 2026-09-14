@@ -13,6 +13,7 @@ import {
   Edit3,
   Trash2,
   Cloud,
+  RefreshCw,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -63,6 +64,7 @@ export default function Weather() {
 
   const [items, setItems] = useState<EnvRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [syncingOpenMeteo, setSyncingOpenMeteo] = useState(false);
 
@@ -118,15 +120,41 @@ export default function Weather() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterYear, filterMonth, filterProvince]);
 
+  // `items` là ảnh chụp DB lúc mount. Nếu DB đổi ở ngoài app (chạy lại script
+  // nạp dữ liệu, đồng bộ ở máy khác) mà tab vẫn mở thì bảng hiển thị số liệu đã
+  // chết — đã gặp: dòng thời tiết cũ còn trên màn hình dù DB không còn.
+  // Quay lại tab là nạp lại từ DB.
+  useEffect(() => {
+    const napLai = () => {
+      if (document.visibilityState === 'visible') {
+        loadData();
+        loadDistinctValues();
+      }
+    };
+    document.addEventListener('visibilitychange', napLai);
+    window.addEventListener('focus', napLai);
+    return () => {
+      document.removeEventListener('visibilitychange', napLai);
+      window.removeEventListener('focus', napLai);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const loadData = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/environmental/', { params: { limit: 50000 } });
+      // Bảng này phải phản ánh ĐÚNG những gì đang nằm trong environmental_data.
+      // DB có thể bị đổi ngoài app (script nạp lại, đồng bộ từ máy khác) nên chặn
+      // cache HTTP, đừng để trình duyệt trả lại bản chụp cũ.
+      const res = await api.get('/environmental/', {
+        params: { limit: 50000, _t: Date.now() },
+        headers: { 'Cache-Control': 'no-cache' },
+      });
       setItems(res.data || []);
+      setLoadError(null);
     } catch (err: any) {
-      console.error('❌ Environmental API Error:', err);
-      console.error('Response:', err.response?.data);
-      console.error('Status:', err.response?.status);
+      setItems([]);
+      setLoadError(err?.response?.data?.detail || err?.message || 'Không tải được dữ liệu môi trường');
     } finally {
       setLoading(false);
     }
@@ -195,8 +223,6 @@ export default function Weather() {
         params: {
           target_month: month,
           province: filterProvince !== 'all' ? filterProvince : undefined,
-          // Don't filter by district for trend - use province-level data
-          // district: filterDistrict !== 'all' ? filterDistrict : undefined,
         },
       });
       setTrend(res.data || []);
@@ -205,16 +231,8 @@ export default function Weather() {
     }
   };
 
-  // Filter and paginate - show all months of selected year, optionally filter by specific month
+  // Lọc theo năm / tháng / tỉnh rồi phân trang
   const filtered = useMemo(() => {
-    console.log('🔍 Weather Filter Debug:', {
-      totalItems: items.length,
-      filterYear,
-      filterMonth, 
-      filterProvince,
-      sampleItem: items[0]
-    });
-    
     return items.filter((it) => {
       // Filter by year
       if (filterYear) {
@@ -446,6 +464,18 @@ export default function Weather() {
         </div>
         <div className="flex flex-wrap gap-2">
           <button
+            onClick={() => {
+              loadData();
+              loadDistinctValues();
+              loadTrend();
+            }}
+            disabled={loading}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-neutral-200 rounded-xl text-sm font-medium hover:bg-neutral-50 disabled:opacity-50"
+            title="Nạp lại từ database"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /> Tải lại
+          </button>
+          <button
             onClick={downloadTemplate}
             className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-neutral-200 rounded-xl text-sm font-medium hover:bg-neutral-50"
           >
@@ -627,6 +657,11 @@ export default function Weather() {
 
       {/* Data table */}
       <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden">
+        {loadError && (
+          <div className="px-4 py-2 text-sm text-danger-700 bg-danger-50 border-b border-danger-100">
+            {loadError}
+          </div>
+        )}
         {loading ? (
           <div className="h-64 flex items-center justify-center">
             <LoadingSpinner />

@@ -29,7 +29,7 @@ const navItems: NavItem[] = [
   { label: 'Dữ liệu bệnh', path: ROUTES.EPIDEMIOLOGY, icon: HeartPulse },
   { label: 'Dữ liệu thời tiết', path: ROUTES.WEATHER, icon: CloudSun },
   { label: 'Phân tích & Dự báo', path: ROUTES.FORECASTING, icon: TrendingUp },
-  { label: 'Vật tư y tế', path: ROUTES.INVENTORY, icon: Boxes },
+  { label: 'Quản lý thuốc', path: ROUTES.INVENTORY, icon: Boxes },
   { label: 'Cảnh báo thiếu hụt', path: ROUTES.ALERTS, icon: ShieldAlert },
   { label: 'Báo cáo', path: ROUTES.REPORTS, icon: FileBarChart },
   { label: 'Quản trị', path: ROUTES.SETTINGS, icon: Settings, adminOnly: true },
@@ -48,7 +48,7 @@ export default function Sidebar() {
         </div>
         <div className="min-w-0">
           <p className="font-bold text-sm text-neutral-900 leading-tight">MedForecast AI</p>
-          <p className="text-xs text-neutral-500 leading-tight">Dự báo vật tư y tế</p>
+          <p className="text-xs text-neutral-500 leading-tight">Dự báo nhu cầu thuốc</p>
         </div>
       </div>
 

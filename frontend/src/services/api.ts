@@ -52,14 +52,15 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
-      const token = localStorage.getItem(TOKEN_KEY);
-      if (token) {
+      // /auth/refresh nhận REFRESH token (hạn 7 ngày), không phải access token vừa hết hạn.
+      const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
+      if (refreshToken) {
         try {
           const response = await axios.post(
             `${API_BASE_URL}/auth/refresh`,
             {},
             {
-              headers: { Authorization: `Bearer ${token}` },
+              headers: { Authorization: `Bearer ${refreshToken}` },
               timeout: 5000,
             }
           );

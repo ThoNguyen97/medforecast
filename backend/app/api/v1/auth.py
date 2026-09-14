@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.core.security import create_access_token, verify_password
 from app.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, get_user_from_refresh_token
 from app.models.user import User
 from app.schemas.base import Token, LoginResponse, UserLogin, UserResponse
 
@@ -92,13 +92,9 @@ def get_current_user_info(current_user: User = Depends(get_current_user)) -> Any
 
 
 @router.post("/refresh", response_model=Token)
-def refresh_token(current_user: User = Depends(get_current_user)) -> Any:
-    """
-    Refresh access token.
-    
-    Issues a new JWT token for the authenticated user.
-    """
-    # Create new access token
+def refresh_token(current_user: User = Depends(get_user_from_refresh_token)) -> Any:
+    """Cấp access token mới. Header Authorization phải mang REFRESH token
+    (type = "refresh"); access token hết hạn không đổi được token mới."""
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": current_user.username}, expires_delta=access_token_expires

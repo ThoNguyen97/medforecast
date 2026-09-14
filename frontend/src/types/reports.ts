@@ -1,3 +1,6 @@
+// Hợp đồng /reports/forecast-accuracy và POST /reports/export.
+// Báo cáo consumption / inventory-turnover đã gỡ 13/09/2026 (đọc bảng đã ngừng sinh dữ liệu).
+
 // ── Report filter types ───────────────────────────────────────────────────────
 
 export interface ReportFilters {
@@ -7,34 +10,6 @@ export interface ReportFilters {
   category?: string;
   disease_type?: string;
   model_used?: string;
-}
-
-// ── Consumption report ────────────────────────────────────────────────────────
-
-export interface ConsumptionSupplyItem {
-  supply_name: string;
-  unit: string;
-  total_required: number;
-  active_days: number;
-  avg_daily_consumption: number;
-}
-
-export interface ConsumptionCategory {
-  category: string;
-  total_required: number;
-  supplies: ConsumptionSupplyItem[];
-}
-
-export interface ConsumptionReport {
-  report_type: 'consumption';
-  period: { start_date: string; end_date: string };
-  filters: { location: string | null; category: string | null };
-  summary: {
-    total_required_across_all_categories: number;
-    categories_count: number;
-  };
-  categories: ConsumptionCategory[];
-  generated_at: string;
 }
 
 // ── Forecast accuracy report ──────────────────────────────────────────────────
@@ -75,43 +50,20 @@ export interface ForecastAccuracyReport {
   generated_at: string;
 }
 
-// ── Inventory turnover report ─────────────────────────────────────────────────
-
-export interface TurnoverItem {
-  supply_id: number;
-  supply_name: string;
-  category: string;
-  unit: string;
-  location: string | null;
-  current_stock: number;
-  safety_stock: number;
-  total_required_in_period: number;
-  turnover_rate: number | null;
-  days_of_supply: number | null;
-  stock_value: number;
-  stock_status: 'safe' | 'critical' | 'out_of_stock';
-}
-
-export interface InventoryTurnoverReport {
-  report_type: 'inventory-turnover';
-  period: { start_date: string; end_date: string; period_days: number };
-  filters: { location: string | null; category: string | null };
-  summary: {
-    total_items: number;
-    avg_turnover_rate: number;
-    high_turnover_items: number;
-    out_of_stock_items: number;
-  };
-  items: TurnoverItem[];
-  generated_at: string;
-}
-
 // ── Export request ────────────────────────────────────────────────────────────
 
-export type ReportType = 'consumption' | 'forecast-accuracy' | 'inventory-turnover';
+// Đúng danh sách SUPPORTED_TYPES của POST /reports/export (backend reports.py)
+export type ReportType =
+  | 'epidemic'
+  | 'forecast'
+  | 'inventory'
+  | 'shortage'
+  | 'forecast-accuracy'
+  | 'dashboard-summary';
 
 export interface ExportReportRequest {
   report_type: ReportType;
+  format?: 'pdf' | 'excel';
   start_date?: string;
   end_date?: string;
   location?: string;

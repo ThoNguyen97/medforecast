@@ -14,6 +14,7 @@ from app.schemas.base import (
     EnvironmentalDataUpdate,
 )
 from app.services.environmental_service import EnvironmentalDataService
+from app.utils.province_alias import ten_chuan
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -207,7 +208,9 @@ async def import_environmental_csv_upload(
 
     for idx, row in enumerate(reader, start=2):
         month = (row.get("month") or "").strip()
-        prov = (row.get("province_city") or row.get("location") or "").strip()
+        # Tên CHUẨN ngay tại đường GHI: file nguồn có thể ghi "Thành phố Hồ Chí
+        # Minh", DB/UI dùng "TP. Hồ Chí Minh" — không chuẩn hoá là đẻ dòng trùng.
+        prov = ten_chuan((row.get("province_city") or row.get("location") or "").strip())
         dist = (row.get("district_ward") or "").strip()
 
         if not month or not prov:
@@ -344,7 +347,11 @@ async def import_environmental_csv_upload(
                 ", ".join(sorted(new_regions)),
             )
 
-    db.commit()
+    try:
+        db.commit()
+    except Exception as exc:                              # noqa: BLE001
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Không ghi được dữ liệu môi trường: {exc}")
     return {
         "status": "ok",
         "imported": imported,
@@ -424,6 +431,8 @@ def update_environmental_record(
         raise HTTPException(status_code=404, detail="Not found")
 
     update_dict = data.model_dump(exclude_none=True)
+    if update_dict.get("location"):
+        update_dict["location"] = ten_chuan(update_dict["location"])
     for k, v in update_dict.items():
         setattr(item, k, v)
     try:
@@ -502,6 +511,9 @@ def sync_openmeteo(
                    f"Thêm vào PROVINCE_COORDS trong openmeteo_client.py.",
         )
     lat, lon = coords
+    # lookup_coords nhận mọi biến thể tên; từ đây chỉ dùng tên CHUẨN để câu
+    # dedupe bên dưới (location == province) khớp đúng dòng đã có trong DB.
+    province = ten_chuan(province)
 
     client = OpenMeteoClient()
 
@@ -637,7 +649,11 @@ def sync_openmeteo(
             "days_aggregated": len(b["temps"]),
         })
 
-    db.commit()
+    try:
+        db.commit()
+    except Exception as exc:                              # noqa: BLE001
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Không ghi được dữ liệu Open-Meteo: {exc}")
 
     logger.info(
         "Open-Meteo sync by user=%s province=%s: imported=%d updated=%d months=%d",

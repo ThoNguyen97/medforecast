@@ -456,8 +456,8 @@ export default function ForecastHistoryTable({
                     và tháng.
                   </p>
                   <p className="text-neutral-500">
-                    Các nhu cầu vật tư đã sinh từ những dự báo này cũng bị xoá theo.
-                    Thao tác không hoàn tác được.
+                    Tổng quan và Cảnh báo sẽ báo "chưa ghi nhận dự báo" cho tới khi
+                    ghi nhận lại. Thao tác không hoàn tác được.
                   </p>
                 </>
               ) : (

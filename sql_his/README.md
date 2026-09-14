@@ -41,6 +41,21 @@ riêng trên cùng máy chủ tránh được chuyện đó.
 
 Chỗ cần sửa theo môi trường thật được đánh dấu `⚙`.
 
+### Bản hiện hành của ba thủ tục (13/09/2026, thư mục `phase0/`)
+
+| Script | Chạy ở đâu | Việc |
+|---|---|---|
+| `phase0/G1_00_PROD_store_cabenh_v3.sql` | PROD | `usp_MedForecast_DayDuLieu` — ca bệnh, phân cấp chăm sóc, tiêu hao theo rổ, tồn kho (`@GomVTYT = 0`) |
+| `phase0/G2_03_PROD_store_tieuhao_toanvien_v2.sql` | PROD | `usp_MedForecast_DayTieuHaoToanVien` — tiêu hao toàn viện làm mẫu số DOI (`@GomVTYT = 1`, cột `is_vtyt`) |
+| `phase0/G2_01_PROD_store_khocungung_v2.sql` | PROD | `usp_MedForecast_DayKhoCungUng` bản 2 — CHỈ tồn kho theo lô cho FEFO; khối lead time / MOQ / lịch sử nhập đã cắt |
+| `phase0/G2_04_PROD_sua_danh_muc_dich_truyen.sql` | PROD | Sửa nhánh "Dịch truyền" trong `#DrugMeta` (3.001/5.051 mã bị gán sai vì `TENPHANLOAIDUOC LIKE '%dịch truyền%'`) — cột `category` nuôi bộ lọc Danh mục và biểu đồ DOI theo danh mục |
+| `phase0/G2_02_STA_don_tan_du_mua_sam.sql` | STAGING | Xoá `MF_VatTu_ThuocTinh`, `MF_LichSuNhap` và 2 view tương ứng (tàn dư mua sắm) |
+| `phase0/G1_03_LOCAL_cau_hinh.sql`, `G1_04_LOCAL_cuasodphancap.sql` | SQLite local | 4 view của Tầng 2/3 — bản chạy tự động là `backend/app/data_pipeline/views.py`; từ 13/09 loại kỳ dở dang và chỉ lấy thuốc (`is_vtyt = 0`) |
+
+Phạm vi vật tư đã chốt: **thuốc thuần** (phương án A). VTYT vẫn nằm trong
+`MF_TieuHao_Tong` với `is_vtyt = 1` nhưng không vào mẫu số DOI, không có tồn
+kho theo lô và không có định mức.
+
 ## Phạm vi bệnh: ba NHÓM ICD, không phải bốn mã lẻ
 
 Đề cương chốt phạm vi là **ba nhóm ICD-10**, dự báo ở cấp nhóm rồi mới phân bổ

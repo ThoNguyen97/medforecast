@@ -170,7 +170,7 @@ export default function Alerts() {
           loading={!data}
           value={data?.forecast.ready ? fmt(data.forecast.total.point) : '—'}
           unit={data?.forecast.ready ? 'ca' : undefined}
-          context={forecastLine ?? 'Chưa có dự báo — Tầng 2 chưa chạy, cột thiếu hụt để trống'}
+          context={forecastLine ?? 'Chưa ghi nhận dự báo kỳ tới ở trang Phân tích — cột nhu cầu/thiếu hụt để trống'}
           footer={
             data?.demand.ready
               ? `Định mức thực nghiệm · ${fmt(data.demand.so_ma)} mã có nhu cầu`
@@ -299,7 +299,7 @@ function AlertsFullTable({
       <table className="w-full text-[13px]">
         <thead>
           <tr className="text-neutral-500 text-[11px] uppercase tracking-wide">
-            <th className="text-left px-5 py-2.5 font-semibold">Vật tư</th>
+            <th className="text-left px-5 py-2.5 font-semibold">Thuốc</th>
             <th className="text-left px-3 py-2.5 font-semibold">Danh mục</th>
             <th className="text-right px-3 py-2.5 font-semibold" title="Tổng tồn theo lô">Tồn</th>
             <th className="text-right px-3 py-2.5 font-semibold" title="Tồn sau khi trừ lô sắp hết hạn (FEFO)">Hữu dụng</th>
@@ -336,7 +336,7 @@ function AlertsFullTable({
               </td>
               <td className="px-3 py-2.5 text-right tabular-nums text-neutral-600">{fmt(r.d_daily, 2)}</td>
               <td className="px-3 py-2.5 text-right tabular-nums">
-                {!demandReady ? <span className="text-neutral-400">đang tính</span> : fmt(r.d_forecast, 1)}
+                {!demandReady ? <span className="text-neutral-400" title="Ghi nhận dự báo ở trang Phân tích">chưa có dự báo</span> : fmt(r.d_forecast, 1)}
               </td>
               <td className="px-3 py-2.5 text-right tabular-nums font-semibold whitespace-nowrap">
                 {r.doi == null ? '—' : `${fmt(r.doi, 1)} ng`}

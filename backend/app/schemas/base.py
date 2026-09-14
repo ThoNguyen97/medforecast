@@ -118,10 +118,9 @@ class MedicalSupplyBase(BaseModel):
     drug_code: str = Field(..., description="Mã từ cột DrugCode trong dữ liệu lịch sử")
     ten_hoat_chat: str = Field(..., description="Tên hoạt chất từ cột TenHoatChat")
     unit: str = Field(..., description="Đơn vị tính (Viên, Gói, Lọ, Chai, Cái, Ống)")
-    group_name: str = Field(..., description="Nhóm thuốc/vật tư")
+    group_name: str = Field(..., description="Nhóm thuốc")
     category: Optional[str] = None
     unit_price: Optional[float] = None
-    storage_capacity: Optional[int] = None
     description: Optional[str] = None
 
 
@@ -137,7 +136,6 @@ class MedicalSupplyUpdate(BaseModel):
     group_name: Optional[str] = None
     category: Optional[str] = None
     unit_price: Optional[float] = None
-    storage_capacity: Optional[int] = None
     description: Optional[str] = None
 
 
@@ -171,7 +169,7 @@ class InventoryResponse(ORMBase, InventoryBase):
     # Metoprolol tồn -30). Ràng buộc ge=0 ở InventoryBase là để chặn NHẬP sai
     # từ người dùng; response thì phải phản ánh đúng thực tế kho — giữ ge=0 ở
     # đây làm MỘT dòng âm đánh sập nguyên endpoint danh sách (ResponseValidationError
-    # → 500, trang Vật tư trống trơn). Ghi đè để bỏ ràng buộc ở chiều trả ra.
+    # → 500, trang Thuốc trống trơn). Ghi đè để bỏ ràng buộc ở chiều trả ra.
     current_stock: int
     safety_stock: int
 

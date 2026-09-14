@@ -1,17 +1,7 @@
-"""Dự báo phân cấp đọc từ tầng MART + so sánh các phương án hòa giải.
+"""Lõi dự báo mức nhóm — chỉ phụ thuộc numpy/pandas; SARIMAX/ETS (statsmodels)
+là tuỳ chọn, thiếu thì Ensemble ghi lý do và bỏ qua.
 
-Chỉ phụ thuộc numpy/pandas để chạy được ngay. SARIMAX (statsmodels) là tùy
-chọn: nếu cài đặt, tự động thêm vào ensemble; nếu không, bỏ qua — và
-Ensemble.describe() sẽ cho biết điều đó.
-
-Điểm vào duy nhất cho app và backtest (M1): `build_production_ensemble(df)`,
-đọc tham số từ `PRODUCTION_CONFIG`. Không gọi `build_default_ensemble()` không
-tham số trong app — đó là cấu hình "thời tiết tắt".
+Điểm vào cho app và backtest: `group_forecast.forecast_group_next(df, month, cfg)`
+với `cfg = config.PRODUCTION_CONFIG`. Import trực tiếp từ submodule; package
+này không re-export.
 """
-from .config import ForecastConfig, PRODUCTION_CONFIG
-from .models import (NaiveForecaster, SeasonalNaiveForecaster,
-                     SeasonalTrendForecaster, PoissonTrendForecaster,
-                     HarmonicPoissonForecaster, Ensemble,
-                     build_default_ensemble, build_production_ensemble,
-                     has_enough_weather)
-from .hierarchical import reconcile_ols, ewma_shares, split_topdown

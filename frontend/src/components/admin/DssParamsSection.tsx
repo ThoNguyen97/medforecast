@@ -67,15 +67,17 @@ export default function DssParamsSection() {
     return null;
   }, [draft]);
 
+  // Kiểm lỗi TRƯỚC: khi GET /dss/params lỗi thì data undefined, nếu để nhánh
+  // "đang tải" đứng trước sẽ quay spinner vĩnh viễn.
+  if (error) {
+    return <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">Không tải được tham số: {(error as Error).message}</div>;
+  }
   if (isLoading || !draft || !data) {
     return (
       <div className="bg-white rounded-2xl border border-neutral-200 p-8 text-sm text-neutral-500 flex items-center gap-2">
         <Loader2 className="w-4 h-4 animate-spin" /> Đang tải tham số…
       </div>
     );
-  }
-  if (error) {
-    return <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">Không tải được tham số: {(error as Error).message}</div>;
   }
 
   return (

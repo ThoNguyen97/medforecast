@@ -50,10 +50,8 @@ export function classifyStatus(
   currentStock: number,
   safetyStock: number,
 ): InventoryStatus {
-  // Chưa thiết lập ngưỡng an toàn (= 0) → coi như chưa quản lý ngưỡng,
-  // không đánh dấu nguy hiểm. Logic này khớp với /alerts: khi
-  // safety_stock = 0 và không có nhu cầu dự báo thì suggested_import = 0,
-  // tức không thiếu.
+  // Ngưỡng = 0 → chưa đặt ngưỡng tham khảo, không đánh dấu. Đây chỉ là nhãn
+  // tham khảo của trang Vật tư; cảnh báo thật theo DOI ở trang Cảnh báo.
   if (safetyStock <= 0) return 'normal';
 
   // Có ngưỡng mà tồn = 0 hoặc dưới 30% ngưỡng → nguy cấp.

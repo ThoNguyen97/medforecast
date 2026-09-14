@@ -49,12 +49,14 @@ export interface AnalyzeResponse {
     recorded_at?: string | null;
   };
   explanation_bullets: string[];
+  /** Backtest nhanh N bước cuối: rmse/r2 không đo → null. */
   accuracy?: {
-    mae: number;
-    rmse: number;
-    mape: number;
-    r2: number;
+    mae: number | null;
+    rmse: number | null;
+    mape: number | null;
+    r2: number | null;
     n_samples: number;
+    accuracy_pct?: number | null;
   } | null;
   weather: {
     forecast: Record<string, number | null>;
@@ -98,60 +100,9 @@ export interface ForecastHistoryItem {
   created_at: string | null;
   /** Tài khoản đã ghi nhận dự báo này. */
   created_by: string | null;
-  /** true = dòng TỔNG toàn quốc (location=NULL); bảng lịch sử loại ra để
-   *  không cộng hai lần, vì nó đã là tổng của các tỉnh. */
+  /** true = bản Toàn quốc (location = NULL) — số chính thức nuôi Tổng quan/Cảnh báo;
+   *  các bản theo tỉnh chỉ tham khảo, không cộng lại thành Toàn quốc. */
   is_nationwide?: boolean;
-}
-
-export interface ModelAccuracy {
-  mae: number;
-  rmse: number;
-  mape: number;
-  r2: number;
-  n_samples: number;
-}
-
-export interface TrainModelResult {
-  status: string;
-  disease_label: string;
-  mae?: number;
-  rmse?: number;
-  mape?: number;
-  r2?: number;
-  n_samples?: number;
-  reason?: string;
-  weather_correlations?: Record<string, number>;
-}
-
-export interface TrainResponse {
-  status: string;
-  region: string;
-  trained_count: number;
-  models: Record<string, TrainModelResult>;
-  trained_at: string;
-}
-
-export interface MLAnalyzeResponse {
-  disease_type: string;
-  disease_label: string;
-  region: string;
-  target_month: number;
-  target_year: number;
-  predicted_cases: number;
-  confidence_lower: number;
-  confidence_upper: number;
-  risk_level: 'low' | 'medium' | 'high' | 'very_high';
-  risk_label: string;
-  increase_pct: number;
-  formula_details: {
-    baseline: number;
-    weather_factor: number;
-    trend_factor: number;
-    raw_prediction: number;
-    regression_adjusted: number;
-  };
-  forecast_weather: Record<string, number | null>;
-  accuracy: ModelAccuracy;
 }
 
 export const forecastAnalysisService = {

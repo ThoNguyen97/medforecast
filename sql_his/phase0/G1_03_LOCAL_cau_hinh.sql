@@ -121,16 +121,25 @@ WHERE  config_key = 'admin.safety_rate';
    tách thành hai tập có nhãn rõ ràng, và để giao diện lọc được.
    ═════════════════════════════════════════════════════════════════════════ */
 
-/* 3a — DANH MỤC CÒN HOẠT ĐỘNG: có xuất trong 3 kỳ gần nhất.
+/* 13/09/2026 — cả ba view: (1) chỉ THUỐC (is_vtyt = 0) vì DayDuLieu và
+   DayKhoCungUng chạy @GomVTYT = 0, VTYT không có tồn/định mức nên chỉ ra Xám;
+   (2) LOẠI KỲ DỞ DANG (period < tháng hiện tại) — tháng đang chạy mới có vài
+   ngày tiêu hao, lọt vào cửa sổ thì d_daily bị kéo thấp, DOI phồng lên.
+   Bản chạy tự động: app/data_pipeline/views.py — sửa phải sửa cả hai. */
+
+/* 3a — DANH MỤC CÒN HOẠT ĐỘNG: thuốc có xuất trong 3 kỳ đã chốt gần nhất.
        Dùng làm MẪU SỐ cho mọi tỷ lệ phần trăm trên dashboard. */
 DROP VIEW IF EXISTS v_supply_active;
 CREATE VIEW v_supply_active AS
 SELECT DISTINCT u.supply_code
 FROM   fact_usage_total u
 WHERE  u.so_luong_toan_vien > 0
+  AND  u.is_vtyt = 0
+  AND  u.period < strftime('%Y-%m', 'now', 'localtime')
   AND  u.period >= (
         SELECT MIN(p) FROM (
           SELECT DISTINCT period AS p FROM fact_usage_total
+          WHERE period < strftime('%Y-%m', 'now', 'localtime')
           ORDER BY period DESC LIMIT 3));
 
 /* 3b — TẬP THEO DÕI TRỌNG TÂM: tỷ trọng hô hấp ≥ 25% trên 12 kỳ gần nhất.
@@ -144,13 +153,19 @@ SELECT supply_code,
        ROUND(SUM(d_baseline_thang)  / COUNT(*), 3)                                AS d_baseline_thang,
        COUNT(*)                                                                    AS so_ky
 FROM   fact_usage_total
-WHERE  period >= (
+WHERE  is_vtyt = 0
+  AND  period < strftime('%Y-%m', 'now', 'localtime')
+  AND  period >= (
         SELECT MIN(p) FROM (
           SELECT DISTINCT period AS p FROM fact_usage_total
+          WHERE period < strftime('%Y-%m', 'now', 'localtime')
           ORDER BY period DESC LIMIT 12))
 GROUP BY supply_code
 HAVING SUM(so_luong_toan_vien) > 0
    AND 100.0 * SUM(so_luong_hohap) / SUM(so_luong_toan_vien) >= 25.0
+   /* 13/09: phải còn hoạt động — mã đã ngừng xuất không cần cảnh báo tồn và
+      chiếm 54/91 dòng Xám. Ràng buộc: tạo v_supply_active TRƯỚC view này. */
+   AND supply_code IN (SELECT supply_code FROM v_supply_active)
    /* Ít nhất 3 kỳ có xuất — cùng điều kiện với Đ10-D. Một mã chỉ xuất đúng
       một tháng mà 90% là hô hấp không đủ cơ sở để xếp vào tập trọng tâm. */
    AND COUNT(*) >= 3;
@@ -167,9 +182,12 @@ SELECT  supply_code,
         ROUND(SUM(d_baseline_thang)   / COUNT(*) / 30.0, 6)   AS d_daily_baseline,
         ROUND(100.0 * SUM(so_luong_hohap) / NULLIF(SUM(so_luong_toan_vien),0), 2) AS ty_trong_hohap
 FROM    fact_usage_total
-WHERE   period >= (
+WHERE   is_vtyt = 0
+  AND   period < strftime('%Y-%m', 'now', 'localtime')
+  AND   period >= (
          SELECT MIN(p) FROM (
            SELECT DISTINCT period AS p FROM fact_usage_total
+           WHERE period < strftime('%Y-%m', 'now', 'localtime')
            ORDER BY period DESC LIMIT 12))
 GROUP BY supply_code
 HAVING  SUM(so_luong_toan_vien) > 0;

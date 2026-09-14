@@ -1,5 +1,4 @@
 """FastAPI dependencies."""
-from typing import Generator
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
@@ -11,21 +10,23 @@ from app.models.user import User
 security = HTTPBearer()
 
 
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db)
-) -> User:
-    """Get current authenticated user."""
-    token = credentials.credentials
+def _user_tu_token(token: str, db: Session, loai: str) -> User:
+    """Giải mã JWT, kiểm đúng loại token ('access' | 'refresh') rồi tra user.
+    Refresh token (hạn 7 ngày) không được dùng thay access token và ngược lại."""
     payload = verify_token(token)
-    
     if payload is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+    if (payload.get("type") or "access") != loai:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Token không phải loại {loai}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     username: str = payload.get("sub")
     if username is None:
         raise HTTPException(
@@ -49,6 +50,22 @@ def get_current_user(
         )
     
     return user
+
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+) -> User:
+    """Người dùng hiện tại từ ACCESS token."""
+    return _user_tu_token(credentials.credentials, db, "access")
+
+
+def get_user_from_refresh_token(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+) -> User:
+    """Người dùng từ REFRESH token — chỉ dùng cho POST /auth/refresh."""
+    return _user_tu_token(credentials.credentials, db, "refresh")
 
 
 def get_admin_user(current_user: User = Depends(get_current_user)) -> User:

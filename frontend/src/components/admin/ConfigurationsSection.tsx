@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Activity,
   Layers,
@@ -6,8 +6,6 @@ import {
   Plus,
   Pencil,
   Trash2,
-  Save,
-  Percent,
   X,
 } from 'lucide-react';
 import {
@@ -17,10 +15,8 @@ import {
   useCreateDiseaseGroup,
   useDeleteDisease,
   useDeleteDiseaseGroup,
-  useSafetyRate,
   useUpdateDisease,
   useUpdateDiseaseGroup,
-  useUpdateSafetyRate,
 } from '../../hooks/useAdminCatalog';
 import type {
   DiseaseGroupItem,
@@ -30,87 +26,9 @@ import type {
 export default function ConfigurationsSection() {
   return (
     <div className="space-y-5">
-      <SafetyRateCard />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <DiseaseConfigCard />
         <DiseaseGroupConfigCard />
-      </div>
-    </div>
-  );
-}
-
-// ── Safety rate ─────────────────────────────────────────────────────────────
-
-function SafetyRateCard() {
-  const { data: rate, isLoading } = useSafetyRate();
-  const updateMut = useUpdateSafetyRate();
-  const [value, setValue] = useState<number>(0);
-  const [saved, setSaved] = useState(false);
-
-  useEffect(() => {
-    if (rate !== undefined) setValue(Math.round(rate * 100));
-  }, [rate]);
-
-  const onSave = async () => {
-    await updateMut.mutateAsync(Math.max(0, Math.min(100, value)) / 100);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
-  };
-
-  return (
-    <div className="bg-white rounded-2xl border border-neutral-200 p-5 flex flex-wrap items-center gap-5 justify-between">
-      <div className="flex items-center gap-3">
-        <span className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
-          <Percent className="w-5 h-5 text-amber-600" />
-        </span>
-        <div>
-          <h3 className="text-sm font-semibold text-neutral-900">
-            Hệ số dự phòng (Safety Stock)
-          </h3>
-          <p className="text-xs text-neutral-500 mt-0.5 max-w-md">
-            Tỷ lệ dự phòng cộng thêm vào nhu cầu khi tính lượng thiếu hụt cần chuẩn bị.
-            Mặc định 15%.
-          </p>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-3">
-        {isLoading ? (
-          <Loader2 className="w-4 h-4 animate-spin text-neutral-400" />
-        ) : (
-          <div className="relative">
-            <input
-              type="number"
-              min={0}
-              max={100}
-              step={1}
-              value={value}
-              onChange={(e) => setValue(Number(e.target.value))}
-              className="w-24 h-10 pl-3 pr-9 rounded-lg border border-neutral-200 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
-            />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-neutral-500 pointer-events-none">
-              %
-            </span>
-          </div>
-        )}
-        <button
-          type="button"
-          onClick={onSave}
-          disabled={updateMut.isPending}
-          className="inline-flex items-center gap-2 px-4 h-10 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:opacity-60"
-        >
-          {updateMut.isPending ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <Save className="w-4 h-4" />
-          )}
-          Lưu
-        </button>
-        {saved && (
-          <span className="text-xs text-emerald-700 bg-emerald-50 px-2 py-1 rounded-full">
-            ✓ Đã lưu
-          </span>
-        )}
       </div>
     </div>
   );

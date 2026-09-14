@@ -11,28 +11,13 @@ Ba luồng đầu theo KỲ (`period`), nạp tăng dần được. Luồng th�
 tồn kho (`snapshot_date`) — không có khái niệm kỳ, và một ảnh chụp mới làm ảnh
 chụp cũ hết giá trị. Cả bốn đều xoá-rồi-chèn theo khoá phân vùng của mình.
 
------------------------------------------------------------------------------
-VÌ SAO LÀ MODULE RIÊNG, KHÔNG SỬA pipeline.py
+Tách khỏi `pipeline.py` để một luồng DSS hỏng không rollback phần ca bệnh;
+module chạy sau pipeline chính, transaction riêng cho từng luồng.
 
-`DataPipeline` hiện có 508 dòng và một transaction duy nhất bao trọn staging →
-dim → fact → mart. Thêm ba luồng vào giữa nghĩa là một lỗi ở luồng mới sẽ
-rollback cả phần ca bệnh vốn đang chạy tốt — đúng kiểu lỗi im lặng mà chính
-`_build_weather_mart` đã phải viết chú thích dài để tránh.
-
-Module này chạy độc lập, có transaction riêng, và được gọi SAU khi pipeline
-chính xong. Hỏng thì chỉ ba bảng mới rỗng, mọi thứ khác nguyên vẹn.
-
------------------------------------------------------------------------------
-CƠ CHẾ NẠP: XOÁ-RỒI-CHÈN THEO TỪNG KỲ
-
-Mỗi kỳ (`period`) có trong dữ liệu vừa kéo về sẽ bị XOÁ SẠCH bên local rồi chèn
-lại. Chạy lại mười lần cũng ra đúng một kết quả, và dữ liệu về muộn của tháng cũ
-được cập nhật đúng thay vì cộng thêm.
-
-KHÔNG dùng INSERT OR REPLACE: nếu bên nguồn một dòng biến mất (ví dụ toa bị huỷ
-sau khi đã đồng bộ) thì REPLACE vẫn để lại dòng cũ, còn xoá-theo-kỳ thì không.
-
-Các kỳ KHÔNG có trong lần kéo này được giữ nguyên — nên nạp tăng dần an toàn.
+Cơ chế nạp: XOÁ-RỒI-CHÈN theo khoá phân vùng. Mỗi kỳ có trong dữ liệu vừa kéo
+về bị xoá sạch bên local rồi chèn lại — idempotent, và dòng biến mất bên nguồn
+(toa huỷ muộn) cũng biến mất bên local (INSERT OR REPLACE không làm được điều
+đó). Kỳ không có trong lần kéo được giữ nguyên nên nạp tăng dần an toàn.
 """
 from __future__ import annotations
 
@@ -41,7 +26,7 @@ import re
 import os
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, Optional, Sequence
 
 import pandas as pd
 from sqlalchemy import text
@@ -154,7 +139,7 @@ RO_HOP_LE = {"NGT", "NT1", "NT2", "NT3", "NT0"}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# DDL — hai bảng phân cấp có thể chưa tồn tại
+# DDL — bốn bảng fact nằm ngoài Base.metadata
 # ─────────────────────────────────────────────────────────────────────────────
 
 DDL = [
@@ -218,7 +203,7 @@ DDL = [
 
 
 def ensure_tables(db) -> None:
-    """Tạo ba bảng đích nếu chưa có. Chạy lại vô hại."""
+    """Tạo bốn bảng đích + index nếu chưa có. Chạy lại vô hại."""
     for stmt in DDL:
         db.execute(text(stmt))
     db.commit()
@@ -489,8 +474,14 @@ def load_flow(db, connector, flow: str, full: bool = False) -> Dict[str, Any]:
                 f"Lỗi gốc: {msg[:200]}") from exc
         raise
     df = _prepare(raw, spec)
-    n = _replace_periods(db, spec["table"], df, list(spec["map"].keys()), khoa_pv)
-    db.commit()
+    # Xoá-rồi-chèn là MỘT giao dịch: DELETE xong mà INSERT vỡ giữa chừng thì
+    # phải quay lại đúng trạng thái trước, không được để lát dữ liệu trống.
+    try:
+        n = _replace_periods(db, spec["table"], df, list(spec["map"].keys()), khoa_pv)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
     periods = sorted(df[khoa_pv].unique().tolist()) if not df.empty else []
     logger.info("%s: nạp %d dòng cho %d kỳ (%s → %s)", spec["table"], n, len(periods),
@@ -505,7 +496,8 @@ def load_flow(db, connector, flow: str, full: bool = False) -> Dict[str, Any]:
 
 
 def load_all(db, connector, full: bool = False) -> Dict[str, Any]:
-    """Nạp cả ba luồng. Một luồng hỏng không chặn hai luồng còn lại."""
+    """Nạp cả bốn luồng theo THU_TU_NAP. Một luồng hỏng không chặn các luồng
+    còn lại; lỗi được ghi log và trả về trong `flows[i].message`."""
     ensure_tables(db)
     ket_qua = []
     for flow in THU_TU_NAP:

@@ -110,23 +110,3 @@ export function useDeleteRegion() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'regions'] }),
   });
 }
-
-// ── Safety rate ─────────────────────────────────────────────────────────
-export function useSafetyRate() {
-  const { user, isAuthenticated } = useAuthStore();
-  return useQuery({
-    queryKey: ['admin', 'safety-rate'],
-    queryFn: () => adminCatalogService.getSafetyRate(),
-    enabled: isAuthenticated && ADMIN_ONLY(user?.role),
-    retry: false,
-    refetchOnWindowFocus: false,
-  });
-}
-
-export function useUpdateSafetyRate() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (rate: number) => adminCatalogService.updateSafetyRate(rate),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'safety-rate'] }),
-  });
-}

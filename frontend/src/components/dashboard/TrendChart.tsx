@@ -45,8 +45,11 @@ export default function TrendChart({
   block: BlockCode | 'all';
 }) {
   const rows = useMemo<Row[]>(() => {
-    const thisYear = block === 'all' ? trend.total : trend.by_block[block] ?? [];
-    const lastYear = block === 'all' ? trend.last_year.total : trend.last_year.by_block[block] ?? [];
+    // DB vừa dựng lại: backend trả by_block = {} và last_year = {} → phải ?.
+    const thisYear = block === 'all' ? trend.total ?? [] : trend.by_block?.[block] ?? [];
+    const lastYear = block === 'all'
+      ? trend.last_year?.total ?? []
+      : trend.last_year?.by_block?.[block] ?? [];
     const fcBlock = block === 'all' ? null : forecast.blocks.find((b) => b.block === block) ?? null;
     const fcPoint = forecast.ready
       ? block === 'all'

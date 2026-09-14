@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_user, get_admin_user
 from app.models.user import User
-from app.schemas.base import UserCreate, UserUpdate, UserResponse, PaginatedResponse
+from app.schemas.base import UserCreate, UserUpdate, UserResponse
 from app.services.user_service import UserService
 
 router = APIRouter()

@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import { useUIStore } from '../store/uiStore';
 import api from '../services/api';
+import { reportsService } from '../services/reportsService';
+import { triggerDownload } from '../utils/download';
 import { DISEASE_TYPE_LABELS, type DiseaseType } from '../types/epidemiology';
 
 interface SupplyItem {
@@ -148,21 +150,23 @@ export default function DiseaseCaseDetail() {
     : data.case.location;
   const delta = data.summary.delta_cases_pct;
 
-  const onExport = () => {
-    // Tận dụng endpoint reports/export — mở luôn báo cáo dịch bệnh tháng hiện tại
-    const params = new URLSearchParams({
-      report_type: 'epidemic',
-      format: 'pdf',
-      from_month: `${data.case.year}-${String(data.case.month).padStart(2, '0')}`,
-      to_month: `${data.case.year}-${String(data.case.month).padStart(2, '0')}`,
-      disease_type: data.case.disease_type,
-    });
-    if (data.case.district_ward) params.append('region', data.case.district_ward);
-    else params.append('region', data.case.location);
-    window.open(
-      `${api.defaults.baseURL}/reports/export?${params.toString()}`,
-      '_blank',
-    );
+  const onExport = async () => {
+    // POST /reports/export (mang JWT) — báo cáo dịch bệnh đúng tháng của ca này.
+    const ym = `${data.case.year}-${String(data.case.month).padStart(2, '0')}`;
+    const lastDay = new Date(data.case.year, data.case.month, 0).getDate();
+    try {
+      const blob = await reportsService.exportReport({
+        report_type: 'epidemic',
+        format: 'pdf',
+        disease_type: data.case.disease_type,
+        location: data.case.location,
+        start_date: `${ym}-01`,
+        end_date: `${ym}-${String(lastDay).padStart(2, '0')}`,
+      });
+      triggerDownload(blob, `dich_benh_${ym}.pdf`);
+    } catch (err) {
+      alert(`Không xuất được báo cáo: ${err instanceof Error ? err.message : 'lỗi không rõ'}`);
+    }
   };
 
   return (
@@ -335,7 +339,7 @@ export default function DiseaseCaseDetail() {
                   className="px-6 py-12 text-center text-neutral-400"
                 >
                   {data.supplies.length === 0
-                    ? 'Chưa có định mức vật tư cho bệnh này. Vào Module Quản trị → Định mức để thêm.'
+                    ? 'Chưa có định mức thuốc cho nhóm bệnh này — định mức thực nghiệm sinh ra sau khi đồng bộ HIS.'
                     : 'Không có thuốc nào khớp bộ lọc.'}
                 </td>
               </tr>

@@ -28,6 +28,7 @@ export interface AlertsCounts {
   measured: number;
   zero_stock: number;
   fefo_codes?: number;
+  stock_source?: string | null; // 'fact_inventory_lot@YYYY-MM-DD' | 'inventory' | 'khong_co'
   ly_do_xam?: Record<string, number>;
   san_sang: boolean;
 }
@@ -130,7 +131,6 @@ export interface NormRow {
   ten: string;
   don_vi: string | null;
   nhom: string | null;
-  is_vtyt: boolean;
   tieu_hao_tong: number;
   norm_gop: number;
   /** Σ_ro p̂ · Norm — lượng cần cho MỘT ca dự báo của nhóm */
@@ -143,8 +143,6 @@ export interface NormsPayload {
   periods: Period[];
   cfg: CareLevelParams;
   ro: { ro: CareBucket; ten: string; ca: number; p_hat: number; mau_nho: boolean }[];
-  ca_noi_tru: number;
-  n_vtyt_codes: number;
   total: number;
   offset: number;
   limit: number;

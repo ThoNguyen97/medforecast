@@ -98,7 +98,8 @@ WITH cua_so AS (
         /* COALESCE bắt buộc: thiếu dòng 'dss.care_level' thì truy vấn con trả
            NULL, và LIMIT NULL làm SQLite ném "datatype mismatch" ngay lúc
            SELECT view (không phải lúc tạo view). Xem app/data_pipeline/views.py */
-        WHERE  period >= COALESCE((SELECT json_extract(config_value, '$.min_period')
+        WHERE  period < strftime('%Y-%m', 'now', 'localtime')          /* 13/09: loại kỳ dở dang */
+          AND  period >= COALESCE((SELECT json_extract(config_value, '$.min_period')
                                    FROM system_config WHERE config_key = 'dss.care_level'), '2025-04')
         ORDER BY period DESC
         LIMIT  COALESCE((SELECT json_extract(config_value, '$.window_periods')

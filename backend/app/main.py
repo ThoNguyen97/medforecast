@@ -24,6 +24,16 @@ import app.models  # noqa: F401, E402
 Base.metadata.create_all(bind=engine)
 logger.info("Database tables verified / created.")
 
+# DATABASE_URL là đường dẫn TƯƠNG ĐỐI theo thư mục làm việc, và _ensure_db_dir()
+# còn tự mkdir — chạy uvicorn từ thư mục khác backend/ là âm thầm dùng một file DB
+# khác mà không có lỗi nào. In đường dẫn tuyệt đối để không bao giờ phải đoán nữa.
+if settings.DATABASE_URL.startswith("sqlite:///"):
+    from pathlib import Path as _Path
+    _db = _Path(settings.DATABASE_URL[len("sqlite:///"):]).resolve()
+    logger.info("SQLite đang dùng: %s (tồn tại=%s, %s bytes) — CWD=%s",
+                _db, _db.exists(), _db.stat().st_size if _db.exists() else 0,
+                _Path.cwd())
+
 # Hợp nhất nguồn dữ liệu: tạo luôn bảng tầng dữ liệu (mart/fact) trong CÙNG DB app.
 try:
     from app.data_pipeline.db import init_db as _pipeline_init_db
@@ -32,10 +42,8 @@ try:
 except Exception as _e:  # noqa: BLE001
     logger.warning("Pipeline table init skipped (non-fatal): %s", _e)
 
-# Bốn view của Tầng 2/Tầng 3. create_all KHÔNG biết tới view, nên nếu không tạo
-# ở đây thì máy nào chưa chạy tay sql_his/phase0/G1_03 và G1_04 sẽ có đủ bảng,
-# đồng bộ HIS báo OK, nhưng Dashboard hiện "0 mã có mẫu số" và cảnh báo trống —
-# hỏng âm thầm, không ném lỗi. View tạo lại mỗi lần khởi động là vô hại.
+# Lược đồ ngoài ORM (6 bảng tự quản, 2 dòng cấu hình DSS, 4 view): create_all
+# không biết tới chúng; thiếu view thì Tầng 2/3 mù mà không ném lỗi. Idempotent.
 try:
     from app.data_pipeline.views import dam_bao_luoc_do as _dam_bao
     _kq = _dam_bao()
@@ -119,16 +127,14 @@ async def health_check():
 
 
 # ── API Routes ────────────────────────────────────────────────────────────────
-# 12/09/2026: alerts / supply_recommendations / admin_severity / supply_plan đã
-# chuyển sang _archive/dinh_muc_nhap_tay/ — chúng tính nhu cầu bằng định mức
-# nhập tay × tỷ lệ Nhẹ/TB/Nặng và ngưỡng 3/7/14 ngày, tức một bộ máy thứ hai
-# cho ra con số khác Dashboard. Cảnh báo thiếu hụt giờ đi qua /dashboard/v2/alerts,
-# tham số DSS qua /dss/params, định mức thực nghiệm (chỉ đọc) qua /dss/norms.
-from app.api.v1 import auth, users, supplies, inventory, environmental, disease_cases, supply_requirements, dashboard, reports, config, audit_logs, forecast_analysis, admin_catalog, forecast_hier, sync, dss_config
+# Router đã archive (xem _archive/README.md): alerts, supply_recommendations,
+# admin_severity, supply_plan, forecast_hier, supplies.
+from app.api.v1 import (auth, users, inventory, environmental, disease_cases,
+                        supply_requirements, dashboard, reports, config, audit_logs,
+                        forecast_analysis, admin_catalog, sync, dss_config)
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["authentication"])
 app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
-app.include_router(supplies.router, prefix="/api/v1/supplies", tags=["medical-supplies"])
 app.include_router(inventory.router, prefix="/api/v1/inventory", tags=["inventory"])
 app.include_router(environmental.router, prefix="/api/v1/environmental", tags=["environmental-data"])
 app.include_router(disease_cases.router, prefix="/api/v1/disease-cases", tags=["disease-cases"])
@@ -139,6 +145,5 @@ app.include_router(config.router, prefix="/api/v1/config", tags=["configuration"
 app.include_router(audit_logs.router, prefix="/api/v1", tags=["audit-logs"])
 app.include_router(forecast_analysis.router, prefix="/api/v1/forecast", tags=["forecast-analysis"])
 app.include_router(admin_catalog.router, prefix="/api/v1/admin", tags=["admin-catalog"])
-app.include_router(forecast_hier.router, prefix="/api/v1/forecast-hier", tags=["forecast-hierarchical"])
 app.include_router(sync.router, prefix="/api/v1/sync", tags=["data-sync"])
 app.include_router(dss_config.router, prefix="/api/v1/dss", tags=["dss-config"])

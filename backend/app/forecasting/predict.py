@@ -15,14 +15,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 
 import numpy as np
 
 
 def predict_from_artifact(pkl_path: str, block: str | None = None) -> dict:
     import joblib
-    from .combine import AdaptiveCombiner
     from .evaluate import empirical_interval
     from .hierarchical import split_topdown
 

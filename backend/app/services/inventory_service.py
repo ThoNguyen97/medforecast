@@ -14,17 +14,6 @@ from app.schemas.base import InventoryUpdate
 logger = logging.getLogger(__name__)
 
 
-def _trigger_alert_check(db: Session, supply_id: int) -> None:
-    """Không còn gì để làm (12/09/2026).
-
-    Trước đây gọi AlertModule (bảng `alerts`, ngưỡng 3/7/14 ngày) để tự đóng
-    cảnh báo sau khi sửa kho. Cảnh báo thật giờ được tính lại mỗi lần đọc
-    (/dashboard/v2, /dashboard/v2/alerts) từ tồn FEFO và nhu cầu dự báo —
-    không có trạng thái cần đồng bộ. Giữ tên hàm để hai chỗ gọi khỏi đổi.
-    """
-    return None
-
-
 class InventoryService:
     """Service for managing inventory."""
     
@@ -118,9 +107,6 @@ class InventoryService:
         self.db.commit()
         self.db.refresh(inventory)
 
-        # Auto-resolve alerts if stock is now sufficient
-        _trigger_alert_check(self.db, inventory.supply_id)
-
         logger.info(f"Updated inventory ID: {inventory.id} for supply: {inventory.supply.name}")
         return inventory
     
@@ -147,18 +133,27 @@ class InventoryService:
                     "safety_stock": inventory.safety_stock
                 }
                 
-                # Update stock levels
-                if "current_stock" in update_item:
-                    if update_item["current_stock"] < 0:
-                        logger.warning(f"Skipping inventory {inventory_id}: negative stock")
+                # Kiểm cả hai giá trị TRƯỚC khi gán: gán rồi mới `continue`
+                # thì object đã dirty và commit cuối vẫn ghi nửa chừng.
+                gia_tri = {}
+                hop_le = True
+                for cot in ("current_stock", "safety_stock"):
+                    if cot not in update_item:
                         continue
-                    inventory.current_stock = update_item["current_stock"]
-                
-                if "safety_stock" in update_item:
-                    if update_item["safety_stock"] < 0:
-                        logger.warning(f"Skipping inventory {inventory_id}: negative safety stock")
-                        continue
-                    inventory.safety_stock = update_item["safety_stock"]
+                    try:
+                        v = int(update_item[cot])
+                    except (TypeError, ValueError):
+                        hop_le = False
+                        break
+                    if v < 0:
+                        hop_le = False
+                        break
+                    gia_tri[cot] = v
+                if not hop_le:
+                    logger.warning("Bỏ qua inventory %s: giá trị không hợp lệ %s", inventory_id, update_item)
+                    continue
+                for cot, v in gia_tri.items():
+                    setattr(inventory, cot, v)
                 
                 inventory.updated_by = updated_by_user_id
                 
@@ -186,16 +181,11 @@ class InventoryService:
         for item in updated_items:
             self.db.refresh(item)
         
-        # Auto-resolve alerts for each updated supply
-        updated_supply_ids = {item.supply_id for item in updated_items}
-        for supply_id in updated_supply_ids:
-            _trigger_alert_check(self.db, supply_id)
-
         logger.info(f"Batch updated {len(updated_items)} inventory items")
         return updated_items
     
     def get_low_stock_items(self, threshold_multiplier: float = 1.0) -> List[Inventory]:
-        """Vật tư ĐANG HẾT HÀNG (tồn <= 0).
+        """Thuốc ĐANG HẾT HÀNG (tồn <= 0).
 
         Lưu ý phạm vi (sửa 09/09/2026):
 

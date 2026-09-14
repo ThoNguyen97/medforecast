@@ -96,7 +96,6 @@ class DiseaseCaseService:
             disease_type=data.disease_type or "respiratory",
             case_count=data.case_count,
             location=data.location,
-            district_ward=data.district_ward,
             severity=data.severity,
             length_of_stay=data.length_of_stay,
             sub_icd_count=data.sub_icd_count,

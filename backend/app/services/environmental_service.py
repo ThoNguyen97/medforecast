@@ -9,6 +9,7 @@ from fastapi import HTTPException, status
 from app.models.environmental_data import EnvironmentalData
 from app.models.audit_log import AuditLog
 from app.schemas.base import EnvironmentalDataCreate
+from app.utils.province_alias import ten_chuan
 
 logger = logging.getLogger(__name__)
 
@@ -111,11 +112,12 @@ class EnvironmentalDataService:
         # Create record
         env_data = EnvironmentalData(
             recorded_at=data.recorded_at,
-            location=data.location,
+            location=ten_chuan(data.location),
             temperature=data.temperature,
             humidity=data.humidity,
             rainfall=data.rainfall,
             air_quality_index=data.air_quality_index,
+            pm25=data.pm25,
             data_source=data.data_source or "manual"
         )
         

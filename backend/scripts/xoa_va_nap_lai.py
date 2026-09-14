@@ -19,7 +19,7 @@ lại được, cộng với các bảng dẫn xuất từ dữ liệu đó:
     stg_* , dim_* , fact_* , mart_* , sync_state   (tầng pipeline + watermark)
   XOÁ (dẫn xuất — sẽ tính lại sau khi có dữ liệu mới):
     disease_forecasts, supply_requirements, supply_recommendations,
-    procurement_plans, alerts, system_logs
+    alerts, system_logs
   GIỮ:
     users                — tài khoản đăng nhập
     system_config        — trong đó có cấu hình kết nối HIS (mật khẩu mã hoá)
@@ -49,7 +49,7 @@ XOA_DU_LIEU = [
     "disease_cases", "case_supply_usage", "inventory", "medical_supplies",
     # dẫn xuất — tính lại sau khi có dữ liệu mới
     "disease_forecasts", "supply_requirements", "supply_recommendations",
-    "procurement_plans", "alerts", "system_logs",
+    "alerts", "system_logs",
     # tầng pipeline — lần đồng bộ tới dựng lại toàn bộ
     "stg_case_supply", "stg_inventory",
     "dim_icd", "dim_region", "dim_supply",

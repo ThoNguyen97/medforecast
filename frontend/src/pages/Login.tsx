@@ -144,7 +144,7 @@ export default function Login() {
         </div>
 
         <p className="text-center text-xs text-neutral-400 mt-6">
-          © 2026 MedForecast AI. Hệ thống Dự báo Vật tư Y tế.
+          © 2026 MedForecast AI. Hệ thống Dự báo Nhu cầu Thuốc.
         </p>
       </div>
     </div>

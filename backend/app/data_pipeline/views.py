@@ -1,42 +1,21 @@
 # -*- coding: utf-8 -*-
-"""CÁC ĐỐI TƯỢNG CSDL KHÔNG NẰM TRONG `Base.metadata` (12/09/2026).
+"""Đối tượng CSDL nằm ngoài `Base.metadata`: 6 bảng tự quản, 2 dòng cấu hình DSS, 4 view.
 
-Lược đồ của hệ thống có ba nhóm đối tượng, và chỉ nhóm đầu được
-`Base.metadata.create_all` lo:
+`create_all` chỉ lo 29 bảng ORM. Bốn bảng fact của dss_loader, hai bảng cache
+của dss_dashboard và bốn view bên dưới trước đây chỉ xuất hiện khi người dùng
+đồng bộ HIS / mở Dashboard / chạy tay G1_03, G1_04 — một DB dựng lại từ đầu
+vì thế thiếu view và Tầng 2/3 mù mà không ném lỗi nào. `dam_bao_luoc_do()`
+gom cả ba nhóm về một lệnh, gọi lúc khởi động ứng dụng; mọi câu đều idempotent.
 
-  1. 29 bảng ORM — khai trong `app/models` và `app/data_pipeline/models.py`.
-  2.  6 bảng TỰ QUẢN, tạo bằng `CREATE TABLE IF NOT EXISTS` rải trong mã:
-     `fact_cases_by_care_level`, `fact_usage_by_care_level`, `fact_usage_total`,
-     `fact_inventory_lot` (dss_loader — sinh ra khi đồng bộ HIS) và
-     `dss_forecast_cache`, `forecast_runs` (dss_dashboard — sinh ra khi mở
-     Dashboard lần đầu).
-  3.  4 VIEW — trước nay chỉ tạo khi chạy tay hai script SQL của G1.
-
-Nhóm 2 và 3 vì thế xuất hiện MUỘN và KHÔNG ĐỀU: một DB vừa dựng lại từ đầu chỉ
-có 29 bảng, phải đồng bộ HIS xong rồi mở Dashboard thì mới đủ 35 — và view thì
-không bao giờ tự có. Module này gom cả hai nhóm về một chỗ để mọi máy đều dựng
-được lược đồ ĐẦY ĐỦ bằng một lệnh.
-
-
-Vì sao có file này: bốn view dưới đây trước nay CHỈ được tạo khi ai đó mở
-SSMS/DB Browser chạy tay `sql_his/phase0/G1_03_LOCAL_cau_hinh.sql` và
-`G1_04_LOCAL_cuasodphancap.sql`. `Base.metadata.create_all` không biết tới
-view, `khoi_tao_moi.py` cũng không tạo, và đồng bộ HIS chỉ nạp DỮ LIỆU chứ
-không tạo view.
-
-Hậu quả trên máy chưa chạy hai script đó: DB có đủ bảng, đồng bộ HIS báo OK,
-nhưng Tầng 2 và Tầng 3 mù hoàn toàn — `dss_alerts` trả `san_sang = False` với
-lý do "Thiếu v_supply_daily_demand...", Dashboard hiện "0 mã có mẫu số", biểu
-đồ DOI và biểu đồ phân cấp chăm sóc trống trơn. Không có lỗi nào được ném ra,
-nên rất khó đoán nguyên nhân.
-
-View không chứa dữ liệu, chỉ là câu truy vấn đặt tên — tạo lại bao nhiêu lần
-cũng vô hại. Vì vậy `tao_views()` được gọi ngay lúc khởi động ứng dụng.
-
-Nguồn định nghĩa gốc (giữ nguyên logic, chép lại ở đây để chạy tự động):
-  • v_supply_active, v_supply_focus, v_supply_daily_demand → G1_03
-  • v_care_level_share                                     → G1_04
-Sửa định nghĩa thì phải sửa CẢ HAI nơi.
+Quy ước chung cho 4 view (13/09/2026):
+  * KỲ DỞ DANG BỊ LOẠI: chỉ lấy `period < tháng hiện tại`. Tháng đang chạy mới
+    có vài ngày tiêu hao, để lọt vào cửa sổ 12 kỳ thì d_daily bị kéo thấp và
+    DOI phồng lên — cùng loại lỗi +6500% đã sửa ở KPI ca bệnh.
+  * CHỈ THUỐC (`is_vtyt = 0`): thủ tục DayDuLieu và DayKhoCungUng chạy với
+    @GomVTYT = 0 nên VTYT không có tồn kho lẫn định mức; giữ VTYT trong mẫu số
+    chỉ sinh ra mã Xám vô nghĩa (86 mã đo ngày 13/09).
+Định nghĩa gốc ở sql_his/phase0/G1_03_LOCAL_cau_hinh.sql và
+G1_04_LOCAL_cuasodphancap.sql — sửa thì sửa cả hai nơi.
 """
 from __future__ import annotations
 
@@ -44,20 +23,29 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# ── 3a · Danh mục còn hoạt động: có xuất trong 3 kỳ gần nhất ─────────────────
-V_SUPPLY_ACTIVE = """
+# Kỳ đã chốt = mọi kỳ nhỏ hơn tháng hiện tại (SQLite so chuỗi 'YYYY-MM').
+_KY_DA_CHOT = "period < strftime('%Y-%m', 'now', 'localtime')"
+
+# ── 3a · Danh mục còn hoạt động: thuốc có xuất trong 3 kỳ ĐÃ CHỐT gần nhất ───
+V_SUPPLY_ACTIVE = f"""
 CREATE VIEW v_supply_active AS
 SELECT DISTINCT u.supply_code
 FROM   fact_usage_total u
 WHERE  u.so_luong_toan_vien > 0
+  AND  u.is_vtyt = 0
+  AND  u.{_KY_DA_CHOT}
   AND  u.period >= (
         SELECT MIN(p) FROM (
           SELECT DISTINCT period AS p FROM fact_usage_total
+          WHERE {_KY_DA_CHOT}
           ORDER BY period DESC LIMIT 3))
 """
 
-# ── 3b · Tập trọng tâm: tỷ trọng hô hấp ≥ 25% trên 12 kỳ gần nhất ────────────
-V_SUPPLY_FOCUS = """
+# ── 3b · Tập trọng tâm: thuốc CÒN HOẠT ĐỘNG, tỷ trọng hô hấp ≥ 25% / 12 kỳ chốt ─
+# Phải nằm trong v_supply_active (13/09/2026): mã đã ngừng xuất không cần cảnh
+# báo tồn, mà chúng chiếm 54/91 dòng Xám và làm loãng mọi tỷ lệ phần trăm của
+# tập theo dõi. Đo trên DB thật: siết lại còn 242/304 mã, Xám 91 → 37.
+V_SUPPLY_FOCUS = f"""
 CREATE VIEW v_supply_focus AS
 SELECT supply_code,
        ROUND(100.0 * SUM(so_luong_hohap) / NULLIF(SUM(so_luong_toan_vien), 0), 2) AS ty_trong_hohap,
@@ -65,20 +53,24 @@ SELECT supply_code,
        ROUND(SUM(d_baseline_thang)  / COUNT(*), 3)                                AS d_baseline_thang,
        COUNT(*)                                                                   AS so_ky
 FROM   fact_usage_total
-WHERE  period >= (
+WHERE  is_vtyt = 0
+  AND  {_KY_DA_CHOT}
+  AND  period >= (
         SELECT MIN(p) FROM (
           SELECT DISTINCT period AS p FROM fact_usage_total
+          WHERE {_KY_DA_CHOT}
           ORDER BY period DESC LIMIT 12))
 GROUP BY supply_code
 HAVING SUM(so_luong_toan_vien) > 0
    AND 100.0 * SUM(so_luong_hohap) / SUM(so_luong_toan_vien) >= 25.0
    AND COUNT(*) >= 3
+   AND supply_code IN (SELECT supply_code FROM v_supply_active)
 """
 
 # ── 3c · Mẫu số hằng ngày dùng chung cho DOI ─────────────────────────────────
-# d = tiêu hao TOÀN VIỆN trung bình tháng / 30. KHÔNG lấy tiêu hao hô hấp làm
-# mẫu số — đó là lỗi đã sửa ở G1, đừng vô tình dựng lại.
-V_SUPPLY_DAILY_DEMAND = """
+# d = tiêu hao TOÀN VIỆN trung bình tháng / 30 trên 12 kỳ đã chốt. Không lấy
+# tiêu hao hô hấp làm mẫu số (lỗi đã sửa ở G1).
+V_SUPPLY_DAILY_DEMAND = f"""
 CREATE VIEW v_supply_daily_demand AS
 SELECT  supply_code,
         COUNT(*)                                              AS so_ky,
@@ -87,27 +79,29 @@ SELECT  supply_code,
         ROUND(SUM(d_baseline_thang)   / COUNT(*) / 30.0, 6)   AS d_daily_baseline,
         ROUND(100.0 * SUM(so_luong_hohap) / NULLIF(SUM(so_luong_toan_vien),0), 2) AS ty_trong_hohap
 FROM    fact_usage_total
-WHERE   period >= (
+WHERE   is_vtyt = 0
+  AND   {_KY_DA_CHOT}
+  AND   period >= (
          SELECT MIN(p) FROM (
            SELECT DISTINCT period AS p FROM fact_usage_total
+           WHERE {_KY_DA_CHOT}
            ORDER BY period DESC LIMIT 12))
 GROUP BY supply_code
 HAVING  SUM(so_luong_toan_vien) > 0
 """
 
 # ── Tỷ trọng phân cấp chăm sóc theo khối — đầu vào định mức thực nghiệm ──────
-# MỖI tham chiếu system_config phải bọc COALESCE. Không có dòng 'dss.care_level'
-# thì các truy vấn con trả NULL, và `LIMIT NULL` làm SQLite ném
-# "IntegrityError: datatype mismatch" — nổ ở chỗ SELECT view chứ không phải chỗ
-# tạo view, nên cả trang Tổng quan trả 500 trên một DB vừa dựng lại (12/09/2026).
-# `dam_bao_cau_hinh()` bên dưới gieo sẵn dòng đó; COALESCE là lớp chặn thứ hai.
-V_CARE_LEVEL_SHARE = """
+# Mọi tham chiếu system_config bọc COALESCE: thiếu dòng 'dss.care_level' thì
+# `LIMIT NULL` làm SQLite ném "datatype mismatch" lúc SELECT view.
+# `dam_bao_cau_hinh()` gieo sẵn dòng đó; COALESCE là lớp chặn thứ hai.
+V_CARE_LEVEL_SHARE = f"""
 CREATE VIEW v_care_level_share AS
 WITH cua_so AS (
     SELECT MAX(p) AS p_max, MIN(p) AS p_min FROM (
         SELECT DISTINCT period AS p
         FROM   fact_cases_by_care_level
-        WHERE  period >= COALESCE((SELECT json_extract(config_value, '$.min_period')
+        WHERE  {_KY_DA_CHOT}
+          AND  period >= COALESCE((SELECT json_extract(config_value, '$.min_period')
                                    FROM system_config WHERE config_key = 'dss.care_level'), '2025-04')
         ORDER BY period DESC
         LIMIT  COALESCE((SELECT json_extract(config_value, '$.window_periods')
@@ -131,12 +125,9 @@ GROUP BY f.block_code, f.ro
 """
 
 # ── Cấu hình DSS mặc định ────────────────────────────────────────────────────
-# Hai dòng này là TOÀN BỘ núm vặn của Tầng 2 và Tầng 3. Chúng vốn do
-# sql_his/phase0/G1_04 chèn, nhưng script đó chạy tay — DB dựng bằng
-# khoi_tao_moi.py không có chúng, và v_care_level_share chết ngay lần SELECT
-# đầu tiên. Gieo ở đây để một DB mới tự đủ; giá trị khớp THRESHOLDS_DEFAULT
+# Toàn bộ núm vặn của Tầng 2 và Tầng 3. Giá trị khớp THRESHOLDS_DEFAULT
 # (dss_alerts) và CARE_LEVEL_DEFAULT (dss_demand). Chỉ chèn khi THIẾU — không
-# bao giờ ghi đè giá trị người dùng đã sửa ở Quản trị → Tham số DSS.
+# ghi đè giá trị người dùng đã sửa ở Quản trị → Tham số DSS.
 CAU_HINH_MAC_DINH = {
     "dss.care_level": (
         '{"window_periods": 12, "min_period": "2025-04", '
@@ -187,6 +178,7 @@ def dam_bao_cau_hinh(engine=None) -> dict:
     return ket_qua
 
 
+# THỨ TỰ QUAN TRỌNG: v_supply_focus tham chiếu v_supply_active nên phải đứng sau.
 VIEWS = {
     "v_supply_active": V_SUPPLY_ACTIVE,
     "v_supply_focus": V_SUPPLY_FOCUS,
@@ -204,13 +196,8 @@ PHU_THUOC = {
 
 
 def tao_bang_tu_quan(db=None) -> dict:
-    """Tạo 6 bảng tự quản nằm ngoài Base.metadata.
-
-    Chúng vốn được tạo lười (lazy): 4 bảng của dss_loader ra đời khi đồng bộ
-    HIS, 2 bảng của dss_dashboard ra đời khi mở Dashboard lần đầu. Tạo sẵn ở
-    đây để một DB vừa dựng lại đã có đủ lược đồ, thay vì đủ dần theo thao tác
-    người dùng. Mọi câu đều là CREATE TABLE IF NOT EXISTS nên vô hại khi lặp.
-    """
+    """Tạo 6 bảng tự quản (4 bảng fact của dss_loader, 2 bảng cache của
+    dss_dashboard). Toàn bộ là CREATE TABLE IF NOT EXISTS."""
     tu_dong = db is None
     if tu_dong:
         from app.database import SessionLocal

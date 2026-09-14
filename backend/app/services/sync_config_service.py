@@ -211,7 +211,7 @@ def test_connection(db: Session, payload: dict) -> dict:
             ho_so = SQL_PROFILES.get(cfg.get("sql_profile", "sta"),
                                      SQL_PROFILES["sta"])
             if ho_so is SQL_PROFILES["sta"]:
-                views = [("vw_MedForecast_CaBenh", "ca bệnh + vật tư"),
+                views = [("vw_MedForecast_CaBenh", "ca bệnh + thuốc"),
                          ("vw_MedForecast_CaBenhNhom", "số ca theo nhóm"),
                          ("vw_MedForecast_TonKho", "tồn kho")]
                 for view, nhan in views:

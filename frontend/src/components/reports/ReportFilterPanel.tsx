@@ -129,7 +129,7 @@ export default function ReportFilterPanel({
               type="text"
               value={state.search}
               onChange={(e) => update({ search: e.target.value })}
-              placeholder="Tìm kiếm theo tên bệnh, khu vực, vật tư..."
+              placeholder="Tìm kiếm theo tên bệnh, khu vực, thuốc..."
               className="w-full h-10 pl-9 pr-3 rounded-lg border border-neutral-300 bg-white text-sm placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
             />
           </div>
@@ -199,9 +199,10 @@ export default function ReportFilterPanel({
                     )}
                   >
                     <option value="all">Tất cả</option>
-                    <option value="normal">An toàn</option>
-                    <option value="low">Dưới ngưỡng</option>
-                    <option value="critical">Nguy cấp</option>
+                    <option value="red">Đỏ</option>
+                    <option value="amber">Vàng</option>
+                    <option value="green">Xanh</option>
+                    <option value="grey">Xám</option>
                   </select>
                   <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
                 </div>

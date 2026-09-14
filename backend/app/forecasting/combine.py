@@ -25,7 +25,7 @@ tới t−1, rồi `update()` với thực tế của t. Không bao giờ nhìn 
 """
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 

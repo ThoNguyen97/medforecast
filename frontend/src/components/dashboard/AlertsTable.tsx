@@ -41,7 +41,7 @@ export default function AlertsTable({
       <table className="w-full text-[13px]">
         <thead>
           <tr className="text-neutral-500 text-[11px] uppercase tracking-wide">
-            <th className="text-left px-5 py-2.5 font-semibold">Vật tư</th>
+            <th className="text-left px-5 py-2.5 font-semibold">Thuốc</th>
             <th className="text-left px-3 py-2.5 font-semibold">Danh mục</th>
             <th className="text-right px-3 py-2.5 font-semibold">Tồn hữu dụng</th>
             <th className="text-right px-3 py-2.5 font-semibold">Nhu cầu/ngày</th>
@@ -80,7 +80,7 @@ export default function AlertsTable({
               </td>
               <td className="px-3 py-2.5 text-right tabular-nums">
                 {!demandReady ? (
-                  <span className="text-neutral-400" title="Chưa có dự báo kỳ tới">đang tính</span>
+                  <span className="text-neutral-400" title="Ghi nhận dự báo ở trang Phân tích">chưa có dự báo</span>
                 ) : r.delta_need == null ? (
                   '—'
                 ) : r.delta_need > 0 ? (

@@ -23,7 +23,7 @@ import HisConnectionSection from '../components/admin/HisConnectionSection';
 import DssParamsSection from '../components/admin/DssParamsSection';
 import EmpiricalNormsSection from '../components/admin/EmpiricalNormsSection';
 
-// 12/09/2026: ba tab "Tỷ lệ Nhẹ/TB/Nặng", "Định mức thuốc/vật tư", "Ngưỡng cảnh
+// 12/09/2026: ba tab "Tỷ lệ Nhẹ/TB/Nặng", "Định mức thuốc", "Ngưỡng cảnh
 // báo" đã gỡ — chúng sửa ba bảng mà DSS thật không đọc (định mức thực nghiệm
 // thay cho nhập tay; ngưỡng thật là dss.thresholds 18/36 ngày DOI, không phải
 // 3/7/14). Thay bằng "Tham số DSS" (sửa được) và "Định mức thực nghiệm" (chỉ đọc).

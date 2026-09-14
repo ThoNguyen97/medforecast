@@ -79,3 +79,65 @@ sinh gì mới. Gom về `/dashboard/v2/alerts` khi làm lại trang Báo cáo.
 `supply_recommendations`, `conversion_ratios`) — model còn để `create_all` không
 vỡ; muốn "ghi đè thủ công" thì làm lại như một lớp override rõ ràng trên
 `/dss/norms`, không phải đường lùi ngầm.
+
+## Kiểm toán 13/09/2026 — bốn thư mục mới
+
+Tiêu chí như trên: không còn nơi gọi trong `backend/app`, `backend/scripts`
+(các script còn dùng), `frontend/src` — xác minh bằng grep trước khi chuyển.
+Model ORM tương ứng (`SupplyRequirement`, `ConversionRatio`, `Alert`…) vẫn giữ
+trong `app/models` để `create_all` không vỡ trên DB cũ.
+
+### duong_thu_ba/
+"Đường thứ ba" tính nhu cầu vật tư qua bảng `supply_requirements`, song song
+với `dss_demand`: `services/supply_requirement_service.py`, cả package
+`ai_engine/` (`conversion_module.py`, `config.py` còn XGBoost/LSTM/Prophet và
+`DISEASE_TYPES = dengue_fever…`), hai script `create_/regenerate_supply_requirements.py`,
+test tích hợp tương ứng. Ba endpoint `GET /supply-requirements`, `/forecast/{id}`,
+`POST /generate/{id}` đã xoá khỏi router; chỉ còn `/summary` (đi qua
+`dss_dashboard.tang1_tang2`).
+
+### dich_vu_chet/ (bổ sung)
+- `api/v1/forecast_hier.py` + `hooks/useForecastHier.ts` + `services/forecastHierService.ts`:
+  nhánh dự báo phân rã về từng mã (top_down_fixed / bottom_up / mint), giao diện
+  không gọi. Kéo theo `HierarchicalForecastService.forecast()`, `inventory_report()`,
+  `_codes_df()`, `_fixed_shares()` và `models.build_production_ensemble()` (trùng
+  `group_forecast.make_ensemble`).
+- `api/v1/supplies.py` + `services/medical_supply_service.py`: giao diện không gọi
+  `/supplies`; POST vỡ sẵn (`supply_data.name` không có trong schema).
+- `services/notification_service.py`: gửi mail cho bảng `alerts` đã archive.
+- `data_pipeline/scheduler.py`: chỉ chạy pipeline ca bệnh, không nạp 4 luồng DSS
+  → DB nửa vời so với nút Đồng bộ. Lịch chạy đúng là job SQL Agent + nút Đồng bộ.
+- `forecasting/candidates_opt.py`: thành viên thử nghiệm (xgb/prophet) không có
+  trong `ForecastConfig`.
+- `services/dss_runner.py`: payload cho 6 endpoint dashboard cũ (`/overview`,
+  `/summary`, `/risk-status`, `/critical-alerts`, `/case-trend`, `/care-level`)
+  — cả 6 đã gỡ khỏi `dashboard.py` cùng lớp cache Redis; `care_level_payload`
+  chuyển sang `dss_dashboard`.
+
+### scripts_cu/
+22 script thời CSV / định mức nhập tay / alerts theo safety_stock / Postgres
+(`backup_db.sh`) / bản vá đã hợp nhất (`patch_g1_dashboard.py`,
+`migrate_*.py`, `recreate_database.py`) và `verify_backend_dss.py` (gọi
+`run_forecast_cycle` đã gỡ từ 11/09). Bộ script còn dùng: `khoi_tao_moi`,
+`nang_cap_db`, `run_dss_load`, `kiem_tra_ket_noi_sta`, `kiem_tra_so_ca_nhom`,
+`verify_g1`, `verify_his_pipeline`, `verify_ehospital_agg`, `sim_*`,
+`sync_admin_diseases_catalog`, `xoa_va_nap_lai`, `clear_test_data`,
+`create_admin_user`, `seed_data`.
+
+### tests_cu/ và frontend_chet/ (bổ sung)
+Test backend/frontend viết cho lược đồ cũ (`dengue_fever`, `MedicalSupply.name`,
+`district_ward`, `ProcurementPlanner`, props cũ của `InventoryTable`…) — 2 file
+fail ngay lúc collect, phần còn lại 53 failed / 37 errors trước khi kiểm toán.
+Thay bằng `backend/tests/test_dss_core.py` (21 test lõi 3 tầng) và
+`tests/integration/test_dss_api_integration.py` (9 test hợp đồng API);
+frontend: `useReports/useInventory/reportsService/inventoryService` test viết lại.
+Kèm 9 component/type mồ côi (`Modal`, `Table`, `MetricCard`, `InventoryFilters`,
+`StockStatusBadge`, `PerformanceTable`, `ReportFilters`, `ConsumptionReport`,
+`types/alerts.ts`).
+
+### frontend_chet/components/inventory/InventoryStatusBadge.tsx (13/09, chiều muộn)
+Nhãn "Bình thường / Dưới ngưỡng / Nguy cấp" tính từ `inventory.safety_stock` —
+cột chỉ có giá trị ở 34/5.051 dòng, nên trang Vật tư luôn hiện "0 mục" trong
+khi Cảnh báo báo 39 Đỏ. Trang đổi tên thành **Quản lý thuốc** và gắn nhãn DOI
+từ `/dashboard/v2/alerts?focus=false` (cùng chuỗi với Cảnh báo); báo cáo
+"Tồn kho" đổi theo. Không còn hệ nhãn thứ hai nào trong ứng dụng.

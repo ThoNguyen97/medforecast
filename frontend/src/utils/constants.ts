@@ -29,12 +29,19 @@ export const DISEASE_TYPE_LABELS: Record<string, string> = {
   respiratory: 'Bệnh hô hấp',
 };
 
-// Supply categories
+// Danh mục thuốc — 8 nhãn tính lại bên PROD (#DrugMeta trong
+// usp_MedForecast_DayDuLieu, G2_04 13/09/2026) và đồng bộ nguyên văn vào
+// medical_supplies.category. Khoá = nhãn; các khoá VTYT cũ (mask, glove,
+// test_kit…) chỉ còn để đọc dữ liệu import tay đời trước.
 export const SUPPLY_CATEGORY_LABELS: Record<string, string> = {
-  mask: 'Khẩu trang',
-  glove: 'Găng tay',
-  test_kit: 'Kit xét nghiệm',
-  disinfectant: 'Dung dịch sát khuẩn',
+  'Kháng sinh': 'Kháng sinh',
+  'Thuốc hạ sốt giảm đau': 'Thuốc hạ sốt giảm đau',
+  'Thuốc long đờm': 'Thuốc long đờm',
+  'Thuốc giãn phế quản': 'Thuốc giãn phế quản',
+  'Corticoid': 'Corticoid',
+  'Kháng histamin': 'Kháng histamin',
+  'Dịch truyền': 'Dịch truyền',
+  'Khác': 'Khác',
   medicine: 'Thuốc',
   iv_fluid: 'Dịch truyền',
   other: 'Khác',
@@ -88,10 +95,8 @@ export const ROUTES = {
   WEATHER: '/weather',
   REPORTS: '/reports',
   SETTINGS: '/settings',
-  SUPPLY_NORMS: '/supply-norms',
-  SUPPLY_PLAN: '/supply-plan',
 } as const;
 
 // App info
 export const APP_NAME = 'MedForecast AI';
-export const APP_DESCRIPTION = 'Hệ thống Dự báo Nhu cầu Vật tư Y tế';
+export const APP_DESCRIPTION = 'Hệ thống Dự báo Nhu cầu Thuốc';

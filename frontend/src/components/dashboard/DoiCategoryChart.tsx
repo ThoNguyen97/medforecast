@@ -21,7 +21,7 @@ function levelOf(doi: number | null, th: Thresholds): AlertLevel {
 }
 
 /**
- * Số ngày tồn phủ nhu cầu (DOI trung vị) theo danh mục vật tư, thanh ngang,
+ * Số ngày tồn phủ nhu cầu (DOI trung vị) theo danh mục thuốc, thanh ngang,
  * hai vạch ngưỡng Đỏ/Vàng. Màu thanh = mức của trung vị, luôn kèm số ở đầu
  * thanh và số mã Đỏ trong tooltip — màu không mang nghĩa một mình.
  */

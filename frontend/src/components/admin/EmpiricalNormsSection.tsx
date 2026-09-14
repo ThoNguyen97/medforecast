@@ -18,7 +18,7 @@ const fmt = (v: number | null | undefined, d = 0) =>
  * rổ. Định mức tự cập nhật mỗi lần đồng bộ HIS; muốn đổi cách tính thì đổi
  * tham số ở tab "Tham số DSS", không có ô nhập tay.
  *
- * Thay cho tab "Định mức thuốc/vật tư" (Nhẹ/TB/Nặng, nhập tay) trước 12/09/2026.
+ * Thay cho tab "Định mức thuốc" (Nhẹ/TB/Nặng, nhập tay) trước 12/09/2026.
  */
 export default function EmpiricalNormsSection() {
   const [block, setBlock] = useState<BlockCode>('J00-J06');
@@ -85,9 +85,10 @@ export default function EmpiricalNormsSection() {
               ))}
             </div>
             <p className="mt-3 text-[12px] text-neutral-600 leading-snug">
-              Cửa sổ {data.periods[0]} → {data.periods[data.periods.length - 1]} ({data.periods.length} kỳ) ·
-              ngưỡng mẫu nhỏ {data.cfg.min_cases_per_bucket} ca · {fmt(data.total)} mã có tiêu hao trong nhóm ·{' '}
-              {fmt(data.n_vtyt_codes)} mã VTYT dùng mẫu số gộp nội trú ({fmt(data.ca_noi_tru)} ca).
+              {data.periods.length > 0
+                ? `Cửa sổ ${data.periods[0]} → ${data.periods[data.periods.length - 1]} (${data.periods.length} kỳ)`
+                : 'Chưa có kỳ nào trong cửa sổ (chưa đồng bộ HIS)'} ·
+              ngưỡng mẫu nhỏ {data.cfg.min_cases_per_bucket} ca · {fmt(data.total)} mã có tiêu hao trong nhóm.
             </p>
             <p className="mt-1 text-[11px] text-neutral-400 leading-snug">{data.cong_thuc}</p>
           </>
@@ -125,7 +126,7 @@ export default function EmpiricalNormsSection() {
             <table className="w-full text-[13px]">
               <thead>
                 <tr className="text-neutral-500 text-[11px] uppercase tracking-wide">
-                  <th className="text-left px-5 py-2.5 font-semibold">Vật tư</th>
+                  <th className="text-left px-5 py-2.5 font-semibold">Thuốc</th>
                   <th className="text-right px-3 py-2.5 font-semibold" title="Σ tiêu hao trong cửa sổ, mọi rổ">Tiêu hao</th>
                   {roList.map((r) => (
                     <th key={r.ro} className="text-right px-3 py-2.5 font-semibold" title={`${r.ten}: tiêu hao ÷ ${fmt(r.ca)} ca`}>
@@ -144,7 +145,6 @@ export default function EmpiricalNormsSection() {
                       <div className="font-medium text-neutral-900 leading-tight">{r.ten}</div>
                       <div className="text-[11px] text-neutral-500 font-mono">
                         {r.supply_code}{r.don_vi ? ` · ${r.don_vi}` : ''}
-                        {r.is_vtyt && <span className="ml-1.5 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 font-sans">VTYT · mẫu số gộp</span>}
                       </div>
                     </td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-neutral-600">{fmt(r.tieu_hao_tong)}</td>
@@ -155,7 +155,7 @@ export default function EmpiricalNormsSection() {
                           <span className={cn(c?.gop && 'text-amber-800')} title={c ? `${fmt(c.tieu_hao)} ÷ ${fmt(c.ca)}${c.gop ? ' — mẫu nhỏ, dùng định mức gộp nhóm' : ''}` : ''}>
                             {c ? fmt(c.norm, 3) : '—'}
                           </span>
-                          {c && !r.is_vtyt && !c.gop && (
+                          {c && !c.gop && (
                             <span className="block text-[10px] text-neutral-400">{fmt(c.tieu_hao)} ÷ {fmt(c.ca)}</span>
                           )}
                         </td>

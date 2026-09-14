@@ -25,6 +25,42 @@ from app.data_pipeline import dss_loader
 from app.data_pipeline.pipeline import DataPipeline
 from app.services import sync_config_service
 
+
+def lam_sach(v, mac_dinh: str = "") -> str:
+    """Chuỗi từ mart về dạng dùng được. pandas NaN đi qua chuỗi hoá thành 'nan' —
+    đã làm 4.680 thuốc mang drug_code='nan' và gộp nghìn thuốc thành một dòng."""
+    t = str(v).strip() if v is not None else ""
+    return mac_dinh if t.lower() in ("", "nan", "none", "nat", "null") else t
+
+
+# Thuộc tính danh mục đồng bộ từ mart → medical_supplies: (cột đích, cột nguồn).
+# `category` BẮT BUỘC có mặt: phân loại được tính lại bên PROD (#DrugMeta trong
+# usp_MedForecast_DayDuLieu) và chỉ tới được ứng dụng qua đường này. Thiếu nó thì
+# mã đã tồn tại giữ nhãn cũ VĨNH VIỄN — 13/09/2026 đã gặp: sửa phân loại
+# "Dịch truyền" trên PROD, đồng bộ báo ok, nhưng 3.001 mã vẫn mang nhãn cũ.
+COT_DONG_BO = (
+    ("drug_code", "drug_code"),
+    ("ten_hoat_chat", "name"),
+    ("unit", "unit"),
+    ("group_name", "group_name"),
+    ("category", "category"),
+)
+
+
+def cap_nhat_thuoc_tinh_vat_tu(supply, dong_mart) -> list:
+    """Chép thuộc tính danh mục từ một dòng mart sang MedicalSupply đã có.
+
+    Giá trị rỗng/'nan' bên nguồn KHÔNG ghi đè giá trị đang có. Trả danh sách tên
+    cột thật sự đổi (rỗng nghĩa là không có gì phải ghi)."""
+    da_doi = []
+    for cot_dich, cot_nguon in COT_DONG_BO:
+        cu = getattr(supply, cot_dich, None)
+        moi = lam_sach(getattr(dong_mart, cot_nguon, None), cu or "")
+        if moi != cu:
+            setattr(supply, cot_dich, moi)
+            da_doi.append(cot_dich)
+    return da_doi
+
 logger = logging.getLogger(__name__)
 
 
@@ -161,7 +197,8 @@ class SyncService:
         # vụ chứ không đọc mart — phải làm mới cả chúng.
         try:
             result.update(self._lam_moi_bang_nghiep_vu())
-        except Exception as exc:
+        except Exception as exc:                          # noqa: BLE001
+            self.db.rollback()                            # session phải sạch cho các bước sau
             logger.exception("Làm mới bảng nghiệp vụ thất bại")
             result["legacy_refresh_error"] = str(exc)[:300]
 
@@ -245,7 +282,7 @@ class SyncService:
             giờ nạp bằng chức năng import file CSV, phục vụ các trang Dịch tễ,
             Tồn kho, Dashboard;
           - tầng pipeline (fact_*, mart_*) — do job đồng bộ dựng, phục vụ dự báo
-            phân cấp và kế hoạch vật tư.
+            phân cấp và kế hoạch thuốc.
         Job đồng bộ chỉ ghi lớp thứ hai. Không có cầu nối này thì sau khi nối
         HIS, các trang cũ vẫn hiển thị dữ liệu CSV import từ trước — hai màn
         hình cạnh nhau ra hai con số khác nhau.
@@ -302,17 +339,12 @@ class SyncService:
             ) for r in facts
         ])
 
-        def _sach(v, mac_dinh=""):
-            """pandas NaN đi qua chuỗi hoá thành 'nan' — đã làm 4.680 vật tư
-            mang drug_code='nan', khiến trang Kế hoạch gộp nghìn thuốc làm một
-            dòng. Mọi giá trị chữ từ mart phải qua đây."""
-            t = str(v).strip() if v is not None else ""
-            return mac_dinh if t.lower() in ("", "nan", "none", "nat", "null") else t
+        _sach = lam_sach
 
         # 2) medical_supplies + inventory — upsert theo supply_code
         co_san = {s.supply_code: s for s in self.db.query(MedicalSupply).all()}
         inv_theo_id = {i.supply_id: i for i in self.db.query(Inventory).all()}
-        them_vt = 0
+        them_vt = sua_vt = 0
         for t in ton_kho:
             s = co_san.get(t.supply_code)
             if s is None:
@@ -330,10 +362,8 @@ class SyncService:
                 co_san[t.supply_code] = s
                 them_vt += 1
             else:
-                s.drug_code = _sach(t.drug_code, s.drug_code)
-                s.ten_hoat_chat = _sach(t.name, s.ten_hoat_chat)
-                s.unit = _sach(t.unit, s.unit)
-                s.group_name = _sach(t.group_name, s.group_name)
+                if cap_nhat_thuoc_tinh_vat_tu(s, t):
+                    sua_vt += 1
 
             inv = inv_theo_id.get(s.id)
             if inv is None:
@@ -346,6 +376,7 @@ class SyncService:
         self.db.commit()
         return {"legacy_disease_rows": len(facts),
                 "legacy_supplies_new": them_vt,
+                "legacy_supplies_updated": sua_vt,
                 "legacy_inventory_updated": len(ton_kho)}
 
     def get_status(self) -> dict:

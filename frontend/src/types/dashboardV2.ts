@@ -167,10 +167,11 @@ export interface TrendPoint {
 export interface TrendSection {
   periods: Period[];
   total: TrendPoint[];
-  by_block: Record<BlockCode, TrendPoint[]>;
+  // Chưa có mart (DB mới) → backend trả {} cho by_block và last_year.
+  by_block: Partial<Record<BlockCode, TrendPoint[]>>;
   last_year: {
-    total: TrendPoint[];
-    by_block: Record<BlockCode, TrendPoint[]>;
+    total?: TrendPoint[];
+    by_block?: Partial<Record<BlockCode, TrendPoint[]>>;
   };
 }
 

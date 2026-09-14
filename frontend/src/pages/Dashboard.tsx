@@ -63,7 +63,7 @@ export default function Dashboard() {
     if (exporting) return;
     try {
       setExporting(true);
-      const blob = await reportsService.exportReport({ report_type: 'dashboard-summary' as never });
+      const blob = await reportsService.exportReport({ report_type: 'dashboard-summary' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -261,7 +261,12 @@ function buildKpis(
 
   // 5 · Chất lượng dự báo
   const q = data?.quality;
-  const cov = q?.by_block?.map((b) => (b.coverage_pct == null ? '—' : Math.round(b.coverage_pct))).join('/');
+  // Mọi số ở đây có thể null (backend trả null khi thiếu backtest) → không nối "%" vào undefined.
+  const cov = q?.by_block?.length
+    ? q.by_block.map((b) => (b.coverage_pct == null ? '—' : Math.round(b.coverage_pct))).join('/') + '%'
+    : '—';
+  const improve = q?.improvement_vs_naive_pct != null ? `${q.improvement_vs_naive_pct.toFixed(1)}%` : '—';
+  const wape = q?.track_record?.wape_pct != null ? `${q.track_record.wape_pct}%` : '—';
 
   return [
     {
@@ -350,9 +355,9 @@ function buildKpis(
       loading: !data,
       context: q?.available ? (
         <>
-          Tốt hơn seasonal naive <b className="text-emerald-700">{q.improvement_vs_naive_pct?.toFixed(1)}%</b> · độ phủ{' '}
-          <b className="text-neutral-800 tabular-nums">{cov}%</b>
-          <span className="text-neutral-400"> (mục tiêu {q.coverage_target_pct})</span>
+          Tốt hơn seasonal naive <b className="text-emerald-700">{improve}</b> · độ phủ{' '}
+          <b className="text-neutral-800 tabular-nums">{cov}</b>
+          <span className="text-neutral-400"> (mục tiêu {q.coverage_target_pct}%)</span>
         </>
       ) : (
         <span className="text-neutral-500">Chạy `run_eval.py --out ketqua_backtest` để có số chính thức</span>
@@ -363,7 +368,7 @@ function buildKpis(
           {q.canh_bao && <span className="text-amber-700"> · {q.canh_bao}</span>}
           {q.track_record && q.track_record.n_verified > 0 ? (
             <>
-              {' '}· vận hành: {q.track_record.n_verified} kỳ đã đối chiếu, WAPE {q.track_record.wape_pct}%
+              {' '}· vận hành: {q.track_record.n_verified} kỳ đã đối chiếu, WAPE {wape}
             </>
           ) : q.track_record && q.track_record.n_runs > 0 ? (
             <> · vận hành: {q.track_record.n_runs} lần khớp, chưa có kỳ nào chốt</>

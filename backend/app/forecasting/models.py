@@ -408,9 +408,9 @@ def build_default_ensemble(use_weather: bool = False, smearing: bool = False,
     """SeasonalTrend + PoissonTrend (+ Harmonic-thời-tiết nếu use_weather;
     + SARIMAX nếu có statsmodels).
 
-    LƯU Ý: gọi hàm này KHÔNG tham số là cấu hình "thời tiết tắt" — đúng cái
-    bẫy đã làm bảng MASE công bố lệch với sản phẩm. Trong app, luôn đi qua
-    `build_production_ensemble()` bên dưới.
+    Trong app và backtest, luôn dựng qua `group_forecast.make_ensemble(df, cfg)`
+    để tham số đọc từ PRODUCTION_CONFIG; gọi thẳng không tham số là cấu hình
+    "thời tiết tắt".
     """
     members = [SeasonalTrendForecaster(),
                PoissonTrendForecaster(lam=lam, smearing=smearing)]
@@ -438,15 +438,3 @@ def has_enough_weather(df: pd.DataFrame, min_months: int) -> bool:
     return ("temp" in df.columns) and int(df["temp"].notna().sum()) >= min_months
 
 
-def build_production_ensemble(df: pd.DataFrame, cfg=None) -> Ensemble:
-    """Ensemble theo PRODUCTION_CONFIG, tự hạ thời tiết nếu chuỗi chưa đủ.
-
-    Đây là hàm DUY NHẤT mà service và backtest được phép gọi để dựng ensemble
-    — để không bao giờ tái diễn tình trạng bốn cấu hình song song.
-    """
-    from .config import PRODUCTION_CONFIG
-    cfg = cfg or PRODUCTION_CONFIG
-    use_w = cfg.use_weather and has_enough_weather(df, cfg.weather_min_months)
-    return build_default_ensemble(use_weather=use_w, smearing=cfg.smearing,
-                                  lam=cfg.ridge_lam,
-                                  use_ets=getattr(cfg, "use_ets", False))

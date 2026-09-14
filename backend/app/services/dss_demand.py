@@ -1,4 +1,4 @@
-"""TẦNG 2 — QUY ĐỔI CA BỆNH DỰ BÁO SANG NHU CẦU THUỐC/VTYT.
+"""TẦNG 2 — QUY ĐỔI CA BỆNH DỰ BÁO SANG NHU CẦU THUỐC.
 
 Đặt tại: backend/app/services/dss_demand.py
 
@@ -7,19 +7,9 @@
       → D_i    = Σ_g Σ_ro Ŷ_g,ro × Norm(i,g,ro)    quy đổi qua định mức THỰC NGHIỆM
                + D_i,baseline                       nhu cầu nền không do hô hấp
 
-=============================================================================
-MỘT CÔNG THỨC, MỘT NGUỒN THAM SỐ (12/09/2026)
-
-Trước 12/09 module này có HAI đường: đường thực nghiệm (trên) và một đường
-"nhập tay" đọc `disease_supply_norms` × `severity_rates` theo Nhẹ/TB/Nặng.
-Đường nhập tay chưa từng chạy trong sản phẩm — ba nhóm đều có dữ liệu thực
-nghiệm nên luôn rẽ sang đường 1 — và định mức gõ tay đo ra GIỐNG NHAU ở cả
-ba mức nặng (2/2/2 · 3/3/3 · 1/1/1), tức chiều độ nặng không mang thông tin.
-Giữ hai đường chỉ khiến màn hình Quản trị có nút bấm không nối vào đâu.
-Đường nhập tay đã chuyển sang _archive/dinh_muc_nhap_tay/; muốn có "ghi đè
-thủ công" thì làm lại như một lớp override rõ ràng, không phải đường lùi ngầm.
-
-Chiều phân loại DUY NHẤT là rổ chăm sóc do HIS ghi nhận:
+Đây là đường tính nhu cầu DUY NHẤT (đường "định mức nhập tay" theo Nhẹ/TB/Nặng
+đã archive 12/09/2026 — xem _archive/dinh_muc_nhap_tay/). Chiều phân loại là
+rổ chăm sóc do HIS ghi nhận:
 
         NGT  ngoại trú
         NT1  nội trú cấp 1 (nặng nhất)
@@ -38,6 +28,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import date
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import text
@@ -142,47 +133,42 @@ def care_level_shares(db: Session) -> Dict[str, Dict[str, float]]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _cua_so_ky(db: Session, cfg: Dict[str, Any]) -> List[str]:
-    """Các kỳ dùng để tính định mức — CÙNG cửa sổ với v_care_level_share
-    (window_periods kỳ gần nhất từ min_period), để tử số và mẫu số nhìn cùng
-    một khoảng thời gian."""
+    """Các kỳ dùng để tính định mức — CÙNG cửa sổ với v_care_level_share:
+    `window_periods` kỳ ĐÃ CHỐT gần nhất kể từ `min_period`. Tháng hiện tại
+    (dở dang) bị loại: tử số và mẫu số của nó đều mới có vài ngày, giữ lại thì
+    định mức của kỳ đó là nhiễu và kéo lệch cả cửa sổ."""
     if not _has(db, "fact_cases_by_care_level"):
         return []
     rows = db.execute(text(
         "SELECT DISTINCT period FROM fact_cases_by_care_level "
-        "WHERE period >= :mp ORDER BY period DESC LIMIT :n"),
+        "WHERE period >= :mp AND period < :thang_nay "
+        "ORDER BY period DESC LIMIT :n"),
         {"mp": str(cfg.get("min_period", "2025-04")),
+         "thang_nay": date.today().strftime("%Y-%m"),
          "n": int(cfg.get("window_periods", 12))}).fetchall()
     return sorted(r[0] for r in rows)
 
 
 def empirical_norms(db: Session) -> Dict[str, Any]:
-    """Norm(i, g, ro) THỰC NGHIỆM = Σ tiêu hao / Σ ca, theo (nhóm × rổ), từ hai
-    bảng fact mà thủ tục usp_MedForecast_DayDuLieu đẩy xuống (11/09/2026).
+    """Norm(i, g, ro) = Σ tiêu hao / Σ ca theo (nhóm × rổ) trên cửa sổ kỳ đã chốt.
 
-    Tử số: `fact_usage_by_care_level` (MF_TieuHao_PhanCap, khử trùng ở mức
-    nhóm bằng #DxG). Mẫu số: `fact_cases_by_care_level` (MF_CaBenh_PhanCap).
-    Cả hai được thủ tục PROD tính sẵn cho ĐÚNG mục đích này.
+    Tử số: `fact_usage_by_care_level` (MF_TieuHao_PhanCap, khử trùng mức nhóm
+    bên PROD). Mẫu số: `fact_cases_by_care_level` (MF_CaBenh_PhanCap).
 
-    HỢP ĐỒNG is_vtyt (ghi trong thủ tục, mục D): y lệnh VTYT không mang phân
-    cấp chăm sóc → với is_vtyt = 1 PHẢI gộp NT1+NT2+NT3+NT0 trước khi chia.
-    Ở đây: tiêu hao VTYT của mọi rổ nội trú dồn về một mẫu số chung
-    (tổng ca nội trú), rồi gán CÙNG định mức cho từng rổ NT*. NGT giữ riêng
-    (ngoại trú là loại lượt, không phải phân cấp).
+    Phạm vi là THUỐC (phương án A, 13/09/2026): DayDuLieu chạy @GomVTYT = 0 nên
+    fact_usage_by_care_level không có dòng VTYT. Nhánh quy đổi riêng cho VTYT
+    (mẫu số gộp NT1+NT2+NT3+NT0) đã gỡ — muốn mở lại phải bật @GomVTYT ở CẢ
+    DayDuLieu lẫn DayKhoCungUng và bỏ bộ lọc is_vtyt = 0 trong 3 view local.
 
-    Mẫu nhỏ: rổ có ít hơn `min_cases_per_bucket` ca trong cửa sổ thì dùng định
-    mức GỘP toàn nhóm cho rổ đó (ghi vào `ro_mau_nho`), thay vì chia cho một
-    mẫu số vài ca.
+    Rổ có ít hơn `min_cases_per_bucket` ca trong cửa sổ → dùng định mức GỘP
+    toàn nhóm cho rổ đó (ghi vào `ro_mau_nho`) thay vì chia cho vài ca.
 
     Trả {"norms": {g: {ro: {code: q}}}, "cases": {g: {ro: n}}, "periods": [...],
-         "ro_mau_nho": {g: [ro]}, "n_vtyt_codes": int,
-         "usage": {g: {ro: {code: q}}}  (thuốc, tử số thô)
-         "usage_vtyt": {g: {code: q}}   (VTYT nội trú gộp)
-         "usage_vtyt_ngt": {g: {code: q}}, "vtyt_codes": set, "cfg": {...}}
+         "ro_mau_nho": {g: [ro]}, "usage": {g: {ro: {code: q}}} (tử số thô),
+         "gop": {g: {code: q}} (định mức gộp nhóm), "cfg": {...}}
     """
     out: Dict[str, Any] = {"norms": {}, "cases": {}, "periods": [],
-                           "ro_mau_nho": {}, "n_vtyt_codes": 0,
-                           "usage": {}, "usage_vtyt": {}, "usage_vtyt_ngt": {},
-                           "vtyt_codes": set(), "gop": {}, "cfg": {}}
+                           "ro_mau_nho": {}, "usage": {}, "gop": {}, "cfg": {}}
     if not (_has(db, "fact_usage_by_care_level") and _has(db, "fact_cases_by_care_level")):
         return out
     cfg = care_cfg(db)
@@ -203,34 +189,21 @@ def empirical_norms(db: Session) -> Dict[str, Any]:
         cases.setdefault(r.block_code, {})[r.ro] = float(r.n or 0)
     out["cases"] = cases
 
-    # tử số: tiêu hao theo (nhóm × rổ × mã), tách thuốc / VTYT
+    # tử số: tiêu hao theo (nhóm × rổ × mã)
     usage: Dict[str, Dict[str, Dict[str, float]]] = {}       # g → ro → code → q
-    usage_vtyt: Dict[str, Dict[str, float]] = {}             # g → code → q (nội trú gộp)
-    usage_vtyt_ngt: Dict[str, Dict[str, float]] = {}         # g → code → q (ngoại trú)
-    vtyt_codes = set()
     for r in db.execute(text(
-            f"SELECT block_code, ro, supply_code, is_vtyt, SUM(quantity) AS q "
+            f"SELECT block_code, ro, supply_code, SUM(quantity) AS q "
             f"FROM fact_usage_by_care_level WHERE period IN ({ph}) "
-            f"GROUP BY block_code, ro, supply_code, is_vtyt"), prm).fetchall():
-        g, ro, code, q = r.block_code, r.ro, r.supply_code, float(r.q or 0)
+            f"GROUP BY block_code, ro, supply_code"), prm).fetchall():
+        q = float(r.q or 0)
         if q <= 0:
             continue
-        if int(r.is_vtyt or 0) == 1:
-            vtyt_codes.add(code)
-            if ro == "NGT":
-                usage_vtyt_ngt.setdefault(g, {})[code] = usage_vtyt_ngt.get(g, {}).get(code, 0.0) + q
-            else:
-                usage_vtyt.setdefault(g, {})[code] = usage_vtyt.get(g, {}).get(code, 0.0) + q
-        else:
-            usage.setdefault(g, {}).setdefault(ro, {})[code] = q
-    out["n_vtyt_codes"] = len(vtyt_codes)
-    out["usage"], out["usage_vtyt"], out["usage_vtyt_ngt"] = usage, usage_vtyt, usage_vtyt_ngt
-    out["vtyt_codes"] = vtyt_codes
+        usage.setdefault(r.block_code, {}).setdefault(r.ro, {})[r.supply_code] = q
+    out["usage"] = usage
 
     norms: Dict[str, Dict[str, Dict[str, float]]] = {}
     for g, ro_cases in cases.items():
         tong_ca_g = sum(ro_cases.values())
-        ca_nt = sum(n for ro, n in ro_cases.items() if ro != "NGT")
         # định mức GỘP toàn nhóm (dự phòng cho rổ mẫu nhỏ)
         gop: Dict[str, float] = {}
         for ro, codes in usage.get(g, {}).items():
@@ -245,15 +218,6 @@ def empirical_norms(db: Session) -> Dict[str, Any]:
                 norms.setdefault(g, {})[ro] = dict(gop)
             else:
                 norms.setdefault(g, {})[ro] = {c: q / n for c, q in usage.get(g, {}).get(ro, {}).items()}
-            # VTYT: nội trú dùng mẫu số gộp NT*, ngoại trú dùng mẫu số NGT
-            if ro == "NGT":
-                n_ngt = ro_cases.get("NGT", 0.0)
-                if n_ngt > 0:
-                    for c, q in usage_vtyt_ngt.get(g, {}).items():
-                        norms[g][ro][c] = q / n_ngt
-            elif ca_nt > 0:
-                for c, q in usage_vtyt.get(g, {}).items():
-                    norms[g][ro][c] = q / ca_nt
     out["norms"] = norms
     return out
 
@@ -264,8 +228,7 @@ def chan_doan_dinh_muc(db: Session) -> Dict[str, Any]:
     emp = empirical_norms(db)
     ket_emp: Dict[str, Any] = {"co": bool(emp["norms"]), "so_ky": len(emp["periods"]),
                                "ky": (emp["periods"][0], emp["periods"][-1]) if emp["periods"] else None,
-                               "nhom": {}, "ro_mau_nho": emp["ro_mau_nho"],
-                               "n_vtyt_codes": emp["n_vtyt_codes"]}
+                               "nhom": {}, "ro_mau_nho": emp["ro_mau_nho"]}
     for g, theo_ro in emp["norms"].items():
         codes = set().union(*[set(d) for d in theo_ro.values()]) if theo_ro else set()
         khac = sum(1 for c in codes
@@ -412,7 +375,6 @@ def demand_by_supply(db: Session,
             "periods": emp["periods"],
             "so_nhom": len(emp["norms"]),
             "ro_mau_nho": emp["ro_mau_nho"],
-            "n_vtyt_codes": emp["n_vtyt_codes"],
         },
         "chan_doan_dinh_muc": chan_doan_dinh_muc(db),
     }
@@ -424,7 +386,7 @@ def demand_by_supply(db: Session,
 
 def norms_payload(db: Session, block: str, q: Optional[str] = None,
                   limit: int = 50, offset: int = 0) -> Dict[str, Any]:
-    """Một dòng cho mỗi mã vật tư của một nhóm: tử số, mẫu số và Norm theo
+    """Một dòng cho mỗi mã thuốc của một nhóm: tử số, mẫu số và Norm theo
     từng rổ — đúng những con số mà `demand_by_supply` nhân với Ŷ_g × p̂.
 
     Sắp theo tổng tiêu hao giảm dần (mã tiêu thụ nhiều đứng đầu); `q` lọc
@@ -438,19 +400,13 @@ def norms_payload(db: Session, block: str, q: Optional[str] = None,
     cases = emp["cases"].get(block, {})
     norms = emp["norms"].get(block, {})
     ro_list = [ro for ro in RO_ALL if ro in cases]
-    ca_nt = sum(n for ro, n in cases.items() if ro != "NGT")
     mau_nho = set(emp["ro_mau_nho"].get(block, []))
-    vtyt = emp["vtyt_codes"]
 
-    # tử số thô theo mã × rổ (thuốc); VTYT có mẫu số gộp
+    # tử số thô theo mã × rổ
     tu_so: Dict[str, Dict[str, float]] = {}
     for ro, codes in emp["usage"].get(block, {}).items():
         for code, qty in codes.items():
             tu_so.setdefault(code, {})[ro] = qty
-    for code, qty in emp["usage_vtyt"].get(block, {}).items():
-        tu_so.setdefault(code, {})["NT*"] = qty
-    for code, qty in emp["usage_vtyt_ngt"].get(block, {}).items():
-        tu_so.setdefault(code, {})["NGT"] = qty
 
     # tên / đơn vị
     ten: Dict[str, Any] = {}
@@ -466,15 +422,8 @@ def norms_payload(db: Session, block: str, q: Optional[str] = None,
         chi_tiet = {}
         for ro in ro_list:
             n = cases.get(ro, 0.0)
-            if code in vtyt:
-                if ro == "NGT":
-                    tu, mau = theo_ro.get("NGT", 0.0), n
-                else:
-                    tu, mau = theo_ro.get("NT*", 0.0), ca_nt
-                gop = False
-            else:
-                tu, mau = theo_ro.get(ro, 0.0), n
-                gop = ro in mau_nho
+            tu, mau = theo_ro.get(ro, 0.0), n
+            gop = ro in mau_nho
             chi_tiet[ro] = {
                 "tieu_hao": round(tu, 1), "ca": int(mau),
                 "norm": round(float(norms.get(ro, {}).get(code, 0.0)), 4),
@@ -486,7 +435,6 @@ def norms_payload(db: Session, block: str, q: Optional[str] = None,
             "ten": (m.ten_hoat_chat if m else None) or code,
             "don_vi": m.unit if m else None,
             "nhom": m.group_name if m else None,
-            "is_vtyt": code in vtyt,
             "tieu_hao_tong": round(tong, 1),
             "norm_gop": round(float(emp["gop"].get(block, {}).get(code, 0.0)), 4),
             # Σ_ro p̂ · Norm — lượng cần cho MỘT ca dự báo của nhóm này
@@ -508,14 +456,11 @@ def norms_payload(db: Session, block: str, q: Optional[str] = None,
         "ro": [{"ro": ro, "ten": RO_LABEL.get(ro, ro), "ca": int(cases.get(ro, 0)),
                 "p_hat": round(float(shares.get(ro, 0.0)), 4), "mau_nho": ro in mau_nho}
                for ro in ro_list],
-        "ca_noi_tru": int(ca_nt),
-        "n_vtyt_codes": emp["n_vtyt_codes"],
         "total": total,
         "offset": offset,
         "limit": limit,
         "rows": rows[offset:offset + limit],
         "cong_thuc": ("Norm(i,g,ro) = Σ tiêu hao(i,g,ro) / Σ ca(g,ro) trên cửa sổ; "
-                      "rổ < min_cases_per_bucket ca → dùng định mức gộp nhóm; "
-                      "VTYT (is_vtyt=1) dùng mẫu số gộp NT1+NT2+NT3+NT0. "
+                      "rổ < min_cases_per_bucket ca → dùng định mức gộp nhóm. "
                       "Nhu cầu 30 ngày D_i = Σ_ro Ŷ_g·p̂(g,ro)·Norm(i,g,ro) + nền."),
     }

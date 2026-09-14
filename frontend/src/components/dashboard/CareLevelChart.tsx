@@ -17,6 +17,32 @@ const BUCKET_COLOR: Record<CareBucket, string> = {
 const ORDER: CareBucket[] = ['NGT', 'NT1', 'NT2', 'NT3', 'NT0'];
 
 /**
+ * Làm tròn "largest remainder": từng đoạn làm tròn độc lập có thể cho tổng
+ * 99 hoặc 101; cách này bảo đảm tổng nhãn của một thanh luôn đúng 100.
+ */
+function roundTo100(values: Partial<Record<CareBucket, number>>): Partial<Record<CareBucket, number>> {
+  const keys = ORDER.filter((ro) => (values[ro] ?? 0) > 0);
+  const total = keys.reduce((a, ro) => a + (values[ro] ?? 0), 0);
+  if (total <= 0) return {};
+  const scaled = keys.map((ro) => ((values[ro] ?? 0) * 100) / total);
+  const floors = scaled.map((x) => Math.floor(x));
+  let rest = 100 - floors.reduce((a, b) => a + b, 0);
+  const order = scaled
+    .map((x, i) => ({ i, frac: x - floors[i] }))
+    .sort((a, b) => b.frac - a.frac);
+  for (const { i } of order) {
+    if (rest <= 0) break;
+    floors[i] += 1;
+    rest -= 1;
+  }
+  const out: Partial<Record<CareBucket, number>> = {};
+  keys.forEach((ro, i) => {
+    out[ro] = floors[i];
+  });
+  return out;
+}
+
+/**
  * Tỷ trọng phân cấp chăm sóc p̂(g, rổ) — thanh 100 % cho từng khối ICD.
  * Đây là đầu vào của Tầng 2 (định mức thực nghiệm tính theo rổ), nên hiển
  * thị để người xem hiểu vì sao cùng một số ca lại cho nhu cầu khác nhau.
@@ -44,26 +70,32 @@ export default function CareLevelChart({
       <div className="space-y-3">
         {blocks.map((b) => {
           const d = byBlock[b] ?? {};
+          const rounded = roundTo100(d);
           return (
             <div key={b} className="grid grid-cols-[92px_1fr] gap-3 items-center">
               <div>
                 <div className="text-xs font-semibold text-neutral-800">{b}</div>
                 <div className="text-[10.5px] text-neutral-500 leading-tight">{BLOCK_LABELS[b]}</div>
               </div>
-              <div className="flex h-6 rounded overflow-hidden bg-neutral-100" role="img" aria-label={`Phân cấp ${b}`}>
+              <div className="flex h-6 gap-[2px]" role="img" aria-label={`Phân cấp ${b}`}>
                 {ORDER.map((ro) => {
                   const v = d[ro] ?? 0;
+                  const pct = rounded[ro] ?? 0;
                   if (v <= 0) return null;
+                  const dark = ro === 'NGT' || ro === 'NT0';
                   return (
                     <div
                       key={ro}
                       title={`${CARE_BUCKET_LABELS[ro]}: ${v.toFixed(1)} %`}
-                      style={{ width: `${v}%`, background: BUCKET_COLOR[ro], marginRight: 2 }}
-                      className="flex items-center justify-center text-[10px] font-semibold"
+                      style={{ flex: `${v} 1 0`, minWidth: 18, background: BUCKET_COLOR[ro] }}
+                      className="flex items-center justify-center rounded-sm overflow-hidden font-semibold"
                     >
-                      {v >= 12 && (
-                        <span style={{ color: ro === 'NGT' || ro === 'NT0' ? '#0b0b0b' : '#fff' }}>{v.toFixed(0)}%</span>
-                      )}
+                      <span
+                        className="whitespace-nowrap leading-none"
+                        style={{ color: dark ? '#0b0b0b' : '#fff', fontSize: pct >= 8 ? 10 : 9 }}
+                      >
+                        {pct}%
+                      </span>
                     </div>
                   );
                 })}

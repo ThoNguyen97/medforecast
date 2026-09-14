@@ -105,13 +105,15 @@ def create_disease_case(
     service = DiseaseCaseService(db)
     client_ip = get_client_ip(request)
 
-    # Dedupe check: cùng (year, month, disease_type, location) → 409
+    # Trùng khoá tự nhiên (năm, tháng, mã ICD, khu vực) → 409. Không so
+    # disease_type: mọi bản ghi đều là "respiratory" nên so cột đó chặn nhầm
+    # ca thứ hai cùng tháng/khu vực của một mã khác.
     existing = (
         db.query(DiseaseCase)
         .filter(
             extract("year", DiseaseCase.recorded_at) == data.recorded_at.year,
             extract("month", DiseaseCase.recorded_at) == data.recorded_at.month,
-            DiseaseCase.disease_type == data.disease_type,
+            DiseaseCase.icd_code == data.icd_code,
             DiseaseCase.location == data.location,
         )
         .first()
@@ -507,7 +509,7 @@ async def import_disease_cases_csv(
             if existing_sup is None:
                 # Không tìm thấy → tạo placeholder (chỉ điền tối thiểu)
                 logger.warning(
-                    "Supply code=%s name='%s' không khớp 15 thuốc/vật tư, tạo placeholder.",
+                    "Supply code=%s name='%s' không khớp 15 thuốc, tạo placeholder.",
                     supply_code or drug_code, name,
                 )
                 next_code = supply_code or f"VT_AUTO_{int(datetime.now().timestamp())}"
@@ -809,7 +811,7 @@ def get_case_supply_usage(
 
     # Bước 1: Định mức thực nghiệm theo khối bệnh (engine DSS thống nhất —
     # cùng công thức norm_hieu_dung(i,g) = Σ_ro p̂(g,ro)·Norm(i,g,ro) dùng
-    # để tính nhu cầu vật tư ở dss_demand/dss_alerts). Thay cho SeverityRate ×
+    # để tính nhu cầu thuốc ở dss_demand/dss_alerts). Thay cho SeverityRate ×
     # DiseaseSupplyNorm (đã archive — xem _archive/README.md).
     khoi = nhom_cua_ma(case.icd_code)
     if khoi:

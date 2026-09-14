@@ -54,15 +54,23 @@ class SarimaxForecaster:
             return None
         if df[WCOLS].notna().sum().min() < 12:
             return None                                   # chưa đủ thời tiết
-        cols = []
+        cols, last = [], []
         self._ex_mu, self._ex_sd = [], []
         for c in WCOLS:
-            v = pd.to_numeric(df[c], errors="coerce").shift(self.weather_lag)
+            raw = pd.to_numeric(df[c], errors="coerce")
+            v = raw.shift(self.weather_lag)
             v = v.fillna(v.mean() if v.notna().any() else 0.0).to_numpy(float)
             mu, sd = float(v.mean()), float(v.std())
             sd = sd if sd > 0 else 1.0
             self._ex_mu.append(mu); self._ex_sd.append(sd)
             cols.append((v - mu) / sd)
+            # Exog cho bước dự báo n: huấn luyện dùng w[t − lag], nên bước n cần
+            # w[n − lag] = dòng thời tiết THỨ `lag` từ cuối, chưa shift. Lấy
+            # exog[-1] (= w[n − 1 − lag]) là trễ thêm một bước so với lúc học.
+            r_last = raw.iloc[-self.weather_lag] if len(raw) >= self.weather_lag else np.nan
+            r_last = float(r_last) if pd.notna(r_last) else mu
+            last.append((r_last - mu) / sd)
+        self._last_exog_next = np.asarray(last, float)[None, :]
         return np.column_stack(cols)
 
     def fit(self, df: pd.DataFrame):
@@ -77,7 +85,7 @@ class SarimaxForecaster:
                 raise ValueError(f"chuỗi {len(y)} tháng < {MIN_OBS}, quá ngắn cho SARIMAX mùa 12")
             exog = self._exog(df)
             self._used_exog = exog is not None
-            self._last_exog = exog[-1:] if exog is not None else None
+            self._last_exog = self._last_exog_next if exog is not None else None
             model = SARIMAX(y, exog=exog, order=(1, 1, 1),
                             seasonal_order=(1, 0, 0, 12),
                             enforce_stationarity=False, enforce_invertibility=False)

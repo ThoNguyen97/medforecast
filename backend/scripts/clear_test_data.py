@@ -12,7 +12,7 @@ XOÁ TẤT CẢ:
 - medical_supplies + inventory (Module 6)
 - conversion_ratios (định mức theo bệnh — sẽ được tạo lại khi seed)
 - alerts (Module 7)
-- procurement_plans (Module 7)
+
 - audit_logs + system_logs (lịch sử thao tác)
 
 Cách dùng:
@@ -41,7 +41,6 @@ DELETE_ORDER = [
     ("system_logs", "Nhật ký hệ thống"),
     # Cảnh báo + kế hoạch
     ("alerts", "Cảnh báo thiếu hụt"),
-    ("procurement_plans", "Kế hoạch nhập kho"),
     # Yêu cầu vật tư
     ("supply_requirements", "Yêu cầu vật tư"),
     # Dự báo

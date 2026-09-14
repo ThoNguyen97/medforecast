@@ -2,20 +2,18 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Download, FileSpreadsheet, FileText, Eye } from 'lucide-react';
 import { useUIStore } from '../store/uiStore';
-import {
-  useConsumptionReport,
-  useForecastAccuracyReport,
-} from '../hooks/useReports';
+import { useForecastAccuracyReport } from '../hooks/useReports';
 import { useSupplyRequirementsSummary } from '../hooks/useSupplyRequirements';
 import {
   useDiseaseOptions,
   useForecastHistory,
   useRegionOptions,
 } from '../hooks/useForecastAnalysis';
-import { useInventory } from '../hooks/useInventory';
+import { dssService } from '../services/dssService';
 import { epidemiologyService } from '../services/epidemiologyService';
+import { triggerDownload } from '../utils/download';
 import { reportsService } from '../services/reportsService';
-import { SUPPLY_CATEGORY_LABELS } from '../utils/constants';
+import { LEVEL_LABELS, type AlertLevel, type AlertRow } from '../types/dashboardV2';
 import ReportTypePicker, {
   type ReportKind,
 } from '../components/reports/ReportTypePicker';
@@ -42,37 +40,34 @@ export default function Reports() {
     status: 'all',
   });
 
-  // Data sources (chỉ fetch khi cần)
+  // Nguồn dữ liệu — mỗi hook chỉ gọi API khi loại báo cáo đang chọn cần nó
+  // (không bắn 5 request mỗi lần mở trang).
   const { data: diseases = [] } = useDiseaseOptions();
   const { data: regions = [] } = useRegionOptions();
 
-  const consumption = useConsumptionReport(
-    kind === 'inventory' || kind === 'shortage'
-      ? {}
-      : undefined,
-  );
-
   const accuracy = useForecastAccuracyReport(
-    kind === 'accuracy'
-      ? {
-          disease_type:
-            filters.diseaseType !== 'all' ? filters.diseaseType : undefined,
-        }
-      : undefined,
+    {
+      disease_type: filters.diseaseType !== 'all' ? filters.diseaseType : undefined,
+    },
+    { enabled: kind === 'accuracy' },
   );
 
   const requirements = useSupplyRequirementsSummary(
-    kind === 'shortage'
-      ? {
-          disease_type:
-            filters.diseaseType !== 'all' ? filters.diseaseType : undefined,
-        }
-      : undefined,
+    { disease_type: filters.diseaseType !== 'all' ? filters.diseaseType : undefined },
+    { enabled: kind === 'shortage' },
   );
 
-  const inventory = useInventory(
-    kind === 'inventory' ? { limit: 2000 } : undefined,
-  );
+  // Báo cáo Tồn kho thuốc đọc CÙNG chuỗi DOI với trang Quản lý thuốc / Cảnh
+  // báo (toàn danh mục, 1 lần, lọc client). Trước 13/09/2026 nó đọc /inventory
+  // và xếp loại theo safety_stock — hệ nhãn thứ hai mâu thuẫn trang Cảnh báo.
+  const inventory = useQuery({
+    queryKey: ['dss', 'alerts', 'report-inventory'],
+    queryFn: () => dssService.getAlerts({ focus: false, level: null, limit: 2000, offset: 0 }),
+    enabled: kind === 'inventory',
+    staleTime: 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
 
   const forecastHistory = useForecastHistory(
     kind === 'forecast' || kind === 'accuracy'
@@ -90,6 +85,7 @@ export default function Reports() {
           })() : undefined,
         }
       : undefined,
+    { enabled: kind === 'forecast' || kind === 'accuracy' },
   );
 
   // Báo cáo "Tình hình dịch bệnh" lấy SỐ CA THẬT từ disease_cases (đã import),
@@ -136,7 +132,7 @@ export default function Reports() {
       // Backend nhận 'forecast-accuracy' chứ không phải 'accuracy'
       const backendType = kind === 'accuracy' ? 'forecast-accuracy' : kind;
       const blob = await reportsService.exportReport({
-        report_type: backendType as any,
+        report_type: backendType,
         format,
         disease_type:
           filters.diseaseType !== 'all' ? filters.diseaseType : undefined,
@@ -165,7 +161,7 @@ export default function Reports() {
           filters.endMonth,
         );
       case 'inventory':
-        return buildInventoryPreview(inventory.data ?? [], filters.status, filters.search);
+        return buildInventoryPreview(inventory.data?.rows ?? [], filters.status, filters.search);
       case 'shortage':
         return buildShortagePreview(requirements.data?.items ?? [], filters.search);
       case 'accuracy':
@@ -173,7 +169,6 @@ export default function Reports() {
     }
   }, [
     kind,
-    consumption.data,
     accuracy.data,
     requirements.data,
     inventory.data,
@@ -325,12 +320,7 @@ function buildFiltersLabel(
     parts.push(f.region === 'all' ? 'Toàn thành phố' : f.region);
   }
   if (kind === 'inventory' && f.status !== 'all') {
-    const statusLabels: Record<string, string> = {
-      normal: 'An toàn',
-      low: 'Dưới ngưỡng',
-      critical: 'Nguy cấp',
-    };
-    parts.push(statusLabels[f.status] ?? f.status);
+    parts.push(LEVEL_LABELS[f.status as AlertLevel] ?? f.status);
   }
   return parts.join(' • ') || '—';
 }
@@ -339,17 +329,6 @@ function formatMonth(monthStr: string): string {
   if (!monthStr) return '';
   const [year, month] = monthStr.split('-');
   return `${month}/${year}`;
-}
-
-function triggerDownload(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
 }
 
 // ── Preview builders cho từng loại ──────────────────────────────────────────
@@ -495,82 +474,58 @@ function buildForecastPreview(
   };
 }
 
-function buildInventoryPreview(items: any[], statusFilter?: string, searchQuery?: string): PreviewBundle {
-  // Helper function để classify status
-  const classify = (cs: number, ss: number): 'normal' | 'low' | 'critical' => {
-    if (ss <= 0) return 'normal';
-    if (cs <= 0 || cs < ss * 0.3) return 'critical';
-    if (cs <= ss) return 'low';
-    return 'normal';
-  };
+function buildInventoryPreview(rows: AlertRow[], statusFilter?: string, searchQuery?: string): PreviewBundle {
+  const fmt = (v: number | null | undefined, digits = 0) =>
+    v == null ? '—' : v.toLocaleString('vi-VN', { maximumFractionDigits: digits });
 
-  // Áp dụng filter theo status
-  let filtered = items;
+  let filtered = rows;
   if (statusFilter && statusFilter !== 'all') {
-    filtered = items.filter((i) => {
-      const cs = i.current_stock ?? 0;
-      const ss = i.safety_stock ?? 0;
-      return classify(cs, ss) === statusFilter;
-    });
+    filtered = filtered.filter((r) => r.muc === statusFilter);
   }
-
-  // Lọc theo thanh tìm kiếm
   if (searchQuery && searchQuery.trim()) {
     const q = searchQuery.toLowerCase();
-    filtered = filtered.filter((i) => {
-      const name = (i.supply?.ten_hoat_chat || i.supply?.name || '').toLowerCase();
-      const category = (SUPPLY_CATEGORY_LABELS[i.supply?.category] || i.supply?.category || '').toLowerCase();
-      return name.includes(q) || category.includes(q);
-    });
+    filtered = filtered.filter(
+      (r) =>
+        r.supply_code.toLowerCase().includes(q) ||
+        (r.ten || '').toLowerCase().includes(q) ||
+        (r.danh_muc || '').toLowerCase().includes(q),
+    );
   }
 
-  // Đếm theo trạng thái (từ items gốc, không filter)
-  const safe = items.filter((i) => {
-    const cs = i.current_stock ?? 0;
-    const ss = i.safety_stock ?? 0;
-    return classify(cs, ss) === 'normal';
-  }).length;
-  
-  const low = items.filter((i) => {
-    const cs = i.current_stock ?? 0;
-    const ss = i.safety_stock ?? 0;
-    return classify(cs, ss) === 'low';
-  }).length;
-  
-  const critical = items.filter((i) => {
-    const cs = i.current_stock ?? 0;
-    const ss = i.safety_stock ?? 0;
-    return classify(cs, ss) === 'critical';
-  }).length;
+  const dem = (lv: AlertLevel) => rows.filter((r) => r.muc === lv).length;
 
   return {
     metrics: [
-      { label: 'Tổng vật tư', value: items.length },
-      { label: 'An toàn', value: safe, tone: 'success' },
-      { label: 'Dưới ngưỡng', value: low, tone: 'warning' },
-      { label: 'Nguy cấp', value: critical, tone: 'danger' },
+      { label: 'Tổng thuốc', value: rows.length },
+      { label: 'Đỏ', value: dem('red'), tone: 'danger' },
+      { label: 'Vàng', value: dem('amber'), tone: 'warning' },
+      { label: 'Xanh', value: dem('green'), tone: 'success' },
+      { label: 'Xám', value: dem('grey') },
     ],
     sections: [
       {
-        title: 'Danh sách vật tư',
+        title: 'Tồn kho thuốc theo DOI',
         columns: [
-          { key: 'code', label: 'Mã vật tư' },
-          { key: 'name', label: 'Tên vật tư' },
-          { key: 'category', label: 'Loại' },
+          { key: 'code', label: 'Mã' },
+          { key: 'name', label: 'Thuốc' },
+          { key: 'category', label: 'Danh mục' },
           { key: 'unit', label: 'ĐVT' },
-          { key: 'current_stock', label: 'Tồn kho', align: 'right' },
-          { key: 'safety_stock', label: 'Ngưỡng an toàn', align: 'right' },
+          { key: 'stock', label: 'Tồn kho', align: 'right' },
+          { key: 'usable', label: 'Tồn hữu dụng', align: 'right' },
+          { key: 'd_daily', label: 'Tiêu hao/ngày', align: 'right' },
+          { key: 'doi', label: 'DOI (ngày)', align: 'right' },
+          { key: 'status', label: 'Nhãn' },
         ],
-        rows: filtered.map((i: any) => ({
-          code: i.supply?.supply_code ?? '—',
-          name: i.supply?.ten_hoat_chat ?? i.supply?.name ?? '—',
-          category:
-            SUPPLY_CATEGORY_LABELS[i.supply?.category] ??
-            i.supply?.category ??
-            '—',
-          unit: i.supply?.unit ?? '—',
-          current_stock: (i.current_stock ?? 0).toLocaleString('vi-VN'),
-          safety_stock: (i.safety_stock ?? 0).toLocaleString('vi-VN'),
+        rows: filtered.map((r) => ({
+          code: r.supply_code,
+          name: r.ten || r.supply_code,
+          category: r.danh_muc || 'Khác',
+          unit: r.don_vi ?? '—',
+          stock: fmt(r.s_total),
+          usable: fmt(r.s_usable),
+          d_daily: fmt(r.d_daily, 2),
+          doi: fmt(r.doi, 1),
+          status: LEVEL_LABELS[r.muc],
         })),
       },
     ],
@@ -596,7 +551,7 @@ function buildShortagePreview(items: any[], searchQuery?: string): PreviewBundle
 
   return {
     metrics: [
-      { label: 'Số vật tư thiếu', value: shortageItems.length, tone: 'danger' },
+      { label: 'Số thuốc thiếu', value: shortageItems.length, tone: 'danger' },
       {
         label: 'Tổng lượng thiếu',
         value: totalShortage.toLocaleString('vi-VN'),
@@ -604,9 +559,9 @@ function buildShortagePreview(items: any[], searchQuery?: string): PreviewBundle
     ],
     sections: [
       {
-        title: 'Vật tư thiếu hụt',
+        title: 'Thuốc thiếu hụt',
         columns: [
-          { key: 'name', label: 'Tên vật tư' },
+          { key: 'name', label: 'Tên thuốc' },
           { key: 'unit', label: 'ĐVT' },
           { key: 'demand', label: 'Nhu cầu', align: 'right' },
           { key: 'stock', label: 'Tồn kho', align: 'right' },

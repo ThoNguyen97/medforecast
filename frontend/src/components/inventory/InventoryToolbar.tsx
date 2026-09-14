@@ -1,10 +1,15 @@
 import { ChevronDown, Search } from 'lucide-react';
 import { cn } from '../../utils/cn';
+import { LEVEL_LABELS } from '../../types/dashboardV2';
+
+/** 'all' | red | amber | green | grey | 'unmeasured' (không tiêu hao 12 kỳ). */
+export type InventoryStatusFilter = 'all' | 'red' | 'amber' | 'green' | 'grey' | 'unmeasured';
 
 export interface InventoryFilters {
   search: string;
-  category: string; // 'all' | category key
-  status: string;   // 'all' | 'normal' | 'low' | 'critical'
+  category: string; // 'all' | nhãn danh mục
+  status: InventoryStatusFilter;
+  showUnmeasured: boolean; // hiện cả mã không có tiêu hao 12 kỳ (không đo được DOI)
 }
 
 interface CategoryOption {
@@ -20,9 +25,11 @@ interface Props {
 
 const STATUS_OPTIONS: CategoryOption[] = [
   { key: 'all', label: 'Tất cả' },
-  { key: 'normal', label: 'Bình thường' },
-  { key: 'low', label: 'Dưới ngưỡng' },
-  { key: 'critical', label: 'Nguy cấp' },
+  { key: 'red', label: LEVEL_LABELS.red },
+  { key: 'amber', label: LEVEL_LABELS.amber },
+  { key: 'green', label: LEVEL_LABELS.green },
+  { key: 'grey', label: LEVEL_LABELS.grey },
+  { key: 'unmeasured', label: 'Không tiêu hao 12 kỳ' },
 ];
 
 export default function InventoryToolbar({ filters, onChange, categories }: Props) {
@@ -38,24 +45,39 @@ export default function InventoryToolbar({ filters, onChange, categories }: Prop
             type="text"
             value={filters.search}
             onChange={(e) => update({ search: e.target.value })}
-            placeholder="Tìm kiếm theo tên, mã vật tư..."
+            placeholder="Tìm theo mã hoặc tên hoạt chất..."
             className="w-full h-10 pl-9 pr-3 rounded-lg border border-neutral-200 bg-neutral-50 text-sm placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
           />
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
           <SelectInline
-            label="Loại:"
+            label="Danh mục:"
             value={filters.category}
             onChange={(v) => update({ category: v })}
             options={[{ key: 'all', label: 'Tất cả' }, ...categories]}
           />
           <SelectInline
-            label="Trạng thái:"
+            label="Nhãn DOI:"
             value={filters.status}
-            onChange={(v) => update({ status: v })}
+            onChange={(v) =>
+              update({
+                status: v as InventoryStatusFilter,
+                // Chọn nhãn "không tiêu hao" thì phải hiện nhóm đó.
+                showUnmeasured: v === 'unmeasured' ? true : filters.showUnmeasured,
+              })
+            }
             options={STATUS_OPTIONS}
           />
+          <label className="inline-flex items-center gap-2 text-sm text-neutral-600 select-none">
+            <input
+              type="checkbox"
+              checked={filters.showUnmeasured}
+              onChange={(e) => update({ showUnmeasured: e.target.checked })}
+              className="w-4 h-4 rounded border-neutral-300"
+            />
+            Hiện cả mã không tiêu hao
+          </label>
         </div>
       </div>
     </div>

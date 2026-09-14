@@ -12,9 +12,6 @@ import DiseaseCaseDetail from './pages/DiseaseCaseDetail';
 import Weather from './pages/Weather';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
-// Trang Kế hoạch cung ứng ẩn theo quyết định 11/09/2026 (phạm vi dừng ở Cảnh báo
-// thiếu hụt). Mã vẫn ở pages/SupplyPlanning.tsx; mở lại bằng cách khôi phục
-// import + Route + mục menu trong Sidebar.
 
 // Protected route wrapper
 function ProtectedRoute({ children }: { children: React.ReactNode }) {

@@ -66,16 +66,4 @@ export const adminCatalogService = {
   async deleteRegion(name: string): Promise<void> {
     await api.delete(`/admin/regions/${encodeURIComponent(name)}`);
   },
-
-  // ── Safety rate ───────────────────────────────────────────────────────
-  async getSafetyRate(): Promise<number> {
-    const res = await api.get<{ safety_rate: number }>('/admin/safety-rate');
-    return res.data.safety_rate;
-  },
-  async updateSafetyRate(rate: number): Promise<number> {
-    const res = await api.put<{ safety_rate: number }>('/admin/safety-rate', {
-      safety_rate: rate,
-    });
-    return res.data.safety_rate;
-  },
 };

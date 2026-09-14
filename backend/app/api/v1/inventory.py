@@ -85,7 +85,7 @@ def get_expiring_items(
 
 @router.get("/template", include_in_schema=True)
 async def download_inventory_template():
-    """File CSV mẫu cho Import tồn kho đầu kỳ (4 bệnh hô hấp + 15 thuốc/vật tư)."""
+    """File CSV mẫu cho Import tồn kho đầu kỳ (4 bệnh hô hấp + 15 thuốc)."""
     from fastapi.responses import StreamingResponse
 
     sample = (
@@ -147,15 +147,9 @@ def delete_inventory(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_inventory_manager_or_admin),
 ) -> Any:
-    """
-    Delete an inventory record.
-
-    Only Inventory Managers and Administrators can delete inventory entries.
-    Resolves any open alerts attached to the same supply afterwards.
-    """
+    """Xoá một dòng tồn kho (Inventory Manager / Admin). Cảnh báo không cần
+    đóng theo: chúng được tính lại từ DOI mỗi lần đọc, không lưu trạng thái."""
     from app.models.inventory import Inventory as InventoryModel
-    from app.models.alert import Alert as AlertModel
-    from datetime import datetime, timezone
 
     item = (
         db.query(InventoryModel)
@@ -168,30 +162,7 @@ def delete_inventory(
             detail=f"Inventory {inventory_id} not found",
         )
 
-    supply_id = item.supply_id
     db.delete(item)
-
-    # Resolve open alerts tied to this supply if no inventory rows remain
-    remaining = (
-        db.query(InventoryModel)
-        .filter(
-            InventoryModel.supply_id == supply_id,
-            InventoryModel.id != inventory_id,
-        )
-        .count()
-    )
-    if remaining == 0:
-        now = datetime.now(timezone.utc)
-        for alert in (
-            db.query(AlertModel)
-            .filter(
-                AlertModel.supply_id == supply_id,
-                AlertModel.is_resolved == False,  # noqa: E712
-            )
-            .all()
-        ):
-            alert.is_resolved = True
-            alert.resolved_at = now
 
     try:
         db.commit()
@@ -204,7 +175,7 @@ def delete_inventory(
         )
 
     logger.info(
-        f"Inventory {inventory_id} (supply_id={supply_id}) deleted by "
+        f"Inventory {inventory_id} deleted by "
         f"user={current_user.username}"
     )
     return {"message": "Inventory deleted", "id": inventory_id}
@@ -480,8 +451,8 @@ def _do_inventory_export(db: Session) -> Any:
     ws.title = "Tồn kho"
 
     headers = [
-        "Mã VT",
-        "Tên vật tư",
+        "Mã thuốc",
+        "Tên thuốc",
         "Loại",
         "ĐVT",
         "Tồn kho",

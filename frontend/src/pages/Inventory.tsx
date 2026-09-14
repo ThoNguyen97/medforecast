@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Download, Upload, FileDown, Plus, Loader2, X } from 'lucide-react';
 import { useUIStore } from '../store/uiStore';
 import { useAuthStore } from '../store/authStore';
 import { useInventory } from '../hooks/useInventory';
 import api from '../services/api';
+import { dssService } from '../services/dssService';
 import { SUPPLY_CATEGORY_LABELS } from '../utils/constants';
+import type { AlertLevel, AlertRow } from '../types/dashboardV2';
 import InventoryAlertCard from '../components/inventory/InventoryAlertCard';
 import InventoryToolbar, {
   type InventoryFilters,
@@ -12,31 +15,40 @@ import InventoryToolbar, {
 import InventoryTable, {
   type InventoryRow,
 } from '../components/inventory/InventoryTable';
-import { classifyStatus } from '../components/inventory/InventoryStatusBadge';
 
 const PAGE_SIZE = 10;
 
-/** Module 6 — Quản lý Vật tư Y tế & Kho vận */
+/**
+ * Module 6 — Quản lý thuốc (13/09/2026, trước đó là "Vật tư y tế & Kho vận").
+ *
+ * Danh mục app chỉ có THUỐC (`TM_DUOC` loại 'T', phương án A) nên trang đổi
+ * tên cho đúng nội dung. Nhãn trên mỗi dòng là nhãn DOI từ
+ * `/dashboard/v2/alerts?focus=false` — CÙNG chuỗi Tầng 1→2→3 với Tổng quan và
+ * Cảnh báo; hệ nhãn "Ngưỡng an toàn / Nguy cấp" theo `safety_stock` (cột chỉ
+ * có giá trị ở 34/5.051 dòng) đã bỏ hẳn.
+ *
+ * Nguồn dữ liệu: `/inventory` cho danh mục + id để sửa/xoá; `/dashboard/v2/alerts`
+ * cho DOI. Ghép theo `supply_code` ở client. Mã không có tiêu hao trong 12 kỳ
+ * đã chốt (không có mẫu số) ẩn mặc định — bật lại bằng ô "Hiện cả mã không
+ * tiêu hao".
+ */
 export default function Inventory() {
   const { setPageTitle } = useUIStore();
 
   useEffect(() => {
-    setPageTitle('Vật tư y tế');
+    setPageTitle('Quản lý thuốc');
   }, [setPageTitle]);
 
   return <InventoryContent />;
 }
 
-/**
- * Main inventory content (extracted to component for cleaner code)
- */
 function InventoryContent() {
-  // Nhập tồn kho / thêm vật tư đi qua POST /inventory/import, mà endpoint đó
-  // yêu cầu get_inventory_manager_or_admin. Không có quyền mà vẫn hiện nút thì
-  // bấm vào chỉ nhận 403.
-  // PHẢI khai ở ĐÂY chứ không phải ở Inventory(): hai nút dùng biến này nằm
-  // trong InventoryContent, mà đây là hai hàm riêng biệt — khai nhầm chỗ thì
-  // lúc chạy ném ReferenceError và React gỡ toàn bộ cây (trắng cả trang).
+  // Import / thêm mới đi qua POST /inventory/import — endpoint đòi
+  // get_inventory_manager_or_admin; không có quyền mà vẫn hiện nút thì bấm
+  // vào chỉ nhận 403.
+  // PHẢI khai ở ĐÂY chứ không phải ở Inventory(): các nút dùng biến này nằm
+  // trong InventoryContent — khai nhầm chỗ thì lúc chạy ném ReferenceError và
+  // React gỡ toàn bộ cây (trắng cả trang).
   const { user } = useAuthStore();
   const duocSuaKho =
     user?.role === 'Administrator' || user?.role === 'Inventory_Manager';
@@ -45,6 +57,7 @@ function InventoryContent() {
     search: '',
     category: 'all',
     status: 'all',
+    showUnmeasured: false,
   });
   const [page, setPage] = useState(1);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -61,84 +74,85 @@ function InventoryContent() {
   const [editingItem, setEditingItem] = useState<InventoryRow | null>(null);
   const [deletingItem, setDeletingItem] = useState<InventoryRow | null>(null);
 
-  const { data: inventory = [], isLoading, refetch } = useInventory({ limit: 2000 });
+  const { data: inventory = [], isLoading, refetch } = useInventory({ limit: 5000 });
 
-  // 12/09/2026: cột định mức Nhẹ/TB/Nặng theo bệnh đã gỡ khỏi trang này — định
-  // mức DSS là thực nghiệm theo rổ chăm sóc, xem ở Quản trị → Định mức thực nghiệm.
+  // Toàn danh mục DOI, một lần (limit 2000 > 1.476 mã có tiêu hao 12 kỳ).
+  const doiQuery = useQuery({
+    queryKey: ['dss', 'alerts', 'inventory-page'],
+    queryFn: () => dssService.getAlerts({ focus: false, level: null, limit: 2000, offset: 0 }),
+    staleTime: 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const doiRows = doiQuery.data?.rows;
+  const doiByCode = useMemo(() => {
+    const m = new Map<string, AlertRow>();
+    (doiRows ?? []).forEach((r) => m.set(r.supply_code, r));
+    return m;
+  }, [doiRows]);
 
-  // Map raw inventory → flat row dùng cho bảng
+  // Danh mục (/inventory) ghép DOI (/dashboard/v2/alerts) theo supply_code.
   const allRows: InventoryRow[] = useMemo(() => {
     return inventory.map((item: any, idx: number) => {
       const supply = item.supply ?? {};
-      const code =
-        supply.supply_code ??
-        buildSupplyCode(supply.category, item.supply_id ?? item.id ?? idx);
-      const categoryLabel =
-        supply.group_name ??
-        SUPPLY_CATEGORY_LABELS[supply.category] ??
-        supply.category ??
-        '—';
-      const supplyName = supply.ten_hoat_chat ?? supply.name ?? '—';
+      const code: string = supply.supply_code ?? `#${item.supply_id ?? item.id ?? idx}`;
+      const d = doiByCode.get(code);
       return {
         id: item.id,
         code,
-        name: supplyName,
-        category: categoryLabel,
-        unit: supply.unit ?? '—',
-        currentStock: item.current_stock ?? 0,
-        safetyStock: item.safety_stock ?? 0,
+        name: supply.ten_hoat_chat ?? d?.ten ?? '—',
+        category: d?.danh_muc ?? nhanDanhMuc(supply.category),
+        group: supply.group_name ?? d?.nhom ?? '',
+        unit: supply.unit ?? d?.don_vi ?? '—',
+        currentStock: d ? d.s_total : item.current_stock ?? 0,
+        usableStock: d ? d.s_usable : null,
+        dDaily: d ? d.d_daily : null,
+        doi: d?.doi ?? null,
+        level: d?.muc ?? null,
+        greyReason: d?.ly_do_xam ?? null,
       };
     });
-  }, [inventory]);
+  }, [inventory, doiByCode]);
 
-  // Lấy danh sách category xuất hiện trong dữ liệu
   const categoryOptions = useMemo(() => {
     const unique = new Set<string>();
-    inventory.forEach((it: any) => {
-      const cat = it.supply?.group_name ?? it.supply?.category;
-      if (cat) unique.add(cat);
+    allRows.forEach((r) => {
+      if (r.category && r.category !== '—') unique.add(r.category);
     });
-    return Array.from(unique).map((key) => ({
-      key,
-      label: SUPPLY_CATEGORY_LABELS[key] ?? key,
-    }));
-  }, [inventory]);
+    return Array.from(unique)
+      .sort((a, b) => a.localeCompare(b, 'vi'))
+      .map((key) => ({ key, label: key }));
+  }, [allRows]);
 
-  // Áp filter
   const filtered = useMemo(() => {
     const q = filters.search.trim().toLowerCase();
     return allRows.filter((r) => {
+      if (!filters.showUnmeasured && r.level === null) return false;
       if (q && !`${r.code} ${r.name}`.toLowerCase().includes(q)) return false;
-      if (filters.category !== 'all') {
-        const label = SUPPLY_CATEGORY_LABELS[filters.category] ?? filters.category;
-        if (r.category !== label) return false;
-      }
-      if (filters.status !== 'all') {
-        const status = classifyStatus(r.currentStock, r.safetyStock);
-        if (status !== filters.status) return false;
-      }
+      if (filters.category !== 'all' && r.category !== filters.category) return false;
+      if (filters.status === 'unmeasured') return r.level === null;
+      if (filters.status !== 'all' && r.level !== filters.status) return false;
       return true;
     });
   }, [allRows, filters]);
 
-  // Đếm số mục cảnh báo (low + critical)
-  const alertCount = useMemo(() => {
-    return allRows.reduce((acc, r) => {
-      const s = classifyStatus(r.currentStock, r.safetyStock);
-      return s === 'normal' ? acc : acc + 1;
-    }, 0);
+  const counts = useMemo(() => {
+    const c: Record<AlertLevel, number> = { red: 0, amber: 0, green: 0, grey: 0 };
+    allRows.forEach((r) => {
+      if (r.level) c[r.level] += 1;
+    });
+    return c;
   }, [allRows]);
+  const measured = counts.red + counts.amber + counts.green + counts.grey;
 
-  // Paginate
   const paged = useMemo(() => {
     const start = (page - 1) * PAGE_SIZE;
     return filtered.slice(start, start + PAGE_SIZE);
   }, [filtered, page]);
 
-  // Reset page khi filter đổi
   useEffect(() => {
     setPage(1);
-  }, [filters.search, filters.category, filters.status]);
+  }, [filters.search, filters.category, filters.status, filters.showUnmeasured]);
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
   const handleDownloadTemplate = () => {
@@ -151,16 +165,12 @@ function InventoryContent() {
       setExporting(true);
       const res = await api.get('/inventory/export', { responseType: 'blob' });
       const blob = new Blob([res.data], {
-        type:
-          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `inventory_${new Date()
-        .toISOString()
-        .replace(/[-:T]/g, '')
-        .slice(0, 14)}.xlsx`;
+      a.download = `danh_muc_thuoc_${new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)}.xlsx`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -191,22 +201,12 @@ function InventoryContent() {
         truncated: !!d.errors_truncated,
       });
       refetch();
+      doiQuery.refetch();
     } catch (err: any) {
-      alert(
-        'Lỗi import: ' +
-          (err?.response?.data?.detail || err.message || 'không xác định'),
-      );
+      alert('Lỗi import: ' + (err?.response?.data?.detail || err.message || 'không xác định'));
     } finally {
       setImporting(false);
     }
-  };
-
-  const handleEdit = (row: InventoryRow) => {
-    setEditingItem(row);
-  };
-
-  const handleDelete = (row: InventoryRow) => {
-    setDeletingItem(row);
   };
 
   const confirmDelete = async () => {
@@ -216,23 +216,21 @@ function InventoryContent() {
       refetch();
       setDeletingItem(null);
     } catch (err: any) {
-      alert(
-        'Lỗi xoá vật tư: ' +
-          (err?.response?.data?.detail || err.message || 'không xác định'),
-      );
+      alert('Lỗi xoá thuốc: ' + (err?.response?.data?.detail || err.message || 'không xác định'));
     }
   };
 
+  const th = doiQuery.data?.meta.thresholds;
+  const stockSource = doiQuery.data?.counts?.stock_source ?? null;
+
   return (
     <div className="space-y-5">
-      {/* Page header */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-3xl font-extrabold text-neutral-900">
-            Quản lý vật tư y tế & Kho vận
-          </h2>
+          <h2 className="text-3xl font-extrabold text-neutral-900">Quản lý thuốc</h2>
           <p className="text-sm text-neutral-500 mt-1">
-            Tổng quan tình trạng kho và cảnh báo vật tư theo số ngày tồn phủ nhu cầu.
+            Danh mục thuốc của bệnh viện, tồn kho theo lô và nhãn DOI — cùng cách tính với
+            trang Cảnh báo thiếu hụt.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2.5">
@@ -249,78 +247,62 @@ function InventoryContent() {
           />
           <ActionButton
             variant="outline"
-            icon={
-              exporting ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Download className="w-4 h-4" />
-              )
-            }
+            icon={exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
             onClick={handleExportExcel}
           >
-            {exporting ? 'Đang xuất...' : 'Xuất báo cáo tồn kho'}
+            {exporting ? 'Đang xuất...' : 'Xuất Excel'}
           </ActionButton>
-          <ActionButton
-            variant="outline"
-            icon={<FileDown className="w-4 h-4" />}
-            onClick={handleDownloadTemplate}
-          >
+          <ActionButton variant="outline" icon={<FileDown className="w-4 h-4" />} onClick={handleDownloadTemplate}>
             Tải template mẫu
           </ActionButton>
           {duocSuaKho && (
             <ActionButton
               variant="outline"
-              icon={
-                importing ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Upload className="w-4 h-4" />
-                )
-              }
+              icon={importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
               onClick={() => fileInputRef.current?.click()}
             >
               {importing ? 'Đang import...' : 'Import tồn kho đầu kỳ'}
             </ActionButton>
           )}
           {duocSuaKho && (
-            <ActionButton
-              variant="primary"
-              icon={<Plus className="w-4 h-4" />}
-              onClick={() => setShowAddForm(true)}
-            >
-              Thêm vật tư mới
+            <ActionButton variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => setShowAddForm(true)}>
+              Thêm thuốc
             </ActionButton>
           )}
         </div>
       </div>
 
-      {/* Alert summary */}
-      <InventoryAlertCard count={alertCount} />
+      <InventoryAlertCard
+        counts={counts}
+        measured={measured}
+        catalogue={allRows.length}
+        stockSource={stockSource}
+        redDays={th?.red_days ?? null}
+        amberDays={th?.amber_days ?? null}
+      />
 
-      {/* Inventory table card */}
+      {doiQuery.isError && (
+        <div className="text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+          Không tải được nhãn DOI (/dashboard/v2/alerts) — bảng dưới chỉ hiện danh mục và tồn kho.
+        </div>
+      )}
+
       <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden">
-        <InventoryToolbar
-          filters={filters}
-          onChange={setFilters}
-          categories={categoryOptions}
-        />
+        <InventoryToolbar filters={filters} onChange={setFilters} categories={categoryOptions} />
         <InventoryTable
           rows={paged}
-          isLoading={isLoading}
+          isLoading={isLoading || (doiQuery.isLoading && !doiQuery.isError)}
           total={filtered.length}
           page={page}
           pageSize={PAGE_SIZE}
           onPageChange={setPage}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
+          onEdit={duocSuaKho ? setEditingItem : undefined}
+          onDelete={duocSuaKho ? setDeletingItem : undefined}
         />
       </div>
 
-      {/* Footer attribution */}
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-neutral-400 pt-2 border-t border-neutral-100">
-        <span>
-          © 2026 MedForecast AI. Vận hành bởi Phòng Công nghệ Thông tin Y tế.
-        </span>
+        <span>© 2026 MedForecast AI. Vận hành bởi Phòng Công nghệ Thông tin Y tế.</span>
         <div className="flex items-center gap-4">
           <a className="hover:text-neutral-600" href="#">Điều khoản</a>
           <a className="hover:text-neutral-600" href="#">Bảo mật</a>
@@ -328,7 +310,6 @@ function InventoryContent() {
         </div>
       </div>
 
-      {/* Add supply form */}
       {showAddForm && (
         <AddSupplyDialog
           onClose={() => setShowAddForm(false)}
@@ -339,7 +320,6 @@ function InventoryContent() {
         />
       )}
 
-      {/* Edit supply form */}
       {editingItem && (
         <EditSupplyDialog
           item={editingItem}
@@ -351,25 +331,16 @@ function InventoryContent() {
         />
       )}
 
-      {/* Delete confirmation dialog */}
       {deletingItem && (
-        <ConfirmDeleteDialog
-          item={deletingItem}
-          onClose={() => setDeletingItem(null)}
-          onConfirm={confirmDelete}
-        />
+        <ConfirmDeleteDialog item={deletingItem} onClose={() => setDeletingItem(null)} onConfirm={confirmDelete} />
       )}
 
-      {/* Import result modal */}
       {importResult && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 w-full max-w-2xl shadow-xl max-h-[80vh] overflow-hidden flex flex-col">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">Kết quả import tồn kho</h3>
-              <button
-                onClick={() => setImportResult(null)}
-                className="p-1 rounded hover:bg-neutral-100"
-              >
+              <button onClick={() => setImportResult(null)} className="p-1 rounded hover:bg-neutral-100">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -434,27 +405,23 @@ function InventoryContent() {
           </div>
         </div>
       )}
-
     </div>
   );
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function buildSupplyCode(category: string | undefined, id: number): string {
-  // Map category → prefix mã vật tư theo design
-  const prefix: Record<string, string> = {
-    medicine: 'VT',
-    mask: 'TB',
-    glove: 'TB',
-    test_kit: 'TB',
-    disinfectant: 'HC',
-    iv_fluid: 'VT',
-    other: 'VT',
-  };
-  const p = prefix[category ?? ''] ?? 'VT';
-  return `${p}-${String(id).padStart(4, '0')}`;
+/** `category` từ HIS đã là nhãn tiếng Việt; chỉ dữ liệu import tay đời trước
+ * mới còn khoá kiểu `medicine`. */
+function nhanDanhMuc(category: string | null | undefined): string {
+  if (!category) return 'Khác';
+  return SUPPLY_CATEGORY_LABELS[category] ?? category;
 }
+
+/** 8 nhãn danh mục thuốc cho hộp thoại Thêm (không gồm khoá VTYT/legacy). */
+const DANH_MUC_THUOC = Object.keys(SUPPLY_CATEGORY_LABELS).filter(
+  (k) => SUPPLY_CATEGORY_LABELS[k] === k,
+);
 
 function ActionButton({
   variant,
@@ -477,6 +444,8 @@ function ActionButton({
         className={`${base} bg-blue-600 text-white hover:bg-blue-700 shadow-sm`}
       >
         {icon}
+        {children}
+
         {children}
       </button>
     );
@@ -505,10 +474,9 @@ function AddSupplyDialog({
 }) {
   const [vals, setVals] = useState({
     name: '',
-    category: 'medicine',
-    unit: 'Hộp',
+    category: 'Khác',
+    unit: 'Viên',
     current_stock: 0,
-    safety_stock: 0,
     expiry_date: '',
   });
   const [submitting, setSubmitting] = useState(false);
@@ -518,11 +486,11 @@ function AddSupplyDialog({
     e.preventDefault();
     setError(null);
     if (!vals.name.trim()) {
-      setError('Tên vật tư không được để trống');
+      setError('Tên thuốc không được để trống');
       return;
     }
-    if (vals.current_stock < 0 || vals.safety_stock < 0) {
-      setError('Tồn kho và ngưỡng an toàn phải >= 0');
+    if (vals.current_stock < 0) {
+      setError('Tồn kho phải >= 0');
       return;
     }
     try {
@@ -546,10 +514,10 @@ function AddSupplyDialog({
           '',
           oCsv(vals.name.trim()),
           oCsv(vals.unit),
-          oCsv(SUPPLY_CATEGORY_LABELS[vals.category] ?? vals.category),
+          oCsv(vals.category),
           oCsv(vals.category),
           vals.current_stock,
-          vals.safety_stock,
+          0,
           vals.expiry_date,
         ].join(',') + '\n';
       const blob = new Blob([csv], { type: 'text/csv' });
@@ -565,7 +533,7 @@ function AddSupplyDialog({
         setError(
           kq.errors?.[0]?.reason
             ? `Không thêm được: ${kq.errors[0].reason}`
-            : 'Không thêm được vật tư — máy chủ không nhận dòng nào.',
+            : 'Không thêm được thuốc — máy chủ không nhận dòng nào.',
         );
         return;
       }
@@ -583,7 +551,7 @@ function AddSupplyDialog({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-neutral-100">
-          <h3 className="text-base font-semibold text-neutral-900">Thêm vật tư mới</h3>
+          <h3 className="text-base font-semibold text-neutral-900">Thêm thuốc mới</h3>
           <button
             type="button"
             onClick={onClose}
@@ -593,26 +561,26 @@ function AddSupplyDialog({
           </button>
         </div>
         <form onSubmit={handleSubmit} className="px-5 py-4 space-y-3">
-          <Field label="Tên vật tư" required>
+          <Field label="Tên thuốc" required>
             <input
               type="text"
               required
               value={vals.name}
               onChange={(e) => setVals({ ...vals, name: e.target.value })}
               className={inputClass}
-              placeholder="VD: Paracetamol 500mg"
+              placeholder="VD: Paracetamol"
             />
           </Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Loại">
+            <Field label="Danh mục">
               <select
                 value={vals.category}
                 onChange={(e) => setVals({ ...vals, category: e.target.value })}
                 className={inputClass}
               >
-                {Object.entries(SUPPLY_CATEGORY_LABELS).map(([k, v]) => (
+                {DANH_MUC_THUOC.map((k) => (
                   <option key={k} value={k}>
-                    {v}
+                    {k}
                   </option>
                 ))}
               </select>
@@ -623,7 +591,7 @@ function AddSupplyDialog({
                 value={vals.unit}
                 onChange={(e) => setVals({ ...vals, unit: e.target.value })}
                 className={inputClass}
-                placeholder="Hộp, Chai, Lọ, Cái..."
+                placeholder="Viên, Chai, Lọ, Ống..."
               />
             </Field>
           </div>
@@ -639,19 +607,6 @@ function AddSupplyDialog({
                 className={inputClass}
               />
             </Field>
-            <Field label="Ngưỡng an toàn">
-              <input
-                type="number"
-                min={0}
-                value={vals.safety_stock}
-                onChange={(e) =>
-                  setVals({ ...vals, safety_stock: Math.max(0, Number(e.target.value)) })
-                }
-                className={inputClass}
-              />
-            </Field>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
             <Field label="Hạn dùng">
               <input
                 type="date"
@@ -680,7 +635,7 @@ function AddSupplyDialog({
               className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60"
             >
               {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-              Thêm vật tư
+              Thêm thuốc
             </button>
           </div>
         </form>
@@ -754,7 +709,7 @@ function EditSupplyDialog({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-neutral-100">
-          <h3 className="text-base font-semibold text-neutral-900">Sửa vật tư</h3>
+          <h3 className="text-base font-semibold text-neutral-900">Sửa thuốc</h3>
           <button
             type="button"
             onClick={onClose}
@@ -765,13 +720,13 @@ function EditSupplyDialog({
         </div>
         <form onSubmit={handleSubmit} className="px-5 py-4 space-y-3">
           <div className="bg-neutral-50 rounded-lg p-3 mb-3">
-            <div className="text-xs text-neutral-500 mb-1">Vật tư</div>
+            <div className="text-xs text-neutral-500 mb-1">Thuốc</div>
             <div className="font-semibold text-neutral-900">{item.name}</div>
             <div className="text-sm text-neutral-600 mt-0.5">
-              Mã: {item.code} · Loại: {item.category}
+              Mã: {item.code} · Danh mục: {item.category}
             </div>
           </div>
-          <Field label="Tồn kho hiện tại">
+          <Field label="Tồn kho đầu kỳ (chỉ dùng khi chưa có ảnh chụp lô từ HIS)">
             <input
               type="number"
               min={0}
@@ -845,7 +800,7 @@ function ConfirmDeleteDialog({
         </div>
         <div className="px-5 py-4">
           <p className="text-sm text-neutral-600 mb-3">
-            Bạn có chắc chắn muốn xoá vật tư này không?
+            Bạn có chắc chắn muốn xoá thuốc này không?
           </p>
           <div className="bg-red-50 rounded-lg p-3 mb-4">
             <div className="font-semibold text-neutral-900">{item.name}</div>

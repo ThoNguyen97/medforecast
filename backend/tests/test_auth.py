@@ -127,7 +127,7 @@ def test_refresh_token(test_user):
         "/api/v1/auth/login",
         json={"username": "testuser", "password": "testpass123"}
     )
-    token = login_response.json()["access_token"]
+    token = login_response.json()["refresh_token"]      # /refresh nhận refresh token
     
     # Refresh token
     response = client.post(
