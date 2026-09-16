@@ -16,6 +16,7 @@ import {
   X,
   Database,
   RefreshCw,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useUIStore } from '../store/uiStore';
@@ -61,6 +62,8 @@ export default function Epidemiology() {
   const [items, setItems] = useState<CaseRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportMsg, setExportMsg] = useState<string | null>(null);
 
   // Filter state - temporary (for UI inputs)
   const [tempDisease, setTempDisease] = useState<string>('all');
@@ -273,6 +276,44 @@ export default function Epidemiology() {
     window.open(`${api.defaults.baseURL}/disease-cases/template`, '_blank');
   };
 
+  // Xuất Excel theo ĐÚNG bộ lọc đang áp dụng (selected*, không phải temp*).
+  // Gọi API có JWT → nhận blob rồi tự tải, giống Inventory.handleExportExcel.
+  const handleExportExcel = async () => {
+    if (exporting) return;
+    setExporting(true);
+    setExportMsg(null);
+    try {
+      const params: Record<string, string> = {};
+      if (selectedDisease !== 'all') params.disease_group = selectedDisease;
+      if (selectedRegion !== 'all') params.location = selectedRegion;
+      if (startMonth) params.start_month = startMonth;
+      if (endMonth) params.end_month = endMonth;
+
+      const res = await api.get('/disease-cases/export', {
+        params,
+        responseType: 'blob',
+        timeout: 120000,
+      });
+      const blob = new Blob([res.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+      const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `du_lieu_benh_${stamp}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setExportMsg(`Đã xuất ${filtered.length} bản ghi ra Excel`);
+    } catch (e) {
+      setExportMsg(loiMayChu(e, 'Không thể xuất file Excel, vui lòng thử lại.'));
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const handleSyncHIS = async () => {
     if (runSync.isPending) return;
     try {
@@ -470,6 +511,7 @@ export default function Epidemiology() {
             Danh sách số ca bệnh dịch tễ
           </h2>
           {syncMsg && <p className="text-sm text-emerald-600 mt-1">{syncMsg}</p>}
+          {exportMsg && <p className="text-sm text-blue-600 mt-1">{exportMsg}</p>}
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -481,6 +523,16 @@ export default function Epidemiology() {
           >
             {runSync.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Database className="w-4 h-4" />}
             {runSync.isPending ? 'Đang đồng bộ…' : 'Đồng bộ HIS'}
+          </button>
+          <button
+            type="button"
+            onClick={handleExportExcel}
+            disabled={exporting || loading || filtered.length === 0}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-neutral-200 rounded-xl text-sm font-medium hover:bg-neutral-50 disabled:opacity-50"
+            title="Xuất danh sách ca bệnh theo bộ lọc đang áp dụng ra Excel"
+          >
+            {exporting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
+            {exporting ? 'Đang xuất…' : 'Xuất Excel'}
           </button>
           <button
             onClick={downloadTemplate}

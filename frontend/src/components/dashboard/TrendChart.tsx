@@ -17,7 +17,7 @@ interface Row {
   period: string;
   month: string;
   nam_nay: number | null;
-  /** Kỳ đang mở: vẽ nét đứt nối từ kỳ chốt cuối, không nối nét liền. */
+  /** Kỳ đang mở: số đang thu thập dở — chỉ hiện ở tooltip, KHÔNG vẽ lên đường. */
   nam_nay_mo: number | null;
   nam_truoc: number | null;
   chua_chot: boolean;
@@ -32,8 +32,9 @@ function monthLabel(period: string) {
 
 /**
  * Xu hướng ca bệnh 12 kỳ, năm nay so với cùng kỳ năm trước, kèm điểm dự báo
- * kỳ tới và dải khoảng tin cậy. Kỳ đang mở được đánh dấu "chưa chốt" và KHÔNG
- * nối vào đường năm nay bằng nét liền — cột đó là số đang thu thập dở.
+ * kỳ tới và dải khoảng tin cậy. Kỳ đang mở được đánh dấu "chưa chốt" (*) và
+ * KHÔNG vẽ lên biểu đồ — số đang thu thập dở chỉ hiện trong tooltip; đường
+ * năm nay dừng ở kỳ chốt cuối rồi nối nét đứt sang điểm dự báo.
  */
 export default function TrendChart({
   trend,
@@ -73,12 +74,8 @@ export default function TrendChart({
       la_du_bao: false,
     }));
 
-    // Điểm neo: kỳ đã chốt cuối cùng → nét đứt sang kỳ đang mở và kỳ dự báo.
+    // Điểm neo: kỳ đã chốt cuối cùng → nét đứt sang kỳ dự báo.
     const anchorIdx = [...out].map((r) => !r.chua_chot).lastIndexOf(true);
-    if (anchorIdx >= 0) {
-      const a = out[anchorIdx];
-      if (out.some((r) => r.chua_chot)) a.nam_nay_mo = a.nam_nay;
-    }
     if (fcPoint == null || !target) return out;
     if (anchorIdx >= 0) {
       const a = out[anchorIdx];
@@ -142,9 +139,12 @@ export default function TrendChart({
               <Area
                 type="monotone"
                 dataKey="khoang"
-                stroke="none"
+                stroke={SERIES.s1}
+                strokeWidth={1}
+                strokeOpacity={0.45}
+                strokeDasharray="3 3"
                 fill={SERIES.s1}
-                fillOpacity={0.14}
+                fillOpacity={0.28}
                 connectNulls={false}
                 isAnimationActive={false}
                 activeDot={false}
@@ -156,7 +156,6 @@ export default function TrendChart({
               dataKey="nam_truoc"
               stroke={INK.reference}
               strokeWidth={2}
-              strokeDasharray="4 4"
               dot={false}
               activeDot={{ r: 4, fill: INK.reference, stroke: '#fff', strokeWidth: 2 }}
               connectNulls
@@ -170,21 +169,6 @@ export default function TrendChart({
               dot={{ r: 3, strokeWidth: 2, stroke: '#ffffff', fill: SERIES.s1 }}
               activeDot={{ r: 5 }}
               connectNulls={false}
-              isAnimationActive={false}
-            />
-            <Line
-              type="monotone"
-              dataKey="nam_nay_mo"
-              stroke={SERIES.s1}
-              strokeWidth={2}
-              strokeDasharray="2 3"
-              dot={(props: { cx?: number; cy?: number; payload?: Row; index?: number }) => {
-                const { cx, cy, payload, index } = props;
-                if (cx == null || cy == null || !payload?.chua_chot) return <g key={index} />;
-                return <circle key={index} cx={cx} cy={cy} r={4} fill="#fff" stroke={SERIES.s1} strokeWidth={2} />;
-              }}
-              activeDot={false}
-              connectNulls
               isAnimationActive={false}
             />
             <Line
@@ -215,7 +199,7 @@ export default function TrendChart({
       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-neutral-500">
         <LegendItem swatch={<span className="w-4 h-0.5 rounded" style={{ background: SERIES.s1 }} />} label="Năm nay (đã chốt)" />
         <LegendItem
-          swatch={<span className="w-4 h-0.5 rounded border-t-2 border-dashed" style={{ borderColor: INK.reference }} />}
+          swatch={<span className="w-4 h-0.5 rounded" style={{ background: INK.reference }} />}
           label="Cùng kỳ năm trước"
         />
         <LegendItem
@@ -224,7 +208,7 @@ export default function TrendChart({
         />
         {hasBand && (
           <LegendItem
-            swatch={<span className="w-4 h-2.5 rounded-sm" style={{ background: SERIES.s1, opacity: 0.18 }} />}
+            swatch={<span className="w-4 h-2.5 rounded-sm" style={{ background: SERIES.s1, opacity: 0.3 }} />}
             label={`Khoảng ${Math.round(forecast.level * 100)}%`}
           />
         )}

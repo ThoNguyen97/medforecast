@@ -85,6 +85,179 @@ def list_disease_cases(
     )
 
 
+# ---------------------------------------------------------------------------
+# Xuất Excel danh sách ca bệnh (theo đúng bộ lọc đang áp dụng trên UI)
+# ---------------------------------------------------------------------------
+def _khoang_thang(start_month: Optional[str], end_month: Optional[str]):
+    """'YYYY-MM' → (từ 00:00 ngày 1 tháng đầu, đến 23:59:59 ngày cuối tháng cuối).
+
+    Đảo hai mốc nếu người dùng nhập ngược. Trả (None, None) khi không lọc.
+    """
+    from datetime import timedelta
+
+    def _parse(s: Optional[str]) -> Optional[datetime]:
+        if not s:
+            return None
+        try:
+            return datetime.strptime(s.strip(), "%Y-%m")
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Tháng không hợp lệ: {s}. Định dạng YYYY-MM.",
+            )
+
+    tu, den = _parse(start_month), _parse(end_month)
+    if tu and den and tu > den:
+        tu, den = den, tu
+    if den:
+        # Ngày đầu tháng kế tiếp - 1s = 23:59:59 ngày cuối tháng
+        nam, thang = (den.year + 1, 1) if den.month == 12 else (den.year, den.month + 1)
+        den = datetime(nam, thang, 1) - timedelta(seconds=1)
+    return tu, den
+
+
+@router.get("/export")
+def export_disease_cases_excel(
+    disease_group: Optional[str] = Query(None, description="Nhóm ICD: J00-J06 / J09-J18 / J20-J22"),
+    location: Optional[str] = Query(None, description="Tỉnh/Thành (chấp nhận mọi biến thể tên)"),
+    start_month: Optional[str] = Query(None, description="Từ tháng, YYYY-MM"),
+    end_month: Optional[str] = Query(None, description="Đến tháng, YYYY-MM"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Any:
+    """Xuất danh sách số ca bệnh dịch tễ ra .xlsx.
+
+    Sheet 1 "Chi tiết": từng bản ghi đúng như bảng trên trang Dữ liệu bệnh.
+    Sheet 2 "Tổng hợp": số ca theo Tháng × Nhóm bệnh × Tỉnh/Thành.
+    Bộ lọc dùng cùng quy ước với UI: nhóm ICD (OR dải mã cho bản ghi cũ chưa
+    có disease_group), tên tỉnh so khớp qua mọi biến thể (province_aliases).
+    """
+    import io as _io
+    from fastapi.responses import Response
+    from app.models.disease_case import DiseaseCase
+    from app.utils.province_alias import province_aliases, ten_chuan
+
+    try:
+        import openpyxl
+        from openpyxl.styles import Alignment, Font, PatternFill
+        from openpyxl.utils import get_column_letter
+    except ImportError:
+        raise HTTPException(
+            status_code=500, detail="openpyxl chưa được cài — không thể xuất Excel",
+        )
+
+    q = db.query(DiseaseCase)
+    if disease_group:
+        q = q.filter(dieu_kien_nhom(DiseaseCase, disease_group))
+    if location:
+        q = q.filter(DiseaseCase.location.in_(province_aliases(location)))
+    tu, den = _khoang_thang(start_month, end_month)
+    if tu:
+        q = q.filter(DiseaseCase.recorded_at >= tu)
+    if den:
+        q = q.filter(DiseaseCase.recorded_at <= den)
+
+    rows = q.order_by(
+        DiseaseCase.recorded_at.desc(), DiseaseCase.location, DiseaseCase.icd_code
+    ).all()
+
+    header_fill = PatternFill(start_color="1F4E79", end_color="1F4E79", fill_type="solid")
+    header_font = Font(color="FFFFFF", bold=True)
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    bold = Font(bold=True)
+
+    def _ghi_header(ws, headers, widths):
+        for i, h in enumerate(headers, 1):
+            c = ws.cell(row=1, column=i, value=h)
+            c.fill, c.font, c.alignment = header_fill, header_font, center
+        for i, w in enumerate(widths, 1):
+            ws.column_dimensions[get_column_letter(i)].width = w
+        ws.freeze_panes = "A2"
+
+    wb = openpyxl.Workbook()
+
+    # ── Sheet 1: Chi tiết ────────────────────────────────────────────────
+    ws = wb.active
+    ws.title = "Chi tiết"
+    _ghi_header(
+        ws,
+        ["STT", "Tháng/Năm", "Mã nhóm", "Nhóm bệnh", "Mã ICD", "Tên bệnh",
+         "Tỉnh/Thành", "Số ca mắc", "Nguồn dữ liệu", "Ghi chú"],
+        [6, 11, 10, 38, 9, 42, 22, 11, 16, 30],
+    )
+
+    tong_hop: dict = {}  # (yyyy-mm, nhóm, tỉnh) -> tổng ca
+    tong_ca = 0
+    for i, r in enumerate(rows, 1):
+        nhom = r.disease_group or nhom_cua_ma(r.icd_code or "") or ""
+        thang = r.recorded_at.strftime("%m/%Y") if r.recorded_at else ""
+        ky = r.recorded_at.strftime("%Y-%m") if r.recorded_at else ""
+        tinh = ten_chuan(r.location or "")
+        so_ca = int(r.case_count or 0)
+        tong_ca += so_ca
+
+        ws.append([
+            i, thang, nhom, NHOM_ICD.get(nhom, nhom or "—"), r.icd_code,
+            r.disease_name, tinh, so_ca, r.data_source or "", r.note or "",
+        ])
+        k = (ky, nhom, tinh)
+        tong_hop[k] = tong_hop.get(k, 0) + so_ca
+
+    r_tong = ws.max_row + 1
+    ws.cell(row=r_tong, column=7, value="TỔNG").font = bold
+    c = ws.cell(row=r_tong, column=8, value=tong_ca)
+    c.font = bold
+    for r_idx in range(2, r_tong + 1):
+        ws.cell(row=r_idx, column=1).alignment = center
+        ws.cell(row=r_idx, column=2).alignment = center
+        ws.cell(row=r_idx, column=8).number_format = "#,##0"
+
+    # ── Sheet 2: Tổng hợp ───────────────────────────────────────────────
+    ws2 = wb.create_sheet("Tổng hợp")
+    _ghi_header(
+        ws2,
+        ["Tháng/Năm", "Mã nhóm", "Nhóm bệnh", "Tỉnh/Thành", "Số ca mắc"],
+        [11, 10, 38, 22, 11],
+    )
+    for (ky, nhom, tinh), so_ca in sorted(
+        tong_hop.items(), key=lambda kv: (kv[0][0], kv[0][1], kv[0][2]), reverse=False
+    ):
+        thang = f"{ky[5:7]}/{ky[0:4]}" if len(ky) == 7 else ky
+        ws2.append([thang, nhom, NHOM_ICD.get(nhom, nhom or "—"), tinh, so_ca])
+    r2 = ws2.max_row + 1
+    ws2.cell(row=r2, column=4, value="TỔNG").font = bold
+    ws2.cell(row=r2, column=5, value=tong_ca).font = bold
+    for r_idx in range(2, r2 + 1):
+        ws2.cell(row=r_idx, column=1).alignment = center
+        ws2.cell(row=r_idx, column=5).number_format = "#,##0"
+
+    # ── Sheet 3: Bộ lọc đã áp dụng ───────────────────────────────────────
+    ws3 = wb.create_sheet("Bộ lọc")
+    ws3.column_dimensions["A"].width = 22
+    ws3.column_dimensions["B"].width = 40
+    for label, val in (
+        ("Thời điểm xuất", datetime.now().strftime("%d/%m/%Y %H:%M:%S")),
+        ("Người xuất", getattr(current_user, "username", "") or ""),
+        ("Nhóm bệnh", NHOM_ICD.get(disease_group or "", disease_group) or "Tất cả"),
+        ("Tỉnh/Thành", ten_chuan(location) if location else "Tất cả"),
+        ("Từ tháng", f"{start_month[5:7]}/{start_month[0:4]}" if start_month else "—"),
+        ("Đến tháng", f"{end_month[5:7]}/{end_month[0:4]}" if end_month else "—"),
+        ("Số bản ghi", len(rows)),
+        ("Tổng số ca", tong_ca),
+    ):
+        ws3.append([label, val])
+        ws3.cell(row=ws3.max_row, column=1).font = bold
+
+    buf = _io.BytesIO()
+    wb.save(buf)
+    filename = f"du_lieu_benh_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.post("/", response_model=DiseaseCaseResponse, status_code=status.HTTP_201_CREATED)
 def create_disease_case(
     data: DiseaseCaseCreate,
