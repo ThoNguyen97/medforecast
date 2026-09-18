@@ -15,7 +15,7 @@ const TONE: Record<Insight['tone'], { icon: React.ReactNode; cls: string }> = {
  */
 export default function InsightsCard({ items }: { items: Insight[] }) {
   if (items.length === 0) {
-    return <div className="py-6 text-center text-sm text-neutral-400">Chưa có gì để diễn giải.</div>;
+    return <div className="py-6 text-center text-sm text-neutral-400">Không có điểm cần lưu ý.</div>;
   }
   return (
     <ul className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2.5">

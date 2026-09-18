@@ -172,10 +172,11 @@ export default function ForecastHistoryTable({
 
   const bat = (khoa: string) =>
     setDangMo((m) => ({ ...m, [khoa]: !(m[khoa] ?? false) }));
-  // Mặc định mở hết cả ba cấp — thấy ngay chi tiết từng tỉnh; ai muốn gọn thì
-  // tự thu lại.
-  const moThang = (k: string) => dangMo[k] ?? true;
-  const moNhom = (k: string) => dangMo[k] ?? true;
+  // Mặc định THU GỌN theo tháng: mỗi tháng một dòng tổng (số chính thức từ bản
+  // Toàn quốc). Bấm tháng → hiện 3 nhóm bệnh; bấm nhóm → hiện chi tiết tỉnh
+  // (tham khảo dịch tễ). Mở dần từng cấp thay vì đổ hết ~30 dòng ra ngay.
+  const moThang = (k: string) => dangMo[k] ?? false;
+  const moNhom = (k: string) => dangMo[k] ?? false;
 
   return (
     <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden">
@@ -321,6 +322,11 @@ export default function ForecastHistoryTable({
                             <ChevronRight className="w-4 h-4 text-neutral-500" />
                           )}
                           Tháng {thangNode.thang}
+                          {!mo && (
+                            <span className="text-[11px] font-normal text-neutral-400">
+                              · {thangNode.nhoms.length} nhóm bệnh
+                            </span>
+                          )}
                           {thangNode.soNhomThieuToanQuoc > 0 && (
                             <span
                               className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-50 text-amber-700"

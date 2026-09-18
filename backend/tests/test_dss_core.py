@@ -336,3 +336,56 @@ def test_prepare_don_ro_la_va_gop_trung_khoa():
     out = dss_loader._prepare(raw, spec)
     assert set(out["ro"]) == {"NGT", "NT0"}
     assert int(out.loc[out["ro"] == "NGT", "cases"].iloc[0]) == 7
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Khoá hai lỗi sửa ngày 18/09/2026
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_d_daily_chia_so_ky_cua_so_khong_phai_so_ky_co_dong(db):
+    """d_daily lấy mẫu số là SỐ KỲ CỦA CỬA SỔ, giống nhau cho mọi mã.
+
+    Trước 18/09 mẫu số là COUNT(*) — số kỳ mà RIÊNG mã đó có xuất — nên mã chỉ
+    xuất 1 trong 3 kỳ có d_daily ngang mã xuất đều cả 3 kỳ, và tồn ít của nó
+    thành Đỏ giả. Đo 14/09 trên toàn danh mục: 284 mã Đỏ có 8 mã chỉ 1 kỳ,
+    19 mã 2 kỳ, 10 mã 3 kỳ.
+    """
+    s, engine = db
+    rows = [(_ky(i), "DEU", 0, 300.0, 100.0, 200.0) for i in (1, 2, 3)]
+    rows.append((_ky(2), "LE", 0, 300.0, 100.0, 200.0))       # chỉ 1 kỳ trong 3
+    s.execute(text("INSERT INTO fact_usage_total (period, supply_code, is_vtyt, "
+                   "so_luong_toan_vien, so_luong_hohap, d_baseline_thang) "
+                   "VALUES (:p,:c,:v,:t,:h,:b)"),
+              [dict(p=p, c=c, v=v, t=t, h=h, b=b) for p, c, v, t, h, b in rows])
+    s.commit()
+    views.tao_views(engine)
+
+    d = {r[0]: (r[1], r[2]) for r in s.execute(text(
+        "SELECT supply_code, d_daily, so_ky FROM v_supply_daily_demand"))}
+    assert d["DEU"][0] == pytest.approx(900 / 3 / 30.0)       # 3 kỳ, tổng 900
+    assert d["LE"][0] == pytest.approx(300 / 3 / 30.0)        # 1 kỳ có dòng, vẫn chia 3
+    assert d["LE"][0] * 3 == pytest.approx(d["DEU"][0])       # KHÔNG bằng nhau
+    assert d["DEU"][1] == 3 and d["LE"][1] == 1               # cột so_ky giữ nghĩa cũ
+
+
+def test_co_ngot_p_mu_chi_ap_trong_khoi_noi_tru(db):
+    """Co ngót tỷ trọng rổ mẫu nhỏ KHÔNG được đụng tới tỷ trọng ngoại trú.
+
+    Trước 18/09 phép co ngót co về phân bố đều trên MỌI rổ kể cả NGT, kéo tỷ
+    trọng nội trú lên 3–4 lần (J00-J06: NGT 79,6% → 73,1%) và phồng nhu cầu
+    thuốc nội trú, vốn có định mức trên một lượt cao hơn hẳn ngoại trú.
+    """
+    s, engine = db
+    k = _ky(1)
+    s.execute(text("INSERT INTO fact_cases_by_care_level VALUES "
+                   "(:k,'J00-J06','NGT',1000), (:k,'J00-J06','NT1',5), (:k,'J00-J06','NT2',15)"),
+              {"k": k})
+    s.commit()
+    views.tao_views(engine)
+
+    p = dss_demand.care_level_shares(s)["J00-J06"]
+    assert p["NGT"] == pytest.approx(1000 / 1020)             # ngoại trú GIỮ NGUYÊN tỷ trọng thô
+    assert p["NT1"] + p["NT2"] == pytest.approx(20 / 1020)    # khối nội trú giữ nguyên khối lượng
+    assert sum(p.values()) == pytest.approx(1.0)
+    # trong khối nội trú, rổ mẫu nhỏ hơn được kéo về phía phân bố đều
+    assert 0.25 < p["NT1"] / (p["NT1"] + p["NT2"]) < 0.5

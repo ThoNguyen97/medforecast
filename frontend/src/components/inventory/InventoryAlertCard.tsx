@@ -1,72 +1,100 @@
-import { AlertTriangle } from 'lucide-react';
-import LevelPill from '../dashboard/LevelPill';
+import { cn } from '../../utils/cn';
 import type { AlertLevel } from '../../types/dashboardV2';
 
 interface Props {
   counts: Record<AlertLevel, number>;
-  measured: number;        // số mã đo được DOI (có tiêu hao 12 kỳ đã chốt)
-  catalogue: number;       // toàn danh mục thuốc trong medical_supplies
-  stockSource: string | null;
   redDays: number | null;
   amberDays: number | null;
 }
 
 /**
  * Thẻ tóm tắt trang Quản lý thuốc — CÙNG số với trang Cảnh báo (toàn danh mục).
- * Trước 13/09/2026 thẻ này đếm "Vật tư sắp hết" theo `safety_stock`, cột chỉ
- * có giá trị ở 34/5.051 dòng, nên luôn hiện "0 mục" trong khi Cảnh báo báo Đỏ.
+ *
+ * Bốn ô nhãn, mỗi ô nói rõ ngưỡng và ý nghĩa vận hành của màu đó, để người
+ * đọc không phải đoán "Xám" là gì. Xám KHÔNG phải an toàn: là mã có tiêu hao
+ * nhưng không có dòng tồn kho nên không tính được DOI.
  */
 export default function InventoryAlertCard({
   counts,
-  measured,
-  catalogue,
-  stockSource,
   redDays,
   amberDays,
 }: Props) {
-  const canChuY = counts.red + counts.amber;
+  const red = redDays ?? 18;
+  const amber = amberDays ?? 36;
+
+  const O: Array<{
+    level: AlertLevel;
+    ten: string;
+    nguong: string;
+    nghia: string;
+    dot: string;
+    box: string;
+    so: string;
+  }> = [
+    {
+      level: 'red',
+      ten: 'Đỏ',
+      nguong: `DOI ≤ ${red} ngày`,
+      nghia: 'Sắp hết, cần nhập ngay.',
+      dot: 'bg-[#d03b3b]',
+      box: 'border-red-100 bg-red-50/60',
+      so: 'text-red-700',
+    },
+    {
+      level: 'amber',
+      ten: 'Vàng',
+      nguong: `${red} < DOI ≤ ${amber} ngày`,
+      nghia: 'Còn dùng được, cần theo dõi.',
+      dot: 'bg-[#fab219]',
+      box: 'border-amber-100 bg-amber-50/60',
+      so: 'text-amber-800',
+    },
+    {
+      level: 'green',
+      ten: 'Xanh',
+      nguong: `DOI > ${amber} ngày`,
+      nghia: 'Tồn đủ.',
+      dot: 'bg-[#0ca30c]',
+      box: 'border-emerald-100 bg-emerald-50/60',
+      so: 'text-emerald-700',
+    },
+    {
+      level: 'grey',
+      ten: 'Xám',
+      nguong: 'Không tính được DOI',
+      nghia: 'Chưa có số tồn kho.',
+      dot: 'bg-[#898781]',
+      box: 'border-neutral-200 bg-neutral-50',
+      so: 'text-neutral-700',
+    },
+  ];
+
   return (
     <div className="bg-white rounded-2xl border border-neutral-200 p-5">
-      <div className="flex flex-wrap items-start gap-5">
-        <div className="flex items-start gap-3 min-w-[240px]">
-          <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center shrink-0">
-            <AlertTriangle className="w-5 h-5 text-red-600" />
-          </div>
-          <div>
-            <p className="text-[11px] uppercase tracking-wider text-neutral-500 font-semibold">
-              Thuốc cần chú ý (Đỏ + Vàng)
-            </p>
-            <p className="text-3xl font-extrabold text-red-600 mt-1 tabular-nums">
-              {canChuY.toLocaleString('vi-VN')}{' '}
-              <span className="text-base font-medium text-neutral-500">
-                / {measured.toLocaleString('vi-VN')} mã đo được
-              </span>
-            </p>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 self-center">
-          {(['red', 'amber', 'green', 'grey'] as AlertLevel[]).map((lv) => (
-            <span key={lv} className="inline-flex items-center gap-1.5 text-sm text-neutral-700">
-              <LevelPill level={lv} />
-              <span className="font-semibold tabular-nums">
-                {counts[lv].toLocaleString('vi-VN')}
-              </span>
-            </span>
+      {/* Bốn ô nhãn — mỗi ô: tên · số · ngưỡng · chú thích. Không có số tổng
+          riêng: Đỏ + Vàng đã nằm ở hai ô đầu, số "cần chú ý" thuộc về Tổng quan
+          và Cảnh báo thiếu hụt. */}
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-2.5">
+          {O.map((o) => (
+            <div
+              key={o.level}
+              className={cn('rounded-xl border px-3 py-2.5', o.box)}
+              title={o.nghia}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-neutral-700">
+                  <span className={cn('w-2 h-2 rounded-full', o.dot)} />
+                  {o.ten}
+                </span>
+                <span className={cn('text-lg font-extrabold tabular-nums leading-none', o.so)}>
+                  {counts[o.level].toLocaleString('vi-VN')}
+                </span>
+              </div>
+              <p className="text-[11px] font-medium text-neutral-600 mt-1.5">{o.nguong}</p>
+              <p className="text-[11px] text-neutral-500 leading-snug mt-0.5">{o.nghia}</p>
+            </div>
           ))}
-        </div>
       </div>
-
-      <p className="text-xs text-neutral-500 mt-3">
-        DOI = tồn hữu dụng (FEFO) / tiêu hao ngày
-        {redDays != null && amberDays != null && (
-          <> · Đỏ ≤ {redDays} · Vàng ≤ {amberDays} ngày</>
-        )}
-        {stockSource && <> · Nguồn tồn: {stockSource}</>}
-        {' '}· Danh mục {catalogue.toLocaleString('vi-VN')} mã, trong đó{' '}
-        {(catalogue - measured).toLocaleString('vi-VN')} mã không có tiêu hao trong 12 kỳ đã
-        chốt nên không đo được DOI (ẩn mặc định).
-      </p>
     </div>
   );
 }

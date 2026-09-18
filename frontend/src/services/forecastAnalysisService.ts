@@ -47,6 +47,9 @@ export interface AnalyzeResponse {
     is_recorded?: boolean;
     /** Thời điểm ghi nhận (ISO) — null khi chưa ghi nhận. */
     recorded_at?: string | null;
+    /** Bấm Ghi nhận nhưng khoá này không có căn cứ dự báo (chuỗi quá ngắn,
+     *  không có ca cùng kỳ) → backend KHÔNG ghi và trả lý do ở đây. */
+    khong_ghi_nhan?: string | null;
   };
   explanation_bullets: string[];
   /** Backtest nhanh N bước cuối: rmse/r2 không đo → null. */

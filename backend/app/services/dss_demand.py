@@ -38,6 +38,8 @@ logger = logging.getLogger(__name__)
 
 BLOCKS = ("J00-J06", "J09-J18", "J20-J22")
 RO_ALL = ("NGT", "NT1", "NT2", "NT3", "NT0")
+RO_NGOAI_TRU = "NGT"                 # rổ ngoại trú; các rổ còn lại là nội trú
+RO_NOI_TRU = ("NT1", "NT2", "NT3", "NT0")
 RO_LABEL = {"NGT": "Ngoại trú", "NT1": "Nội trú cấp 1", "NT2": "Nội trú cấp 2",
             "NT3": "Nội trú cấp 3", "NT0": "Nội trú chưa phân cấp"}
 
@@ -82,12 +84,22 @@ def care_level_shares(db: Session) -> Dict[str, Dict[str, float]]:
     rổ chỉ 5-8 đợt — lấy thẳng tỷ trọng của một rổ 5 đợt thì thêm hai ca là
     định mức nhảy 40%.
 
-    Co ngót về phân bố ĐỀU giữa các rổ nội trú của chính nhóm đó:
+    Co ngót CHỈ ÁP TRONG KHỐI NỘI TRÚ (sửa 18/09/2026). Tỷ trọng ngoại trú
+    (NGT) giữ nguyên giá trị đo được; khối lượng nội trú w = 1 − p̂(NGT) cũng
+    giữ nguyên. Phép co ngót chạy trên tỷ trọng CÓ ĐIỀU KIỆN trong khối nội trú:
 
-        p̂ = λ · p_đo  +  (1 − λ) · p_đều       λ = n / (n + K₀)
+        q_đo = p_đo(ro) / w                    ro ∈ {NT1, NT2, NT3, NT0}
+        q̂    = λ · q_đo + (1 − λ) · (1/số_rổ_nội_trú)      λ = n / (n + K₀)
+        p̂(ro) = q̂ · w      (sau khi chuẩn hoá Σ q̂ = 1)
 
     với n = số đợt của rổ. Rổ 5 đợt, K₀ = 6 → λ = 0,45: tỷ trọng đo chỉ được
     tin 45%. Rổ 300 đợt → λ = 0,98, gần như tin hoàn toàn.
+
+    Bản trước co về phân bố đều trên MỌI rổ kể cả NGT, tức 1/4 cho mỗi rổ. Vì
+    NGT chiếm phần lớn khối lượng còn các rổ nội trú có mẫu nhỏ, phép đó kéo
+    tỷ trọng nội trú lên gấp 3–4 lần (đo 14/09 — J00-J06: NT1 1,51% → 5,3%,
+    NT3 1,40% → 5,5%, NGT 79,6% → 73,1%) và làm phồng nhu cầu thuốc nội trú,
+    vốn có định mức trên một lượt cao hơn hẳn ngoại trú.
 
     Trả {block_code: {ro: tỷ trọng}}, mỗi nhóm tổng bằng 1.
     """
@@ -113,16 +125,27 @@ def care_level_shares(db: Session) -> Dict[str, Dict[str, float]]:
         tong_ca = sum(float(r.cases or 0) for r in rs)
         if tong_ca <= 0:
             continue
-        deu = 1.0 / max(1, len(rs))
-        tam: Dict[str, float] = {}
-        for r in rs:
-            n = float(r.cases or 0)
-            p_do = n / tong_ca
-            if int(r.mau_qua_nho or 0) == 1:
-                lam = n / (n + k0) if (n + k0) > 0 else 0.0
-                tam[r.ro] = lam * p_do + (1 - lam) * deu
-            else:
-                tam[r.ro] = p_do
+        p_do = {r.ro: float(r.cases or 0) / tong_ca for r in rs}
+        noi_tru = [r for r in rs if r.ro != RO_NGOAI_TRU]
+        w = sum(p_do[r.ro] for r in noi_tru)      # khối lượng nội trú — GIỮ NGUYÊN
+        tam: Dict[str, float] = {r.ro: p_do[r.ro] for r in rs if r.ro == RO_NGOAI_TRU}
+        if noi_tru and w > 0:
+            deu = 1.0 / len(noi_tru)              # đều TRONG khối nội trú
+            q: Dict[str, float] = {}
+            for r in noi_tru:
+                n = float(r.cases or 0)
+                q_do = p_do[r.ro] / w
+                if int(r.mau_qua_nho or 0) == 1:
+                    lam = n / (n + k0) if (n + k0) > 0 else 0.0
+                    q[r.ro] = lam * q_do + (1 - lam) * deu
+                else:
+                    q[r.ro] = q_do
+            sq = sum(q.values())
+            for ro, v in q.items():
+                tam[ro] = (v / sq) * w if sq > 0 else 0.0
+        else:
+            for r in noi_tru:
+                tam[r.ro] = p_do[r.ro]
         s = sum(tam.values())
         out[g] = {k: v / s for k, v in tam.items()} if s > 0 else tam
     return out

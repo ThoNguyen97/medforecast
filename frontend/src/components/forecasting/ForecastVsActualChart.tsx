@@ -38,6 +38,30 @@ const HISTORY_PALETTE = [
   '#e34948', // đỏ
 ];
 
+/** Nấc "đẹp" để làm trần trục Y — đủ dày để mọi quy mô số ca đều có một trần
+ *  tròn trịa, không nhảy vọt lãng phí chỗ (140 → 160, 190 → 220, 250 → 300). */
+const NAC_TRAN = [1, 1.1, 1.2, 1.25, 1.4, 1.5, 1.6, 1.8, 2, 2.2, 2.5, 3, 3.5, 4, 5, 6, 8, 10];
+
+/**
+ * Trần trục Y: giá trị lớn nhất ĐANG VẼ + 10% khoảng thở, làm tròn lên nấc đẹp.
+ *
+ * Trần được tính từ mọi đường đang vẽ — gồm cả điểm dự báo nét đứt của tháng
+ * tới — nên biểu đồ tự giãn theo dữ liệu: dự báo 250 ca cho trần 300, không có
+ * mốc cố định nào chặn ở 140. Mặc định của recharts lấy đúng dataMax làm trần
+ * khiến đỉnh cao nhất chạm mép trên và bị cắt.
+ */
+export function tranTrucY(dataMax: number): number {
+  const dinh = Math.max(dataMax || 0, 0);
+  if (dinh <= 0) return 10;
+  const can = dinh * 1.1;
+  const bac = Math.pow(10, Math.floor(Math.log10(can)));
+  for (const nac of NAC_TRAN) {
+    const tran = bac * nac;
+    if (tran >= can) return Math.max(10, Math.round(tran));
+  }
+  return Math.max(10, Math.ceil(can));
+}
+
 type YearRole = 'target' | 'prev' | 'history';
 
 function roleOfYear(year: number, targetYear: number, prevYear: number): YearRole {
@@ -166,10 +190,7 @@ export default function ForecastVsActualChart({
               axisLine={false}
               width={44}
               allowDecimals={false}
-              // Mặc định recharts lấy đúng dataMax làm trần → đỉnh cao nhất
-              // (2024 ở T1) chạm mép trên và bị cắt mất. Chừa ~12% khoảng
-              // trống rồi làm tròn lên bội số 20 cho vạch chia đọc gọn.
-              domain={[0, (dataMax: number) => Math.max(20, Math.ceil((dataMax * 1.12) / 20) * 20)]}
+              domain={[0, tranTrucY]}
             />
             <Tooltip
               content={<CustomTooltip targetYear={targetYear} prevYear={prevYear} />}

@@ -147,19 +147,19 @@ WHERE  u.so_luong_toan_vien > 0
        được nhu cầu. Đo Đ10-B: 547 mã (110 + 179 + 258). */
 DROP VIEW IF EXISTS v_supply_focus;
 CREATE VIEW v_supply_focus AS
+WITH cua_so AS (
+    SELECT DISTINCT period AS p FROM fact_usage_total
+    WHERE  period < strftime('%Y-%m', 'now', 'localtime')
+    ORDER BY period DESC LIMIT 12
+), n_ky AS (SELECT COUNT(*) * 1.0 AS n FROM cua_so)
 SELECT supply_code,
        ROUND(100.0 * SUM(so_luong_hohap) / NULLIF(SUM(so_luong_toan_vien), 0), 2) AS ty_trong_hohap,
-       ROUND(SUM(so_luong_toan_vien) / COUNT(*), 3)                               AS tb_thang_toan_vien,
-       ROUND(SUM(d_baseline_thang)  / COUNT(*), 3)                                AS d_baseline_thang,
+       ROUND(SUM(so_luong_toan_vien) / (SELECT n FROM n_ky), 3)                   AS tb_thang_toan_vien,
+       ROUND(SUM(d_baseline_thang)  / (SELECT n FROM n_ky), 3)                    AS d_baseline_thang,
        COUNT(*)                                                                    AS so_ky
 FROM   fact_usage_total
 WHERE  is_vtyt = 0
-  AND  period < strftime('%Y-%m', 'now', 'localtime')
-  AND  period >= (
-        SELECT MIN(p) FROM (
-          SELECT DISTINCT period AS p FROM fact_usage_total
-          WHERE period < strftime('%Y-%m', 'now', 'localtime')
-          ORDER BY period DESC LIMIT 12))
+  AND  period IN (SELECT p FROM cua_so)
 GROUP BY supply_code
 HAVING SUM(so_luong_toan_vien) > 0
    AND 100.0 * SUM(so_luong_hohap) / SUM(so_luong_toan_vien) >= 25.0
@@ -172,23 +172,28 @@ HAVING SUM(so_luong_toan_vien) > 0
 
 /* 3c — Mẫu số hằng ngày dùng chung cho DOI, tính sẵn một chỗ.
        d = tiêu hao toàn viện trung bình tháng / 30.
-       KHÔNG lấy tiêu hao hô hấp làm mẫu số — đó chính là lỗi đã sửa ở G1. */
+       KHÔNG lấy tiêu hao hô hấp làm mẫu số — đó chính là lỗi đã sửa ở G1.
+       18/09/2026: mẫu số là SỐ KỲ CỦA CỬA SỔ (n_ky), không phải số kỳ mà
+       riêng mã đó có xuất. Chia cho COUNT(*) làm một mã chỉ xuất 1 trong 12 kỳ
+       có d_daily ngang mã xuất đều 12 kỳ → tồn ít của nó thành Đỏ giả (đo
+       14/09: 284 mã Đỏ có 8 mã 1 kỳ, 19 mã 2 kỳ, 10 mã 3 kỳ). Cột so_ky giữ
+       nguyên nghĩa cũ để chẩn đoán. */
 DROP VIEW IF EXISTS v_supply_daily_demand;
 CREATE VIEW v_supply_daily_demand AS
+WITH cua_so AS (
+    SELECT DISTINCT period AS p FROM fact_usage_total
+    WHERE  period < strftime('%Y-%m', 'now', 'localtime')
+    ORDER BY period DESC LIMIT 12
+), n_ky AS (SELECT COUNT(*) * 1.0 AS n FROM cua_so)
 SELECT  supply_code,
-        COUNT(*)                                              AS so_ky,
-        ROUND(SUM(so_luong_toan_vien) / COUNT(*) / 30.0, 6)   AS d_daily,
-        ROUND(SUM(so_luong_hohap)     / COUNT(*) / 30.0, 6)   AS d_daily_hohap,
-        ROUND(SUM(d_baseline_thang)   / COUNT(*) / 30.0, 6)   AS d_daily_baseline,
+        COUNT(*)                                                        AS so_ky,
+        ROUND(SUM(so_luong_toan_vien) / (SELECT n FROM n_ky) / 30.0, 6) AS d_daily,
+        ROUND(SUM(so_luong_hohap)     / (SELECT n FROM n_ky) / 30.0, 6) AS d_daily_hohap,
+        ROUND(SUM(d_baseline_thang)   / (SELECT n FROM n_ky) / 30.0, 6) AS d_daily_baseline,
         ROUND(100.0 * SUM(so_luong_hohap) / NULLIF(SUM(so_luong_toan_vien),0), 2) AS ty_trong_hohap
 FROM    fact_usage_total
 WHERE   is_vtyt = 0
-  AND   period < strftime('%Y-%m', 'now', 'localtime')
-  AND   period >= (
-         SELECT MIN(p) FROM (
-           SELECT DISTINCT period AS p FROM fact_usage_total
-           WHERE period < strftime('%Y-%m', 'now', 'localtime')
-           ORDER BY period DESC LIMIT 12))
+  AND   period IN (SELECT p FROM cua_so)
 GROUP BY supply_code
 HAVING  SUM(so_luong_toan_vien) > 0;
 

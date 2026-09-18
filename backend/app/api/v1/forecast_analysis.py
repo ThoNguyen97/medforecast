@@ -264,11 +264,9 @@ def _weather_factor(
         sign = "tăng" if rain_d > 0 else "giảm"
         bullets.append(
             f"Lượng mưa {sign} {abs(rain_d):.0f}% so với cùng kỳ — "
-            + ("mùa mưa người dân ở trong nhà nhiều hơn, không gian kín làm "
-               "virus hô hấp dễ lây; dữ liệu 2019–2026 cho thấy số ca vào đỉnh "
-               "T10–T11 cuối mùa mưa." if rain_d > 0 else
-               "thời tiết khô hanh hơn cùng kỳ, giai đoạn này số ca hô hấp "
-               "thường ở vùng đáy (T4–T6 theo dữ liệu lịch sử).")
+            + ("theo dữ liệu 2019–2026, số ca tăng vào cuối mùa mưa, đỉnh T10–T11."
+               if rain_d > 0 else
+               "theo dữ liệu 2019–2026, các tháng khô số ca ở vùng đáy (T4–T6).")
         )
 
     # Nhiệt độ + độ ẩm
@@ -278,15 +276,14 @@ def _weather_factor(
         if 26 <= temp <= 30 and 75 <= hum <= 85:
             factor *= 1.1
             bullets.append(
-                f"Độ ẩm {hum:.0f}% và nhiệt độ {temp:.0f}°C — điều kiện virus "
-                "hô hấp tồn tại lâu trong không khí và trên bề mặt, lây lan "
-                "thuận lợi trong môi trường đông người."
+                f"Độ ẩm {hum:.0f}%, nhiệt độ {temp:.0f}°C — trong khoảng 75–85% / "
+                "26–30°C, số ca hô hấp lịch sử cao hơn mức nền."
             )
         elif temp > 35:
             factor *= 0.9
             bullets.append(
-                f"Nắng nóng {temp:.0f}°C — các tháng khô nóng số ca nhiễm khuẩn "
-                "hô hấp thường giảm về vùng đáy theo mùa vụ đo được."
+                f"Nhiệt độ {temp:.0f}°C (trên 35°C) — các tháng nóng số ca lịch sử "
+                "ở vùng đáy."
             )
 
     # AQI / PM2.5
@@ -294,8 +291,8 @@ def _weather_factor(
     if aqi is not None and aqi > 100:
         factor *= 1.05
         bullets.append(
-            f"AQI {aqi:.0f} ở mức kém — bụi mịn kích ứng niêm mạc đường thở, "
-            "làm nặng thêm nhóm viêm phế quản và viêm phổi."
+            f"AQI {aqi:.0f} (trên 100, mức kém) — nhóm viêm phế quản và viêm phổi "
+            "tăng theo dữ liệu lịch sử."
         )
 
     return round(factor, 3), bullets
@@ -370,8 +367,8 @@ def _trend_factor(
     if all(counts[i] > counts[i + 1] for i in range(3)):
         change = (counts[0] - counts[3]) / max(counts[3], 1) * 100
         explanation = (
-            f"Xu hướng 3 tháng tăng mạnh — Tốc độ lây lan gia tăng {change:.0f}% "
-            f"so với 3 tháng trước."
+            f"Số ca tăng 3 tháng liên tiếp — tháng chốt gần nhất cao hơn "
+            f"3 tháng trước đó {change:.0f}%."
         )
 
     return round(factor, 3), explanation
@@ -543,6 +540,8 @@ def analyze_forecast(
                     "baseline": b,
                     "weather_factor": wf,
                     "trend_factor": tf,
+                    # Điền ở bước ensemble bên dưới; None = tỉnh không đủ chuỗi.
+                    "ensemble": None,
                 })
                 if b > rep_cases:
                     rep_cases = b
@@ -565,6 +564,10 @@ def analyze_forecast(
         # Khoảng tin cậy THẬT (walk-forward) từ ensemble — ghi đè khoảng ±15%
         # heuristic khi có. None = chưa có ensemble, dùng lại ±15% lúc lưu.
         ci_interval: Dict[str, Any] | None = None
+        # Ensemble có chạy được cho khoá đang phân tích không (True = số dự báo
+        # là đầu ra mô hình; False = heuristic cùng kỳ, có thể là 0 vì không
+        # có ca cùng kỳ nào trong 5 năm — tức KHÔNG có căn cứ để ghi nhận).
+        co_ensemble = False
 
         # Engine chính: ensemble mức nhóm đã kiểm walk-forward (group_forecast).
         # Heuristic cùng-kỳ phía trên chỉ là fallback khi chuỗi quá ngắn.
@@ -603,6 +606,7 @@ def analyze_forecast(
                         )
                         predicted = int(round(kq_tq["point"]))
                         model_used = "top_down_khoi_v1"
+                        co_ensemble = True
                         if kq_tq.get("lower") is not None:
                             ci_interval = {"lower": int(round(kq_tq["lower"])),
                                           "upper": int(round(kq_tq["upper"]))}
@@ -632,10 +636,12 @@ def analyze_forecast(
                                        payload.target_year, payload.target_month)
                     if kq_t is not None:
                         pp["predicted"] = kq_t["predicted"]
+                        pp["ensemble"] = kq_t
             else:
                 kq_ens = du_bao_nhom(db, disease, region,
                                      payload.target_year, payload.target_month)
                 if kq_ens is not None:
+                    co_ensemble = True
                     predicted = kq_ens["predicted"]
                     model_used = kq_ens["model_used"]
                     if kq_ens.get("accuracy"):
@@ -647,6 +653,7 @@ def analyze_forecast(
             logger.exception("Ensemble nhóm lỗi — dùng dự báo fallback")
     else:
         # Dùng lại kết quả mô hình đã lưu — không tính toán lại.
+        co_ensemble = True  # bản đã ghi nhận — không xét lại căn cứ ở đây
         predicted = cached.predicted_cases
         baseline = float(cached.baseline_cases or 0)
         weather_factor = float(cached.weather_factor or 1.0)
@@ -767,10 +774,27 @@ def analyze_forecast(
         explanation_bullets.append(trend_bullet)
     if not explanation_bullets:
         explanation_bullets.append(
-            "Không phát hiện yếu tố bất thường — dự báo ổn định theo xu hướng cơ sở."
+            "Thời tiết trong ngưỡng bình thường của cùng kỳ — dự báo theo xu hướng cơ sở."
         )
 
     explanation_text = " | ".join(explanation_bullets)[:1000]
+
+    # Một khoá (nhóm bệnh × khu vực × tháng) KHÔNG có căn cứ dự báo khi ensemble
+    # không chạy được (chuỗi < SO_THANG_TOI_THIEU tháng) VÀ heuristic cùng kỳ
+    # cũng bằng 0 (5 năm trước không có ca nào tháng này). Con số 0 khi đó không
+    # phải đầu ra mô hình — ghi xuống DB chỉ đẻ ra dòng "0 ca" ở Lịch sử và dòng
+    # "0/0" ở bảng Dữ liệu ca bệnh gần đây. Không ghi.
+    def _khong_co_can_cu(pred: int, base: float, ens: bool) -> bool:
+        return (not ens) and int(pred) == 0 and float(base or 0) == 0.0
+
+    khong_ghi_nhan: Optional[str] = None
+    if luu_lai and _khong_co_can_cu(predicted, baseline, co_ensemble):
+        khong_ghi_nhan = (
+            f"Không đủ dữ liệu lịch sử để dự báo {disease_name_label} tại "
+            f"{region or 'Toàn quốc'} cho kỳ {payload.target_month:02d}/{payload.target_year} "
+            f"(chuỗi quá ngắn và không có ca cùng kỳ 5 năm trước) — không ghi nhận."
+        )
+        luu_lai = False
 
     if luu_lai:
         # 7. GHI NHẬN dự báo — chỉ chạy khi người dùng bấm "Ghi nhận dự báo".
@@ -837,11 +861,28 @@ def analyze_forecast(
         # Khi phân tích TOÀN QUỐC: lưu thêm dự báo của TỪNG TỈNH để bảng "Dữ liệu
         # ca bệnh gần đây" hiển thị dự báo theo khu vực (không chỉ con số tổng).
         if region is None and per_province:
+            so_bo_qua = 0
             for pp in per_province:
                 loc = pp["location"]
                 pred_p = pp["predicted"]
                 base_p = pp["baseline"]
+                ens_p = pp.get("ensemble")
+                if _khong_co_can_cu(pred_p, base_p, ens_p is not None):
+                    # Tỉnh không có căn cứ: xoá luôn bản cũ (nếu có) cho cùng
+                    # khoá để DB không giữ dòng 0 từ các lần ghi nhận trước.
+                    so_bo_qua += 1
+                    for fc in (
+                        db.query(DiseaseForecast)
+                        .filter(DiseaseForecast.icd_code == disease,
+                                DiseaseForecast.forecast_month == forecast_date,
+                                DiseaseForecast.location == loc)
+                        .all()
+                    ):
+                        db.delete(fc)
+                    continue
                 rl_p, _ = _classify_risk(pred_p, base_p)
+                iv_p = (ens_p or {}).get("interval") or {}
+                acc_p = (ens_p or {}).get("accuracy") or {}
                 # Xoá forecast cũ của tỉnh này cho cùng tháng/bệnh
                 old_p = (
                     db.query(DiseaseForecast)
@@ -854,6 +895,9 @@ def analyze_forecast(
                 )
                 for fc in old_p:
                     db.delete(fc)
+                # Cùng bộ trường như khi ghi nhận trực tiếp một tỉnh: khoảng
+                # walk-forward + độ chính xác của CHÍNH tỉnh đó, model_used đúng
+                # nguồn (không kế thừa nhãn top-down của bản Toàn quốc).
                 db.add(DiseaseForecast(
                     forecast_month=forecast_date,
                     forecast_date=forecast_date,
@@ -862,9 +906,13 @@ def analyze_forecast(
                     disease_type="respiratory",
                     location=loc,
                     predicted_cases=pred_p,
-                    confidence_lower=int(pred_p * 0.85),
-                    confidence_upper=int(pred_p * 1.15),
-                    model_used=model_used,
+                    confidence_lower=(iv_p["lower"] if iv_p.get("lower") is not None
+                                      else int(pred_p * 0.85)),
+                    confidence_upper=(iv_p["upper"] if iv_p.get("upper") is not None
+                                      else int(pred_p * 1.15)),
+                    model_used=(ens_p["model_used"] if ens_p else "multivariate_v1"),
+                    model_accuracy_mae=acc_p.get("mae"),
+                    model_accuracy_mape=acc_p.get("wape"),
                     baseline_cases=int(base_p),
                     weather_factor=pp["weather_factor"],
                     trend_factor=pp["trend_factor"],
@@ -873,6 +921,9 @@ def analyze_forecast(
                     created_by=current_user.username,
                 ))
             db.commit()
+            if so_bo_qua:
+                logger.info("Bỏ qua %d tỉnh không có căn cứ dự báo (%s, %s).",
+                            so_bo_qua, disease, forecast_date)
 
 
         # Bản theo tỉnh KHÔNG ghi đè bản Toàn quốc: hai con số khác phạm vi
@@ -903,6 +954,9 @@ def analyze_forecast(
             "model_used": model_used,
             # Kết quả này đã được ghi nhận vào DB hay mới chỉ là bản xem trước.
             "is_recorded": saved is not None,
+            # Bấm Ghi nhận nhưng khoá này không có căn cứ dự báo → không ghi,
+            # trả lý do để giao diện hiện thay vì lặng lẽ báo "Chưa ghi nhận".
+            "khong_ghi_nhan": khong_ghi_nhan,
             "recorded_at": (
                 saved.created_at.isoformat()
                 if saved is not None and saved.created_at

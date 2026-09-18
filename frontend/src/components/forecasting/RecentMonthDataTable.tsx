@@ -119,11 +119,6 @@ export default function RecentMonthDataTable({ currentMonth, currentYear, diseas
   const [filterDisease, setFilterDisease] = useState<string>(initialDisease);
   const [filterLocation, setFilterLocation] = useState<string>(initialLocation);
   const [currentPage, setCurrentPage] = useState(1);
-  // "Ghi nhận dự báo" ở mục Toàn quốc ghi kèm một bản cho MỖI tỉnh (bottom-up,
-  // tham khảo dịch tễ). Tỉnh không có chuỗi lịch sử nhận predicted_cases = 0 và
-  // thường cũng không có dòng ca bệnh nào trong tháng → dòng 0/0/— không mang
-  // thông tin gì. Ẩn mặc định, bật lại bằng ô dưới đây.
-  const [hienDongTrong, setHienDongTrong] = useState(false);
   const itemsPerPage = 10;
 
   // Tính tháng gần nhất (tháng trước tháng dự báo)
@@ -209,14 +204,33 @@ export default function RecentMonthDataTable({ currentMonth, currentYear, diseas
               ((forecast.predicted_cases - grouped[key].total_cases) / grouped[key].total_cases) * 100;
           }
         } else {
-          // Chỉ có dự báo, chưa có thực tế (vd chưa đến kỳ đóng dữ liệu tháng đó)
+          // Chỉ có dự báo, chưa có dòng thực tế khớp khoá.
+          //
+          // Bản Toàn quốc (location=NULL) KHÔNG BAO GIỜ khớp: disease_cases luôn
+          // có tỉnh nên không có nhóm "Toàn quốc" ở trên. Backend chỉ điền
+          // actual_cases cho kỳ ĐÃ CHỐT (so_ca_thuc_te → None khi kỳ đang mở),
+          // nên tháng hiện tại Toàn quốc hiện 0 trong khi từng tỉnh vẫn có số
+          // (cộng thẳng từ disease_cases). Dùng cùng một nguồn với các tỉnh:
+          // tổng các nhóm tỉnh cùng tháng + nhóm bệnh.
+          let actual = forecast.actual_cases;
+          if (actual == null && forecast.is_nationwide) {
+            const tienTo = `${month}_${matchKey}_`;
+            actual = Object.entries(grouped)
+              .filter(([k, v]) => k.startsWith(tienTo) && v.location !== 'Toàn quốc')
+              .reduce((tong, [, v]) => tong + (v.total_cases || 0), 0);
+          }
+          const tongThucTe = actual || 0;
           grouped[key] = {
             month,
             disease_name: displayName,
             matchKey,
-            total_cases: forecast.actual_cases || 0,
+            total_cases: tongThucTe,
             predicted_cases: forecast.predicted_cases,
-            deviation_pct: forecast.deviation_pct,
+            deviation_pct:
+              forecast.deviation_pct ??
+              (tongThucTe > 0
+                ? ((forecast.predicted_cases - tongThucTe) / tongThucTe) * 100
+                : undefined),
             location: normalizedLocation,
           };
         }
@@ -272,27 +286,13 @@ export default function RecentMonthDataTable({ currentMonth, currentYear, diseas
     ) {
       return false;
     }
-    // 4. Dòng rỗng: không ca thực tế VÀ không dự báo (hoặc dự báo = 0).
-    //    Đây là các tỉnh đi kèm bản ghi nhận Toàn quốc, không có số liệu để đọc.
-    if (!hienDongTrong && item.total_cases === 0 && !item.predicted_cases) {
-      return false;
-    }
     return true;
   });
-
-  /** Số dòng đang bị ẩn vì không có số liệu — nói rõ để không ai tưởng mất dữ liệu. */
-  const soDongTrong = data.filter((item) => {
-    if (filterMonth === 'latest' ? item.month !== latestMonth
-        : filterMonth !== 'all' && item.month !== filterMonth) return false;
-    if (filterDisease !== 'all' && (item.disease_name ?? '').trim() !== filterDisease.trim()) return false;
-    if (filterLocation !== 'all' && (item.location ?? '').trim() !== filterLocation.trim()) return false;
-    return item.total_cases === 0 && !item.predicted_cases;
-  }).length;
 
   // Reset trang về 1 khi filter thay đổi
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterMonth, filterDisease, filterLocation, hienDongTrong]);
+  }, [filterMonth, filterDisease, filterLocation]);
 
   // Phân trang
   const totalPages = Math.ceil(filteredData.length / itemsPerPage);
@@ -315,114 +315,94 @@ export default function RecentMonthDataTable({ currentMonth, currentYear, diseas
         </div>
       </div>
 
-      {/* Filter panel — cố định, luôn hiển thị */}
-      <div className="px-5 py-3 bg-neutral-50 border-y border-neutral-100 space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <label className="block">
-              <span className="text-xs font-medium text-neutral-600 mb-1.5 block">
-                Tháng
-              </span>
-              <select
-                value={tempMonth}
-                onChange={(e) => setTempMonth(e.target.value)}
-                className="w-full h-9 px-3 rounded-lg border border-neutral-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
-              >
-                <option value="latest">Tháng gần nhất ({latestMonth || '—'})</option>
-                <option value="all">Tất cả các tháng</option>
-                {uniqueMonths.map((m) => (
-                  <option key={m} value={m}>
-                    Tháng {m}
-                  </option>
-                ))}
-              </select>
-            </label>
+      {/* Bộ lọc — một hàng: Tháng · Bệnh · Tỉnh/Thành · Lọc · Đặt lại.
+          Control cao 36px, nhãn cỡ xs; màn hẹp tự xuống dòng theo flex-wrap. */}
+      <div className="px-5 py-3 bg-neutral-50 border-y border-neutral-100">
+        <div className="flex flex-wrap items-end gap-x-3 gap-y-3">
+          <label className="block w-48">
+            <span className="block text-xs font-medium text-neutral-600 mb-1">Tháng</span>
+            <select
+              value={tempMonth}
+              onChange={(e) => setTempMonth(e.target.value)}
+              className="w-full h-9 px-3 rounded-lg border border-neutral-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+            >
+              <option value="latest">Tháng gần nhất ({latestMonth || '—'})</option>
+              <option value="all">Tất cả các tháng</option>
+              {uniqueMonths.map((m) => (
+                <option key={m} value={m}>
+                  Tháng {m}
+                </option>
+              ))}
+            </select>
+          </label>
 
-            <label className="block">
-              <span className="text-xs font-medium text-neutral-600 mb-1.5 block">
-                Bệnh
-              </span>
-              <select
-                value={tempDisease}
-                onChange={(e) => setTempDisease(e.target.value)}
-                className="w-full h-9 px-3 rounded-lg border border-neutral-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
-              >
-                <option value="all">Tất cả bệnh</option>
-                {uniqueDiseases.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
-            </label>
+          <label className="block flex-1 min-w-[240px] max-w-sm">
+            <span className="block text-xs font-medium text-neutral-600 mb-1">Bệnh</span>
+            <select
+              value={tempDisease}
+              onChange={(e) => setTempDisease(e.target.value)}
+              className="w-full h-9 px-3 rounded-lg border border-neutral-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+            >
+              <option value="all">Tất cả bệnh</option>
+              {uniqueDiseases.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </select>
+          </label>
 
-            <label className="block">
-              <span className="text-xs font-medium text-neutral-600 mb-1.5 block">
-                Tỉnh/Thành
-              </span>
-              <select
-                value={tempLocation}
-                onChange={(e) => setTempLocation(e.target.value)}
-                className="w-full h-9 px-3 rounded-lg border border-neutral-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
-              >
-                <option value="all">Tất cả khu vực</option>
-                {uniqueLocations.map((loc) => (
-                  <option key={loc} value={loc}>
-                    {loc}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+          <label className="block w-52">
+            <span className="block text-xs font-medium text-neutral-600 mb-1">Tỉnh/Thành</span>
+            <select
+              value={tempLocation}
+              onChange={(e) => setTempLocation(e.target.value)}
+              className="w-full h-9 px-3 rounded-lg border border-neutral-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+            >
+              <option value="all">Tất cả khu vực</option>
+              {uniqueLocations.map((loc) => (
+                <option key={loc} value={loc}>
+                  {loc}
+                </option>
+              ))}
+            </select>
+          </label>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setFilterMonth(tempMonth);
+              setFilterDisease(tempDisease);
+              setFilterLocation(tempLocation);
+            }}
+            className="inline-flex items-center gap-1.5 h-9 px-4 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700"
+          >
+            <Filter className="w-3.5 h-3.5" />
+            Lọc
+          </button>
+          {(tempMonth !== 'latest' ||
+            tempDisease !== initialDisease ||
+            tempLocation !== initialLocation ||
+            filterMonth !== 'latest' ||
+            filterDisease !== initialDisease ||
+            filterLocation !== initialLocation) && (
             <button
               type="button"
               onClick={() => {
-                setFilterMonth(tempMonth);
-                setFilterDisease(tempDisease);
-                setFilterLocation(tempLocation);
+                setTempMonth('latest');
+                setTempDisease(initialDisease);
+                setTempLocation(initialLocation);
+                setFilterMonth('latest');
+                setFilterDisease(initialDisease);
+                setFilterLocation(initialLocation);
               }}
-              className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700"
+              className="inline-flex items-center gap-1.5 h-9 px-3 border border-neutral-200 rounded-lg text-xs text-neutral-600 bg-white hover:bg-neutral-100"
             >
-              <Filter className="w-3.5 h-3.5" />
-              Lọc
+              Đặt lại bộ lọc
             </button>
-            {(tempMonth !== 'latest' ||
-              tempDisease !== initialDisease ||
-              tempLocation !== initialLocation ||
-              filterMonth !== 'latest' ||
-              filterDisease !== initialDisease ||
-              filterLocation !== initialLocation) && (
-              <button
-                type="button"
-                onClick={() => {
-                  setTempMonth('latest');
-                  setTempDisease(initialDisease);
-                  setTempLocation(initialLocation);
-                  setFilterMonth('latest');
-                  setFilterDisease(initialDisease);
-                  setFilterLocation(initialLocation);
-                }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-neutral-200 rounded-lg text-xs text-neutral-600 hover:bg-white"
-              >
-                Đặt lại bộ lọc
-              </button>
-            )}
-
-            <label className="inline-flex items-center gap-1.5 ml-auto text-xs text-neutral-600 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={hienDongTrong}
-                onChange={(e) => setHienDongTrong(e.target.checked)}
-                className="w-3.5 h-3.5 rounded border-neutral-300 text-blue-600 focus:ring-blue-500/30"
-              />
-              Hiện cả dòng không có số liệu
-              {soDongTrong > 0 && !hienDongTrong && (
-                <span className="text-neutral-400">({soDongTrong} dòng đang ẩn)</span>
-              )}
-            </label>
-          </div>
+          )}
         </div>
+      </div>
 
       <table className="w-full text-sm">
         <thead>

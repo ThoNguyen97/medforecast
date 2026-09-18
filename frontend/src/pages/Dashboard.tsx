@@ -232,7 +232,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <Card title="Diễn giải nhanh" subtitle="Sinh từ chính các con số trên màn hình">
+      <Card title="Điểm cần lưu ý" subtitle="Tổng hợp từ số liệu kỳ chốt và nhãn DOI">
         {data ? <InsightsCard items={data.insights} /> : <Skeleton className="h-24" />}
       </Card>
     </div>
@@ -326,7 +326,7 @@ function buildKpis(
         fc?.ready && fcRecordedAt ? (
           <>
             Đã ghi nhận lúc <b className="text-neutral-700">{new Date(fcRecordedAt).toLocaleString('vi-VN')}</b>
-            {fc.ghi_chu.some((g) => g.includes('cận')) && <span className="text-amber-700"> · xem diễn giải</span>}
+            {fc.ghi_chu.some((g) => g.includes('cận')) && <span className="text-amber-700"> · xem ghi chú</span>}
           </>
         ) : !fc?.ready ? (
           <span className="text-amber-700">Vào trang Phân tích để ghi nhận dự báo cho kỳ này</span>
@@ -377,7 +377,7 @@ function buildKpis(
       loading: !data,
       context: q?.available ? (
         <>
-          Tốt hơn seasonal naive <b className="text-emerald-700">{improve}</b> · độ phủ{' '}
+          Sai số thấp hơn dự báo cùng kỳ năm trước <b className="text-emerald-700">{improve}</b> · độ phủ{' '}
           <b className="text-neutral-800 tabular-nums">{cov}</b>
           <span className="text-neutral-400"> (mục tiêu {q.coverage_target_pct}%)</span>
         </>
@@ -386,7 +386,7 @@ function buildKpis(
       ),
       footer: q?.available ? (
         <>
-          Backtest walk-forward {q.run_at ? new Date(q.run_at).toLocaleDateString('vi-VN') : ''} · {q.phuong_an}
+          Kiểm định lùi {q.run_at ? new Date(q.run_at).toLocaleDateString('vi-VN') : ''} · {q.phuong_an}
           {q.canh_bao && <span className="text-amber-700"> · {q.canh_bao}</span>}
           {q.track_record && q.track_record.n_verified > 0 ? (
             <>

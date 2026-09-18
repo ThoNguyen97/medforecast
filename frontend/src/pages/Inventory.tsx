@@ -143,7 +143,6 @@ function InventoryContent() {
     });
     return c;
   }, [allRows]);
-  const measured = counts.red + counts.amber + counts.green + counts.grey;
 
   const paged = useMemo(() => {
     const start = (page - 1) * PAGE_SIZE;
@@ -221,7 +220,6 @@ function InventoryContent() {
   };
 
   const th = doiQuery.data?.meta.thresholds;
-  const stockSource = doiQuery.data?.counts?.stock_source ?? null;
 
   return (
     <div className="space-y-5">
@@ -274,9 +272,6 @@ function InventoryContent() {
 
       <InventoryAlertCard
         counts={counts}
-        measured={measured}
-        catalogue={allRows.length}
-        stockSource={stockSource}
         redDays={th?.red_days ?? null}
         amberDays={th?.amber_days ?? null}
       />
@@ -444,8 +439,6 @@ function ActionButton({
         className={`${base} bg-blue-600 text-white hover:bg-blue-700 shadow-sm`}
       >
         {icon}
-        {children}
-
         {children}
       </button>
     );

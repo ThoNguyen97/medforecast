@@ -557,54 +557,53 @@ export default function Epidemiology() {
         </div>
       </div>
 
-      {/* Bộ lọc nâng cao */}
-      <div className="bg-white rounded-2xl border border-neutral-200 p-5">
-        <div className="flex items-center gap-2 mb-4">
-          <Filter className="w-4 h-4 text-blue-600" />
-          <h3 className="font-semibold text-blue-700">Bộ lọc nâng cao</h3>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {/* Month range */}
-          <div>
-            <label className="block text-sm font-medium text-neutral-600 mb-1.5">
-              Khoảng thời gian
-            </label>
-            <div className="space-y-2">
-              <div className="flex items-center gap-1">
-                <Calendar className="w-4 h-4 text-neutral-400 shrink-0" />
-                <input
-                  type="month"
-                  value={tempStartMonth}
-                  onChange={(e) => setTempStartMonth(e.target.value)}
-                  placeholder="Từ tháng/năm"
-                  className="flex-1 px-3 py-2 border border-neutral-200 rounded-lg text-sm outline-none"
-                />
-              </div>
-              <div className="flex items-center gap-1">
-                <Calendar className="w-4 h-4 text-neutral-400 shrink-0" />
-                <input
-                  type="month"
-                  value={tempEndMonth}
-                  onChange={(e) => setTempEndMonth(e.target.value)}
-                  placeholder="Đến tháng/năm"
-                  className="flex-1 px-3 py-2 border border-neutral-200 rounded-lg text-sm outline-none"
-                />
-              </div>
-            </div>
+      {/* Bộ lọc nâng cao — một hàng: nhãn · Từ tháng · Đến tháng · Nhóm bệnh ·
+          Tỉnh/Thành · Tìm kiếm · Xóa bộ lọc. Control cao 36px (h-9), nhãn cỡ xs;
+          màn hẹp thì tự xuống dòng theo flex-wrap, không ép ngang. */}
+      <div className="bg-white rounded-2xl border border-neutral-200 px-5 py-4">
+        <div className="flex flex-wrap items-end gap-x-3 gap-y-3">
+          <div className="inline-flex items-center gap-2 h-9 pr-1 text-sm font-semibold text-blue-700">
+            <Filter className="w-4 h-4 text-blue-600" />
+            Bộ lọc nâng cao
           </div>
 
-          {/* Disease */}
-          <div>
-            <label className="block text-sm font-medium text-neutral-600 mb-1.5">
-              Nhóm Bệnh
-            </label>
+          {/* Từ tháng */}
+          <label className="block w-44">
+            <span className="block text-xs font-medium text-neutral-600 mb-1">Từ tháng</span>
             <div className="relative">
-              <Stethoscope className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+              <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400 pointer-events-none" />
+              <input
+                type="month"
+                value={tempStartMonth}
+                onChange={(e) => setTempStartMonth(e.target.value)}
+                className="w-full h-9 pl-8 pr-2 border border-neutral-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+              />
+            </div>
+          </label>
+
+          {/* Đến tháng */}
+          <label className="block w-44">
+            <span className="block text-xs font-medium text-neutral-600 mb-1">Đến tháng</span>
+            <div className="relative">
+              <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400 pointer-events-none" />
+              <input
+                type="month"
+                value={tempEndMonth}
+                onChange={(e) => setTempEndMonth(e.target.value)}
+                className="w-full h-9 pl-8 pr-2 border border-neutral-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+              />
+            </div>
+          </label>
+
+          {/* Nhóm bệnh */}
+          <label className="block flex-1 min-w-[220px] max-w-xs">
+            <span className="block text-xs font-medium text-neutral-600 mb-1">Nhóm bệnh</span>
+            <div className="relative">
+              <Stethoscope className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400 pointer-events-none" />
               <select
                 value={tempDisease}
                 onChange={(e) => setTempDisease(e.target.value)}
-                className="w-full pl-9 pr-9 py-2 border border-neutral-200 rounded-lg text-sm appearance-none bg-white"
+                className="w-full h-9 pl-8 pr-8 border border-neutral-200 rounded-lg text-sm appearance-none bg-white outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
               >
                 <option value="all">Tất cả các bệnh</option>
                 {diseaseOptions.map((d) => (
@@ -613,21 +612,19 @@ export default function Epidemiology() {
                   </option>
                 ))}
               </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 pointer-events-none" />
+              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400 pointer-events-none" />
             </div>
-          </div>
+          </label>
 
-          {/* Region (Tỉnh/Thành) */}
-          <div>
-            <label className="block text-sm font-medium text-neutral-600 mb-1.5">
-              Tỉnh/Thành
-            </label>
+          {/* Tỉnh/Thành */}
+          <label className="block w-52">
+            <span className="block text-xs font-medium text-neutral-600 mb-1">Tỉnh/Thành</span>
             <div className="relative">
-              <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+              <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400 pointer-events-none" />
               <select
                 value={tempRegion}
                 onChange={(e) => setTempRegion(e.target.value)}
-                className="w-full pl-9 pr-9 py-2 border border-neutral-200 rounded-lg text-sm appearance-none bg-white"
+                className="w-full h-9 pl-8 pr-8 border border-neutral-200 rounded-lg text-sm appearance-none bg-white outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
               >
                 <option value="all">Tất cả tỉnh/thành</option>
                 {regionOptions.map((r) => (
@@ -636,34 +633,33 @@ export default function Epidemiology() {
                   </option>
                 ))}
               </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 pointer-events-none" />
+              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400 pointer-events-none" />
             </div>
-          </div>
-        </div>
+          </label>
 
-        {/* Filter action buttons */}
-        <div className="mt-4 flex items-center gap-3">
+          {/* Nút */}
           <button
             type="button"
             onClick={handleApplyFilters}
-            className="inline-flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+            className="inline-flex items-center gap-1.5 h-9 px-4 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
           >
-            <Filter className="w-4 h-4" />
+            <Filter className="w-3.5 h-3.5" />
             Tìm kiếm
           </button>
           <button
             type="button"
             onClick={handleClearFilters}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-white border border-neutral-200 rounded-lg text-sm font-medium hover:bg-neutral-50"
+            className="inline-flex items-center gap-1.5 h-9 px-3 bg-white border border-neutral-200 rounded-lg text-sm font-medium hover:bg-neutral-50"
           >
-            <X className="w-4 h-4" />
+            <X className="w-3.5 h-3.5" />
             Xóa bộ lọc
           </button>
+
           {(selectedDisease !== 'all' ||
             selectedRegion !== 'all' ||
             startMonth ||
             endMonth) && (
-            <span className="text-xs text-neutral-500 ml-auto">
+            <span className="inline-flex items-center h-9 ml-auto text-xs text-neutral-500 whitespace-nowrap">
               Đang lọc: {filtered.length} / {items.length} bản ghi
             </span>
           )}

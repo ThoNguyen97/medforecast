@@ -206,6 +206,13 @@ export default function Forecasting() {
             );
             return;
           }
+          // Không có căn cứ dự báo (0 ca, không ensemble) → backend từ chối ghi.
+          // Giữ kết quả trên màn hình, nói rõ lý do.
+          if (data?.forecast?.khong_ghi_nhan) {
+            setPhanTichMoi(data);
+            alert(data.forecast.khong_ghi_nhan);
+            return;
+          }
           setPhanTichMoi(data);
           setPhanTichLuc(null);
           xoaTam(); // đã nằm trong DB, không cần bản tạm nữa
@@ -289,7 +296,7 @@ export default function Forecasting() {
             Dự báo số ca bệnh
           </h2>
           <p className="text-sm text-neutral-500 mt-1">
-            Phân tích đa biến dựa trên dữ liệu lịch sử và yếu tố thời tiết.
+            Số ca dự báo theo nhóm bệnh, khu vực và kỳ — tính từ dữ liệu lịch sử và thời tiết.
           </p>
         </div>
         <div className="flex items-center gap-2">

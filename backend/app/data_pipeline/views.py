@@ -47,19 +47,19 @@ WHERE  u.so_luong_toan_vien > 0
 # tập theo dõi. Đo trên DB thật: siết lại còn 242/304 mã, Xám 91 → 37.
 V_SUPPLY_FOCUS = f"""
 CREATE VIEW v_supply_focus AS
+WITH cua_so AS (
+    SELECT DISTINCT period AS p FROM fact_usage_total
+    WHERE  {_KY_DA_CHOT}
+    ORDER BY period DESC LIMIT 12
+), n_ky AS (SELECT COUNT(*) * 1.0 AS n FROM cua_so)
 SELECT supply_code,
        ROUND(100.0 * SUM(so_luong_hohap) / NULLIF(SUM(so_luong_toan_vien), 0), 2) AS ty_trong_hohap,
-       ROUND(SUM(so_luong_toan_vien) / COUNT(*), 3)                               AS tb_thang_toan_vien,
-       ROUND(SUM(d_baseline_thang)  / COUNT(*), 3)                                AS d_baseline_thang,
+       ROUND(SUM(so_luong_toan_vien) / (SELECT n FROM n_ky), 3)                   AS tb_thang_toan_vien,
+       ROUND(SUM(d_baseline_thang)  / (SELECT n FROM n_ky), 3)                    AS d_baseline_thang,
        COUNT(*)                                                                   AS so_ky
 FROM   fact_usage_total
 WHERE  is_vtyt = 0
-  AND  {_KY_DA_CHOT}
-  AND  period >= (
-        SELECT MIN(p) FROM (
-          SELECT DISTINCT period AS p FROM fact_usage_total
-          WHERE {_KY_DA_CHOT}
-          ORDER BY period DESC LIMIT 12))
+  AND  period IN (SELECT p FROM cua_so)
 GROUP BY supply_code
 HAVING SUM(so_luong_toan_vien) > 0
    AND 100.0 * SUM(so_luong_hohap) / SUM(so_luong_toan_vien) >= 25.0
@@ -70,22 +70,29 @@ HAVING SUM(so_luong_toan_vien) > 0
 # ── 3c · Mẫu số hằng ngày dùng chung cho DOI ─────────────────────────────────
 # d = tiêu hao TOÀN VIỆN trung bình tháng / 30 trên 12 kỳ đã chốt. Không lấy
 # tiêu hao hô hấp làm mẫu số (lỗi đã sửa ở G1).
+# MẪU SỐ LÀ SỐ KỲ CỦA CỬA SỔ, KHÔNG PHẢI SỐ KỲ CÓ DÒNG (18/09/2026). Trước đây
+# chia cho COUNT(*) — số kỳ mà RIÊNG mã đó có xuất — nên một mã chỉ xuất 1 kỳ
+# trong 12 kỳ có d_daily ngang một mã xuất đều cả 12 kỳ, và tồn ít của nó thành
+# Đỏ giả. Đo 14/09 trên toàn danh mục: trong 284 mã Đỏ có 8 mã chỉ 1 kỳ, 19 mã
+# 2 kỳ, 10 mã 3 kỳ. Nay chia cho (SELECT n FROM n_ky) = số kỳ đã chốt thực có
+# trong cửa sổ, tối đa 12 — giống nhau cho mọi mã. Cột `so_ky` giữ nguyên nghĩa
+# cũ (số kỳ mã đó có xuất) để chẩn đoán.
 V_SUPPLY_DAILY_DEMAND = f"""
 CREATE VIEW v_supply_daily_demand AS
+WITH cua_so AS (
+    SELECT DISTINCT period AS p FROM fact_usage_total
+    WHERE  {_KY_DA_CHOT}
+    ORDER BY period DESC LIMIT 12
+), n_ky AS (SELECT COUNT(*) * 1.0 AS n FROM cua_so)
 SELECT  supply_code,
-        COUNT(*)                                              AS so_ky,
-        ROUND(SUM(so_luong_toan_vien) / COUNT(*) / 30.0, 6)   AS d_daily,
-        ROUND(SUM(so_luong_hohap)     / COUNT(*) / 30.0, 6)   AS d_daily_hohap,
-        ROUND(SUM(d_baseline_thang)   / COUNT(*) / 30.0, 6)   AS d_daily_baseline,
+        COUNT(*)                                                     AS so_ky,
+        ROUND(SUM(so_luong_toan_vien) / (SELECT n FROM n_ky) / 30.0, 6) AS d_daily,
+        ROUND(SUM(so_luong_hohap)     / (SELECT n FROM n_ky) / 30.0, 6) AS d_daily_hohap,
+        ROUND(SUM(d_baseline_thang)   / (SELECT n FROM n_ky) / 30.0, 6) AS d_daily_baseline,
         ROUND(100.0 * SUM(so_luong_hohap) / NULLIF(SUM(so_luong_toan_vien),0), 2) AS ty_trong_hohap
 FROM    fact_usage_total
 WHERE   is_vtyt = 0
-  AND   {_KY_DA_CHOT}
-  AND   period >= (
-         SELECT MIN(p) FROM (
-           SELECT DISTINCT period AS p FROM fact_usage_total
-           WHERE {_KY_DA_CHOT}
-           ORDER BY period DESC LIMIT 12))
+  AND   period IN (SELECT p FROM cua_so)
 GROUP BY supply_code
 HAVING  SUM(so_luong_toan_vien) > 0
 """

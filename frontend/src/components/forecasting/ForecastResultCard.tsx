@@ -103,8 +103,11 @@ export default function ForecastResultCard({
 
       {accuracyPct != null && (
         <div className="relative mt-2.5 flex items-center justify-between rounded-xl border border-neutral-200 bg-white/70 px-3.5 py-2.5">
-          <span className="text-xs font-semibold uppercase tracking-wide text-neutral-600">
-            Độ chính xác mô hình
+          <span
+            className="text-xs font-semibold uppercase tracking-wide text-neutral-600"
+            title="= 100 − WAPE trên các bước kiểm định lùi gần nhất của chính chuỗi này"
+          >
+            Độ chính xác kiểm định
           </span>
           <span className={cn('text-sm font-extrabold tabular-nums', accColor)}>
             {accuracyPct.toFixed(1)}%

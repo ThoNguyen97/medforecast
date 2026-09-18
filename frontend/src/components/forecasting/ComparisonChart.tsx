@@ -33,10 +33,18 @@ export default function ComparisonChart({ data, targetMonth }: Props) {
         <h3 className="text-sm font-semibold text-neutral-900">
           So sánh số ca bệnh cùng kỳ (Tháng {targetMonth})
         </h3>
-        <span className="inline-flex items-center gap-1.5 text-xs text-neutral-600">
-          <span className="w-2 h-2 rounded-sm bg-blue-600" />
-          Số ca bệnh
-        </span>
+        {/* Hai màu cột = hai nghĩa: nhạt là số THỰC TẾ các năm trước, đậm là
+            số DỰ BÁO của năm mục tiêu — chú thích phải nói rõ cả hai. */}
+        <div className="flex items-center gap-3 text-xs text-neutral-600 whitespace-nowrap">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-sm bg-[#bfdbfe]" />
+            Số ca thực tế
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-sm bg-blue-600" />
+            Số ca bệnh dự báo
+          </span>
+        </div>
       </div>
 
       <div className="h-64">
@@ -64,7 +72,10 @@ export default function ComparisonChart({ data, targetMonth }: Props) {
                 borderRadius: 8,
                 fontSize: 12,
               }}
-              formatter={(v: number) => [v.toLocaleString('vi-VN') + ' ca', 'Số ca']}
+              formatter={(v: number, _name, item) => [
+                v.toLocaleString('vi-VN') + ' ca',
+                item?.payload?.is_forecast ? 'Số ca dự báo' : 'Số ca thực tế',
+              ]}
             />
             <Bar dataKey="value" radius={[6, 6, 0, 0]} barSize={36}>
               {formatted.map((d, idx) => (

@@ -1,4 +1,4 @@
-import { Lightbulb, Droplets, Thermometer, BarChart2 } from 'lucide-react';
+import { Info, Droplets, Thermometer, BarChart2, TrendingUp } from 'lucide-react';
 
 interface Props {
   bullets: string[];
@@ -8,7 +8,7 @@ const ICON_PALETTE = [
   { icon: Droplets, color: 'text-sky-500', bg: 'bg-sky-50' },
   { icon: Thermometer, color: 'text-blue-500', bg: 'bg-blue-50' },
   { icon: BarChart2, color: 'text-rose-500', bg: 'bg-rose-50' },
-  { icon: Lightbulb, color: 'text-amber-500', bg: 'bg-amber-50' },
+  { icon: TrendingUp, color: 'text-amber-500', bg: 'bg-amber-50' },
 ];
 
 /** Tách bullet "Tiêu đề — Nội dung" thành 2 phần để render đẹp. */
@@ -26,8 +26,8 @@ export default function ModelExplanation({ bullets }: Props) {
   return (
     <div className="bg-white rounded-2xl border border-neutral-200 p-5">
       <h3 className="flex items-center gap-2 text-sm font-semibold text-neutral-900 mb-4">
-        <Lightbulb className="w-4 h-4 text-amber-500" />
-        Giải thích mô hình
+        <Info className="w-4 h-4 text-neutral-500" />
+        Yếu tố ảnh hưởng
       </h3>
 
       <ul className="space-y-4">
