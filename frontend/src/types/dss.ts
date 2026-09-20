@@ -27,6 +27,7 @@ export interface AlertsCounts {
   total: number;
   measured: number;
   zero_stock: number;
+  /** số mã DOI dùng mẫu số dự báo (D_i/horizon) / lùi về tiêu hao 12 kỳ */
   fefo_codes?: number;
   stock_source?: string | null; // 'fact_inventory_lot@YYYY-MM-DD' | 'inventory' | 'khong_co'
   ly_do_xam?: Record<string, number>;
@@ -58,7 +59,9 @@ export interface AlertsPayload {
   };
   demand: {
     ready: boolean;
+    /** số mã có nhu cầu dự báo TRONG phạm vi đang xem */
     so_ma?: number;
+    so_ma_toan_danh_muc?: number;
     horizon_days?: number;
     nguon_dinh_muc?: Record<string, string>;
     error?: string;
@@ -94,7 +97,6 @@ export interface ThresholdParams extends Record<string, number | string> {
   doi_amber_days: number;
   horizon_days: number;
   fefo_window_days: number;
-  overstock_factor: number;
 }
 
 export interface CareLevelParams extends Record<string, number | string> {

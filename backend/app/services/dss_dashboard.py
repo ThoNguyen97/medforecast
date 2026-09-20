@@ -633,6 +633,18 @@ def tang1_tang2(db: Session):
     return fc, th, nhu_cau, nhu_cau_meta
 
 
+def _chuoi_cong_thuc(horizon: int, do_ngay: float, vang_ngay: float) -> str:
+    """Dòng công thức hiện trên Cảnh báo thiếu hụt và Quản lý thuốc.
+
+    Dựng ở backend để hai màn hình không tự viết lại chữ mỗi nơi một kiểu —
+    trước 19/09 tài liệu ghi một công thức còn code chạy công thức khác suốt
+    nhiều tháng, không ai phát hiện vì chữ trên giao diện là chữ viết tay.
+    """
+    return (f"DOI = Tồn hữu dụng ÷ (Nhu cầu dự báo ÷ {horizon} ngày)"
+            f" · Thiếu hụt = Nhu cầu dự báo − Tồn hữu dụng, không âm"
+            f" · Đỏ ≤ {do_ngay:.0f} · Vàng ≤ {vang_ngay:.0f} · Xanh > {vang_ngay:.0f} ngày")
+
+
 def _counts(al: Dict[str, Any]) -> Dict[str, Any]:
     if not al.get("san_sang"):
         return {"red": 0, "amber": 0, "green": 0, "grey": 0, "total": 0,
@@ -640,7 +652,7 @@ def _counts(al: Dict[str, Any]) -> Dict[str, Any]:
     t = al["tong_hop"]
     return {"red": t["red"], "amber": t["amber"], "green": t["green"],
             "grey": t["grey"], "total": t["tong_ma"], "measured": t["do_duoc"],
-            "zero_stock": sum(1 for r in al["rows"] if r["doi"] == 0.0),
+            "zero_stock": sum(1 for r in al["rows"] if r.get("het_hang")),
             "fefo_codes": t.get("so_ma_ap_dung_fefo", 0),
             "stock_source": t.get("nguon_ton_kho"),   # vd fact_inventory_lot@2026-09-13
             "ly_do_xam": t.get("ly_do_xam", {}), "san_sang": True}
@@ -654,7 +666,8 @@ def _dong_canh_bao(r: Dict[str, Any]) -> Dict[str, Any]:
         "supply_code": r["supply_code"], "ten": r["ten"], "don_vi": r["don_vi"],
         "nhom": r["nhom"], "danh_muc": r["danh_muc"],
         "s_total": r["s_total"], "s_usable": r["s_usable"], "s_expiring": r["s_expiring"],
-        "d_daily": r["d_daily"], "d_forecast": r["d_forecast"], "delta_need": r["delta_need"],
+        "d_daily": r["d_daily"], "d_eff": r["d_eff"],
+        "d_forecast": r["d_forecast"], "delta_need": r["delta_need"],
         "doi": r["doi"], "muc": r["muc"], "ly_do_xam": r["ly_do_xam"],
         "fefo_ap_dung": r["fefo_ap_dung"], "ty_trong_hohap": r["ty_trong_hohap"],
     }
@@ -709,10 +722,14 @@ def alerts_payload(db: Session, focus: bool = True, level: Optional[str] = None,
         "forecast": {"ready": fc["ready"], "target_period": fc.get("target_period"),
                      "total": fc["total"], "computed_at": fc.get("computed_at"),
                      "blocks": [{"block": x["block"], "point": x["point"]} for x in fc["blocks"]]},
-        "demand": nhu_cau_meta,
+        # so_ma theo ĐÚNG phạm vi đang xem (focus 242 / toàn danh mục 1.476),
+        # không phải số mã Tầng 2 sinh ra trên cả danh mục.
+        "demand": {**nhu_cau_meta,
+                   "so_ma_toan_danh_muc": nhu_cau_meta.get("so_ma"),
+                   "so_ma": sum(1 for r in (al.get("rows") or []) if r.get("d_forecast") is not None)},
         "counts": dem,
-        "basis": "DOI = S_usable(FEFO) / d_daily · Đỏ ≤ %.0f · Vàng ≤ %.0f · Xanh > %.0f ngày"
-                 % (float(th["doi_red_days"]), float(th["doi_amber_days"]), float(th["doi_amber_days"])),
+        "basis": _chuoi_cong_thuc(int(th.get("horizon_days", 30)),
+                            float(th["doi_red_days"]), float(th["doi_amber_days"])),
         "canh_bao": canh_bao,
         "danh_muc": danh_muc_co,
         "total": len(rows),
@@ -836,8 +853,8 @@ def overview_payload(db: Session, focus: bool = True,
             "selected": tap_ten, "counts": sig,
             "focus": dem_focus, "all": dem_all,
             "overall": risk,
-            "basis": "DOI = S_usable(FEFO) / d_daily · Đỏ ≤ %.0f · Vàng ≤ %.0f · Xanh > %.0f ngày"
-                     % (sig["nguong"]["red_days"], sig["nguong"]["amber_days"], sig["nguong"]["amber_days"]),
+            "basis": _chuoi_cong_thuc(int(th.get("horizon_days", 30)),
+                                     sig["nguong"]["red_days"], sig["nguong"]["amber_days"]),
             "canh_bao": canh_bao_tang3,
         },
         "catalogue": cat,

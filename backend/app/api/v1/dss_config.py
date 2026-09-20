@@ -49,16 +49,17 @@ MO_TA: Dict[str, Dict[str, Dict[str, Any]]] = {
             "min": 2, "max": 730},
         "horizon_days": {
             "ten": "Chân trời nhu cầu (ngày)",
-            "y_nghia": "Nhu cầu dự báo D_i và thiếu hụt Δ = max(0, D_i − tồn hữu dụng) quy về số ngày này.",
+            "y_nghia": ("Cột 'Nhu cầu dự báo' và 'Thiếu hụt' tính cho bấy nhiêu ngày tới. "
+                        "KHÔNG đổi DOI và không đổi màu: D_i co giãn theo tham số này nên "
+                        "D_i / horizon giữ nguyên. Đặt bằng ngưỡng Vàng thì mọi mã Đỏ/Vàng "
+                        "đều có số thiếu hụt > 0."),
             "min": 7, "max": 180},
         "fefo_window_days": {
-            "ten": "Cửa sổ FEFO (ngày)",
-            "y_nghia": "Lô hết hạn trong vòng bấy nhiêu ngày bị trừ khỏi tồn hữu dụng.",
+            "ten": "Cửa sổ cận date (ngày)",
+            "y_nghia": ("Chỉ để THỐNG KÊ: lượng của lô hết hạn trong vòng bấy nhiêu ngày mà "
+                        "không kịp dùng được cộng vào cột 'sắp hết hạn'. Tồn hữu dụng FEFO "
+                        "không phụ thuộc tham số này."),
             "min": 0, "max": 365},
-        "overstock_factor": {
-            "ten": "Hệ số tồn dư",
-            "y_nghia": "Tồn hữu dụng > hệ số × nhu cầu chân trời được ghi chú là tồn dư (chỉ ghi chú, không đổi màu).",
-            "min": 1, "max": 10},
     },
     "care_level": {
         "window_periods": {
@@ -109,6 +110,8 @@ def _doc_hien_tai(db: Session) -> Dict[str, Any]:
             "Tầng 2  D_i = Σ_ro Ŷ_g · p̂(g,ro) · Norm(i,g,ro) + D_nền,i",
             "        p̂(g,ro) = ca(g,ro)/ca(g); Norm(i,g,ro) = Σ tiêu hao / Σ ca — cùng cửa sổ window_periods",
             "Tầng 3  DOI_i = tồn hữu dụng FEFO_i / (D_i / horizon_days); Đỏ ≤ doi_red_days, Vàng ≤ doi_amber_days",
+            "        Thiếu hụt_i = D_i − tồn hữu dụng_i, không âm (chưa trừ hàng đang về)",
+            "        mã không có D_i → không có mẫu số → Xám, lý do 'chưa có dự báo'",
         ],
     }
 

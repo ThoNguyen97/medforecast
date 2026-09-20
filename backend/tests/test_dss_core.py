@@ -124,10 +124,80 @@ def test_alert_rows_gan_nhan_dung(db):
 
     out = dss_alerts.alert_rows(s, demand={"A": 600.0})
     theo_ma = {r["supply_code"]: r for r in out["rows"]}
-    assert theo_ma["A"]["doi"] == pytest.approx(10.0) and theo_ma["A"]["muc"] == "red"
+    # A có nhu cầu dự báo 600/30 ngày → mẫu số 20/ngày (KHÔNG phải d_daily 10)
+    assert theo_ma["A"]["d_eff"] == pytest.approx(20.0)
+    assert theo_ma["A"]["d_daily"] == pytest.approx(10.0)
+    assert theo_ma["A"]["doi"] == pytest.approx(5.0) and theo_ma["A"]["muc"] == "red"
     assert theo_ma["A"]["delta_need"] == pytest.approx(500.0)
-    assert theo_ma["B"]["doi"] == pytest.approx(100.0) and theo_ma["B"]["muc"] == "green"
-    assert out["tong_hop"]["red"] == 1 and out["tong_hop"]["green"] == 1
+    # B không có D_i → KHÔNG lùi về tiêu hao lịch sử: không mẫu số → Xám
+    assert theo_ma["B"]["d_eff"] == pytest.approx(0.0)
+    assert theo_ma["B"]["doi"] is None and theo_ma["B"]["muc"] == "grey"
+    # còn xuất trong 12 kỳ (d_daily 10) nên lý do là "chưa có dự báo",
+    # khác hẳn mã đã ngừng dùng
+    assert theo_ma["B"]["ly_do_xam"] == dss_alerts.GREY_NO_FORECAST
+    assert theo_ma["B"]["d_daily"] == pytest.approx(10.0)
+    assert out["tong_hop"]["red"] == 1 and out["tong_hop"]["grey"] == 1
+    assert "so_ma_mau_so_du_bao" not in out["tong_hop"]
+
+
+def _fixture_mot_ma(s, engine, ton=100.0, han="2030-01-01"):
+    for i in (1, 2, 3):
+        s.execute(text("INSERT INTO fact_usage_total (period, supply_code, is_vtyt, "
+                       "so_luong_toan_vien, so_luong_hohap, d_baseline_thang) "
+                       "VALUES (:p,'A',0,300,100,200)"), {"p": _ky(i)})   # d_daily = 10
+    s.execute(text("INSERT INTO medical_supplies VALUES (1,'A','Thuốc A','viên','G','Khác')"))
+    s.execute(text("INSERT INTO fact_inventory_lot (snapshot_date, supply_code, lot_id, expiry_date, "
+                   "co_han_dung, quantity, so_kho) VALUES (:h,'A',1,:e,1,:q,'K1')"),
+              {"h": date.today().isoformat(), "e": han, "q": ton})
+    s.commit()
+    views.tao_views(engine)
+
+
+def test_so_ca_du_bao_tang_thi_nhan_doi_mau(db):
+    """KHOÁ phương án B (19/09/2026): màu cảnh báo PHẢI đổi khi số ca dự báo
+    đổi. Cùng một tồn 100, tiêu hao lịch sử 10/ngày; dự báo thấp → Xanh, dự
+    báo cao → Đỏ. Trước 19/09 cả hai đều ra DOI = 10 (Đỏ) vì mẫu số là
+    d_daily, tức Tầng 1 không lái Tầng 3."""
+    s, engine = db
+    _fixture_mot_ma(s, engine, ton=100.0)
+    thap = {r["supply_code"]: r for r in dss_alerts.alert_rows(s, demand={"A": 60.0})["rows"]}
+    cao = {r["supply_code"]: r for r in dss_alerts.alert_rows(s, demand={"A": 600.0})["rows"]}
+    assert thap["A"]["doi"] == pytest.approx(50.0) and thap["A"]["muc"] == "green"
+    assert cao["A"]["doi"] == pytest.approx(5.0) and cao["A"]["muc"] == "red"
+
+
+def test_khong_co_du_bao_thi_xam_chu_khong_lui_ve_lich_su(db):
+    """KHOÁ quyết định 20/09: một công thức DOI duy nhất. Không truyền demand
+    thì KHÔNG có mẫu số — trả Xám, chứ không âm thầm chia cho tiêu hao lịch sử
+    (giữ nhánh đó thì trên cùng một bảng tồn tại hai công thức DOI)."""
+    s, engine = db
+    _fixture_mot_ma(s, engine, ton=100.0)
+    khong = {r["supply_code"]: r for r in dss_alerts.alert_rows(s)["rows"]}
+    assert khong["A"]["doi"] is None and khong["A"]["muc"] == "grey"
+    assert khong["A"]["ly_do_xam"] == dss_alerts.GREY_NO_FORECAST
+    assert khong["A"]["d_forecast"] is None and khong["A"]["delta_need"] is None
+
+
+def test_fefo_dung_cung_mau_so_du_bao(db):
+    """FEFO và DOI phải nói về cùng một tốc độ tiêu thụ. Lô 100 viên còn 10
+    ngày hạn: dự báo 2/ngày → chỉ 20 viên kịp dùng (s_usable 20, DOI 10);
+    dự báo 20/ngày → dùng kịp cả 100 (s_usable 100, DOI 5)."""
+    s, engine = db
+    han = (date.today() + timedelta(days=10)).isoformat()
+    _fixture_mot_ma(s, engine, ton=100.0, han=han)
+    cham = {r["supply_code"]: r for r in dss_alerts.alert_rows(s, demand={"A": 60.0})["rows"]}
+    nhanh = {r["supply_code"]: r for r in dss_alerts.alert_rows(s, demand={"A": 600.0})["rows"]}
+    assert cham["A"]["s_usable"] == pytest.approx(20.0) and cham["A"]["doi"] == pytest.approx(10.0)
+    assert nhanh["A"]["s_usable"] == pytest.approx(100.0) and nhanh["A"]["doi"] == pytest.approx(5.0)
+
+
+def test_het_hang_that_khong_dem_ma_con_hang(db):
+    """`het_hang` chỉ khi tồn hữu dụng = 0; mã còn 1 viên với DOI 0,05 (hiển thị
+    0,0) KHÔNG được đếm là hết hàng."""
+    s, engine = db
+    _fixture_mot_ma(s, engine, ton=1.0)
+    r = {x["supply_code"]: x for x in dss_alerts.alert_rows(s, demand={"A": 600.0})["rows"]}["A"]
+    assert r["doi"] is not None and 0 < r["doi"] < 0.2 and r["het_hang"] is False
 
 
 # ─────────────────────────────────────────────────────────────────────────────

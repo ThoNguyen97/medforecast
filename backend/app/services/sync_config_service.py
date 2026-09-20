@@ -221,8 +221,8 @@ def test_connection(db: Session, payload: dict) -> dict:
                         steps.append({
                             "name": nhan, "ok": bool(n),
                             "detail": (f"{view}: {n:,} dòng" if n else
-                                       f"{view} RỖNG — chạy thủ tục đồng bộ "
-                                       "bên PROD trước")})
+                                       f"{view} RỖNG — kho trung gian chưa được "
+                                       "cập nhật")})
                         ok = ok and bool(n)
                     except Exception as e:
                         ok = False

@@ -1,10 +1,12 @@
+import { useNavigate } from 'react-router-dom';
 import { Loader2, Edit2, Trash2 } from 'lucide-react';
 import { cn } from '../../utils/cn';
+import { ROUTES } from '../../utils/constants';
 import LevelPill from '../dashboard/LevelPill';
 import { GREY_REASON_LABELS, type AlertLevel, type GreyReason } from '../../types/dashboardV2';
 
 /**
- * Một dòng thuốc trên trang Quản lý thuốc = danh mục (`/inventory`, có id để
+ * Một dòng thuốc trên trang Danh mục & tồn kho = danh mục (`/inventory`, có id để
  * sửa/xoá) ghép với dòng DOI cùng `supply_code` từ `/dashboard/v2/alerts`
  * (toàn danh mục). `level = null` nghĩa là mã không có tiêu hao trong 12 kỳ đã
  * chốt → không có mẫu số, không đo được DOI; khác với Xám (có tiêu hao nhưng
@@ -19,7 +21,9 @@ export interface InventoryRow {
   unit: string;
   currentStock: number;
   usableStock: number | null;
-  dDaily: number | null;
+  dDaily: number | null;          // mẫu số DOI: nhu cầu dự báo mỗi ngày
+  dForecast: number | null;       // nhu cầu dự báo cả chân trời
+  deltaNeed: number | null;       // thiếu hụt = dForecast − usableStock, không âm
   doi: number | null;
   level: AlertLevel | null;
   greyReason: GreyReason | null;
@@ -28,6 +32,10 @@ export interface InventoryRow {
 interface Props {
   rows: InventoryRow[];
   isLoading?: boolean;
+  /** Chân trời nhu cầu (ngày) — tham số Quản trị, không viết cứng 30. */
+  horizonDays: number;
+  /** Dòng công thức do backend dựng, dùng chung với trang Cảnh báo thiếu hụt. */
+  basis?: string;
   total: number;
   page: number;
   pageSize: number;
@@ -42,6 +50,8 @@ const fmt = (v: number | null | undefined, digits = 0) =>
 export default function InventoryTable({
   rows,
   isLoading,
+  horizonDays,
+  basis,
   total,
   page,
   pageSize,
@@ -49,26 +59,65 @@ export default function InventoryTable({
   onEdit,
   onDelete,
 }: Props) {
+  const navigate = useNavigate();
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const end = Math.min(page * pageSize, total);
 
-  const colSpan = 10;
+  const colSpan = 12;
 
   return (
     <div className="overflow-hidden">
+      {basis && (
+        <p className="px-5 pt-4 pb-1 text-xs text-neutral-500">{basis}</p>
+      )}
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
+            {/* Hai hàng tiêu đề: nhóm trái là sổ cái danh mục — việc chính của
+                trang này; nhóm phải là số của Tầng 1→2→3, để tham chiếu và
+                cũng là số mà trang Cảnh báo thiếu hụt dùng. */}
+            <tr className="text-neutral-400 text-[10px] uppercase tracking-wider">
+              <th colSpan={4} className="text-left px-4 pt-3 pb-1 font-semibold">Danh mục</th>
+              <th colSpan={2} className="text-right px-4 pt-3 pb-1 font-semibold">Tồn kho</th>
+              <th colSpan={5} className="text-right px-4 pt-3 pb-1 font-semibold border-l border-neutral-100">
+                Dự báo &amp; cảnh báo
+              </th>
+              <th className="px-4 pt-3 pb-1" />
+            </tr>
             <tr className="text-neutral-500 text-[11px] uppercase tracking-wider border-y border-neutral-100">
               <th className="text-left px-4 py-3 font-semibold">Mã</th>
               <th className="text-left px-4 py-3 font-semibold">Hoạt chất</th>
               <th className="text-left px-4 py-3 font-semibold">Danh mục</th>
               <th className="text-left px-4 py-3 font-semibold">ĐVT</th>
               <th className="text-right px-4 py-3 font-semibold">Tồn kho</th>
-              <th className="text-right px-4 py-3 font-semibold">Tồn hữu dụng</th>
-              <th className="text-right px-4 py-3 font-semibold">Tiêu hao/ngày</th>
-              <th className="text-right px-4 py-3 font-semibold">DOI (ngày)</th>
+              <th
+                className="text-right px-4 py-3 font-semibold"
+                title="Phần tồn còn dùng kịp trước hạn, tính theo lô hết hạn sớm trước."
+              >
+                Tồn hữu dụng
+              </th>
+              <th
+                className="text-right px-4 py-3 font-semibold border-l border-neutral-100"
+                title={`Số ca dự báo kỳ tới quy đổi theo định mức tiêu hao thực tế, tính cho ${horizonDays} ngày.`}
+              >
+                Nhu cầu {horizonDays} ngày
+              </th>
+              <th className="text-right px-4 py-3 font-semibold" title="Nhu cầu dự báo chia cho chân trời.">
+                Nhu cầu/ngày
+              </th>
+              <th
+                className="text-right px-4 py-3 font-semibold"
+                title={`Phần nhu cầu ${horizonDays} ngày mà tồn hữu dụng không đáp ứng. Chưa trừ hàng đang về.`}
+              >
+                Thiếu hụt
+              </th>
+              <th
+                className="text-right px-4 py-3 font-semibold"
+                title="Số ngày tồn hữu dụng đủ dùng theo nhu cầu dự báo."
+              >
+                DOI (ngày)
+              </th>
               <th className="text-left px-4 py-3 font-semibold">Nhãn</th>
               <th className="text-center px-4 py-3 font-semibold">Thao tác</th>
             </tr>
@@ -105,16 +154,35 @@ export default function InventoryTable({
                     {fmt(r.currentStock)}
                   </td>
                   <td className="px-4 py-3 text-right text-neutral-700 tabular-nums">{fmt(r.usableStock)}</td>
-                  <td className="px-4 py-3 text-right text-neutral-700 tabular-nums">{fmt(r.dDaily, 2)}</td>
-                  <td className="px-4 py-3 text-right text-neutral-900 font-semibold tabular-nums">{fmt(r.doi, 1)}</td>
+                  <td className="px-4 py-3 text-right text-neutral-500 tabular-nums border-l border-neutral-100">
+                    {fmt(r.dForecast)}
+                  </td>
+                  <td className="px-4 py-3 text-right text-neutral-500 tabular-nums">{fmt(r.dDaily, 2)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">
+                    {r.deltaNeed == null ? (
+                      <span className="text-neutral-400">—</span>
+                    ) : r.deltaNeed > 0 ? (
+                      <span className="text-red-700 font-semibold">{fmt(r.deltaNeed)}</span>
+                    ) : (
+                      <span className="text-neutral-400">0</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right text-neutral-600 font-medium tabular-nums">{fmt(r.doi, 1)}</td>
                   <td className="px-4 py-3">
                     {r.level ? (
-                      <span className="inline-flex flex-col gap-0.5">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          navigate(`${ROUTES.ALERTS}?focus=all&q=${encodeURIComponent(r.code)}`)
+                        }
+                        className="inline-flex flex-col gap-0.5 text-left"
+                        title="Xem mã này trong Cảnh báo thiếu hụt"
+                      >
                         <LevelPill level={r.level} />
                         {r.level === 'grey' && r.greyReason && (
                           <span className="text-[11px] text-neutral-500">{GREY_REASON_LABELS[r.greyReason]}</span>
                         )}
-                      </span>
+                      </button>
                     ) : (
                       <span className="text-[11px] text-neutral-400 whitespace-nowrap">Không tiêu hao 12 kỳ</span>
                     )}

@@ -202,7 +202,7 @@ class SyncService:
             logger.exception("Làm mới bảng nghiệp vụ thất bại")
             result["legacy_refresh_error"] = str(exc)[:300]
 
-        # trạng thái PROD→STA kèm theo, để giao diện thấy dữ liệu "mới" tới đâu
+        # trạng thái kho trung gian kèm theo, để giao diện thấy dữ liệu "mới" tới đâu
         result["sta"] = self.trang_thai_sta(pipeline.connector)
 
         # Tuần 4c: kỳ vừa chốt → điền thực tế cho sổ theo dõi dự báo
@@ -225,7 +225,7 @@ class SyncService:
             logger.warning("Tạo view sau đồng bộ lỗi: %s", exc)
         return result
 
-    # ── trạng thái PROD → STA ──────────────────────────────────────────
+    # ── trạng thái kho trung gian (STA) ────────────────────────────────
     @staticmethod
     def trang_thai_sta(connector) -> dict:
         """Đọc MF_Watermark + MF_SyncLog trên STA — thứ hai thủ tục PROD ghi rất
@@ -264,10 +264,10 @@ class SyncService:
         # cảnh báo ngắn cho giao diện — ưu tiên lỗi đẩy thật hơn lỗi quyền đọc
         failed = [r for r in out["last_pushes"] if str(r.get("TrangThai", "")).lower() == "failed"]
         if out["last_pushes"] and str(out["last_pushes"][0].get("TrangThai", "")).lower() != "ok":
-            out["warning"] = ("Lần đẩy PROD→STA gần nhất KHÔNG thành công: "
+            out["warning"] = ("Lần cập nhật kho trung gian gần nhất KHÔNG thành công: "
                               + str(out["last_pushes"][0].get("ThongDiep", ""))[:200])
         elif failed:
-            out["warning"] = f"{len(failed)}/{len(out['last_pushes'])} lần đẩy gần đây thất bại — xem nhật ký."
+            out["warning"] = f"{len(failed)}/{len(out['last_pushes'])} lần cập nhật gần đây thất bại — xem nhật ký."
         elif loi:
             out["warning"] = ("Thiếu quyền đọc trên STA (" + "; ".join(loi)
                               + "). Chạy sql_his/phase0/G1_05_STA_quyen_trang_thai.sql.")
@@ -421,7 +421,17 @@ class SyncService:
             r = q1(f"SELECT COUNT(*), MAX({k}) FROM {t}")
             out["dss_tables"][t] = {"rows": int(r[0] or 0), "latest": r[1]} if r else None
 
-        # Trạng thái PROD→STA (mở kết nối STA — chỉ khi có cấu hình SQL Server)
+        # Nguồn ứng dụng đang đọc: chỉ tên CSDL và loại nguồn. Không trả host/IP
+        # — giao diện Tổng quan không cần, và ảnh chụp màn hình không lộ hạ tầng.
+        try:
+            from app.services.sync_config_service import get_config
+            cfg = get_config(self.db)
+            out["source"] = {"kind": cfg.get("source", "file"),
+                             "database": cfg.get("database") if cfg.get("source") == "sqlserver" else None}
+        except Exception:                                 # noqa: BLE001
+            out["source"] = {"kind": "unknown", "database": None}
+
+        # Trạng thái kho trung gian (mở kết nối STA — chỉ khi có cấu hình SQL Server)
         try:
             out["sta"] = self.trang_thai_sta(_build_pipeline(self.db).connector)
         except Exception as exc:                          # noqa: BLE001

@@ -908,9 +908,13 @@ async def _build_inventory_data(
     Chỉ gồm mã có tiêu hao trong 12 kỳ đã chốt (mã chưa từng xuất không có
     mẫu số nên không đo được DOI, không đưa vào báo cáo).
     """
-    from app.services import dss_alerts
+    from app.services import dss_alerts, dss_dashboard
 
-    al = dss_alerts.alert_rows(db, only_focus=False)
+    # CÙNG chuỗi Tầng 1→2→3 với trang web: truyền nhu cầu dự báo để DOI dùng
+    # mẫu số D_i/horizon như mọi nơi khác (19/09/2026). Trước đó báo cáo này
+    # gọi alert_rows không có demand → DOI của báo cáo lệch với DOI trên web.
+    _, _, nhu_cau, _ = dss_dashboard.tang1_tang2(db)
+    al = dss_alerts.alert_rows(db, demand=nhu_cau, only_focus=False)
     th = al.get("tong_hop") or {}
     nguong = th.get("nguong") or {}
 
@@ -927,7 +931,7 @@ async def _build_inventory_data(
                 "unit": r["don_vi"] or "",
                 "current_stock": int(round(r["s_total"] or 0)),
                 "usable_stock": int(round(r["s_usable"] or 0)),
-                "d_daily": round(float(r["d_daily"] or 0), 2),
+                "d_daily": round(float(r.get("d_eff", r["d_daily"]) or 0), 2),
                 "doi": round(float(r["doi"]), 1) if r.get("doi") is not None else None,
                 "status": _NHAN_MUC[r["muc"]],
             }
@@ -1183,14 +1187,14 @@ def _render_inventory_pdf(data: Dict) -> Response:
     return _generic_pdf(
         title="Báo cáo Tồn kho Thuốc",
         period_label=datetime.now().strftime("%d/%m/%Y"),
-        headers=["Mã", "Thuốc", "Danh mục", "ĐVT", "Tồn kho", "Tồn hữu dụng", "Tiêu hao/ngày", "DOI (ngày)", "Nhãn"],
+        headers=["Mã", "Thuốc", "Danh mục", "ĐVT", "Tồn kho", "Tồn hữu dụng", "Nhu cầu/ngày", "DOI (ngày)", "Nhãn"],
         rows=rows,
         col_widths_cm=[1.8, 6.2, 3.0, 1.6, 2.0, 2.2, 2.2, 2.0, 1.6],
         summary_lines=[
             f"<b>Tổng thuốc:</b> {s['total']:,} | "
             f"<b>Đỏ:</b> {s['red']:,} | <b>Vàng:</b> {s['amber']:,} | "
             f"<b>Xanh:</b> {s['green']:,} | <b>Xám:</b> {s['grey']:,}",
-            f"DOI = tồn hữu dụng (FEFO) / tiêu hao ngày · Đỏ ≤ {s['red_days']:.0f} · "
+            f"DOI = tồn hữu dụng (FEFO) / (nhu cầu dự báo / chân trời) · Đỏ ≤ {s['red_days']:.0f} · "
             f"Vàng ≤ {s['amber_days']:.0f} ngày · Nguồn tồn: {s['stock_source']}",
         ],
     )
@@ -1357,7 +1361,7 @@ def _render_inventory_excel(data: Dict) -> Response:
     s = data["summary"]
     return _generic_excel(
         sheet_title="Tồn kho thuốc",
-        headers=["Mã", "Thuốc", "Danh mục", "ĐVT", "Tồn kho", "Tồn hữu dụng (FEFO)", "Tiêu hao/ngày", "DOI (ngày)", "Nhãn"],
+        headers=["Mã", "Thuốc", "Danh mục", "ĐVT", "Tồn kho", "Tồn hữu dụng (FEFO)", "Nhu cầu/ngày", "DOI (ngày)", "Nhãn"],
         rows=rows,
         column_widths=[10, 40, 18, 8, 12, 16, 14, 12, 8],
         filename_prefix="bao_cao_ton_kho_thuoc",

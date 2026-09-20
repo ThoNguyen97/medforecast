@@ -1,7 +1,7 @@
 import api from './api';
 import type { Inventory, InventoryUpdateRequest } from '../types/inventory';
 
-/** /api/v1/inventory — trang Quản lý thuốc gọi thẳng `api` cho import/CSV; đây là phần dùng chung. */
+/** /api/v1/inventory — trang Danh mục & tồn kho gọi thẳng `api` cho import/CSV; đây là phần dùng chung. */
 export const inventoryService = {
   async getInventory(params?: {
     skip?: number;

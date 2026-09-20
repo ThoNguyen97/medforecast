@@ -90,7 +90,10 @@ export interface ForecastSummary {
 
 export interface DemandMeta {
   ready: boolean;
+  /** số mã có nhu cầu dự báo TRONG phạm vi đang xem (focus / toàn danh mục) */
   so_ma?: number;
+  /** số mã Tầng 2 sinh ra trên cả danh mục */
+  so_ma_toan_danh_muc?: number;
   horizon_days?: number;
   nguon_dinh_muc?: Record<string, string>;
   nhom_thieu_p_hat?: string[];
@@ -106,6 +109,7 @@ export interface LevelCounts {
   total: number;
   measured: number;
   zero_stock: number;
+  /** số mã DOI dùng mẫu số dự báo (D_i/horizon) / lùi về tiêu hao 12 kỳ */
   fefo_codes?: number;
   ly_do_xam?: Partial<Record<GreyReason, number>>;
   san_sang: boolean;
@@ -151,7 +155,10 @@ export interface AlertRow {
   s_total: number;
   s_usable: number;
   s_expiring: number;
+  /** tiêu hao toàn viện TB 12 kỳ / ngày — chỉ để tham chiếu */
   d_daily: number;
+  /** mẫu số DOI: d_forecast / horizon_days, hoặc d_daily khi mã chưa có dự báo */
+  d_eff: number;
   d_forecast: number | null;
   delta_need: number | null;
   doi: number | null;

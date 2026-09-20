@@ -57,7 +57,7 @@ export default function Reports() {
     { enabled: kind === 'shortage' },
   );
 
-  // Báo cáo Tồn kho thuốc đọc CÙNG chuỗi DOI với trang Quản lý thuốc / Cảnh
+  // Báo cáo Tồn kho thuốc đọc CÙNG chuỗi DOI với trang Danh mục & tồn kho / Cảnh
   // báo (toàn danh mục, 1 lần, lọc client). Trước 13/09/2026 nó đọc /inventory
   // và xếp loại theo safety_stock — hệ nhãn thứ hai mâu thuẫn trang Cảnh báo.
   const inventory = useQuery({
@@ -512,7 +512,7 @@ function buildInventoryPreview(rows: AlertRow[], statusFilter?: string, searchQu
           { key: 'unit', label: 'ĐVT' },
           { key: 'stock', label: 'Tồn kho', align: 'right' },
           { key: 'usable', label: 'Tồn hữu dụng', align: 'right' },
-          { key: 'd_daily', label: 'Tiêu hao/ngày', align: 'right' },
+          { key: 'd_daily', label: 'Nhu cầu/ngày', align: 'right' },
           { key: 'doi', label: 'DOI (ngày)', align: 'right' },
           { key: 'status', label: 'Nhãn' },
         ],

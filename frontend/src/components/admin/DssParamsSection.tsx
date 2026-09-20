@@ -190,7 +190,7 @@ function ParamCard<T extends Record<string, number | string>>({
                 value={v}
                 min={m.min}
                 max={m.max}
-                step={k === 'overstock_factor' ? 0.1 : 1}
+                step={1}
                 pattern={isKy ? '\\d{4}-\\d{2}' : undefined}
                 placeholder={isKy ? 'YYYY-MM' : undefined}
                 onChange={(e) => onChange(k, isKy ? e.target.value : e.target.value === '' ? '' : Number(e.target.value))}

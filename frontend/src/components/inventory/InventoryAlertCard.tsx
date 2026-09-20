@@ -8,7 +8,7 @@ interface Props {
 }
 
 /**
- * Thẻ tóm tắt trang Quản lý thuốc — CÙNG số với trang Cảnh báo (toàn danh mục).
+ * Thẻ tóm tắt trang Danh mục & tồn kho — CÙNG số với trang Cảnh báo (toàn danh mục).
  *
  * Bốn ô nhãn, mỗi ô nói rõ ngưỡng và ý nghĩa vận hành của màu đó, để người
  * đọc không phải đoán "Xám" là gì. Xám KHÔNG phải an toàn: là mã có tiêu hao

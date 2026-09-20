@@ -189,7 +189,7 @@ export default function Dashboard() {
         <Card
           className="lg:col-span-5"
           title="Số ngày tồn phủ nhu cầu theo danh mục"
-          subtitle={data ? `${data.risk.selected} · DOI = tồn hữu dụng (FEFO) ÷ nhu cầu/ngày` : undefined}
+          subtitle={data ? `${data.risk.selected} · DOI = tồn hữu dụng (FEFO) ÷ nhu cầu dự báo/ngày` : undefined}
         >
           {data ? <DoiCategoryChart data={data.doi_by_category} thresholds={data.meta.thresholds} /> : <Skeleton className="h-72" />}
         </Card>
@@ -226,7 +226,7 @@ export default function Dashboard() {
           <Card title="Phân cấp chăm sóc theo nhóm bệnh" subtitle="Tỷ trọng p̂(g, rổ) — đầu vào định mức thực nghiệm Tầng 2">
             {data ? <CareLevelChart data={data.care_level} block={filters.block} /> : <Skeleton className="h-40" />}
           </Card>
-          <Card title="Trạng thái dữ liệu" subtitle="HIS PROD → STA → app">
+          <Card title="Trạng thái dữ liệu" subtitle="Kho dữ liệu trung gian → ứng dụng">
             {data ? <DataStatusCard status={data.data_status} /> : <Skeleton className="h-40" />}
           </Card>
         </div>
@@ -337,7 +337,8 @@ function buildKpis(
       value: n(c?.red),
       unit: 'mã Đỏ',
       tone: c && c.red > 0 ? 'red' : 'green',
-      to: ROUTES.ALERTS,
+      // Mở thẳng danh sách Đỏ thay vì bắt người dùng lọc lại bằng tay.
+      to: `${ROUTES.ALERTS}?level=red`,
       loading: !data,
       context: c ? (
         <span className="inline-flex flex-wrap gap-1">

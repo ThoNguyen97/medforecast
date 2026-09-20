@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Download, Upload, FileDown, Plus, Loader2, X } from 'lucide-react';
 import { useUIStore } from '../store/uiStore';
@@ -19,7 +20,10 @@ import InventoryTable, {
 const PAGE_SIZE = 10;
 
 /**
- * Module 6 — Quản lý thuốc (13/09/2026, trước đó là "Vật tư y tế & Kho vận").
+ * Module 6 — Danh mục & tồn kho (đổi tên 20/09/2026; trước đó "Quản lý thuốc",
+ * trước nữa "Vật tư y tế & Kho vận"). Tên cũ quá bao trùm nên người dùng tưởng
+ * mọi việc về thuốc đều nằm ở đây, kể cả danh sách cần xử lý — vốn là trang
+ * Cảnh báo thiếu hụt.
  *
  * Danh mục app chỉ có THUỐC (`TM_DUOC` loại 'T', phương án A) nên trang đổi
  * tên cho đúng nội dung. Nhãn trên mỗi dòng là nhãn DOI từ
@@ -36,7 +40,7 @@ export default function Inventory() {
   const { setPageTitle } = useUIStore();
 
   useEffect(() => {
-    setPageTitle('Quản lý thuốc');
+    setPageTitle('Danh mục & tồn kho');
   }, [setPageTitle]);
 
   return <InventoryContent />;
@@ -53,8 +57,11 @@ function InventoryContent() {
   const duocSuaKho =
     user?.role === 'Administrator' || user?.role === 'Inventory_Manager';
 
+  // ?q=<mã> — trang Cảnh báo mở sang đây bằng đường dẫn này, điền sẵn ô tìm
+  // kiếm để không phải gõ lại mã.
+  const [searchParams] = useSearchParams();
   const [filters, setFilters] = useState<InventoryFilters>({
-    search: '',
+    search: searchParams.get('q') ?? '',
     category: 'all',
     status: 'all',
     showUnmeasured: false,
@@ -106,7 +113,9 @@ function InventoryContent() {
         unit: supply.unit ?? d?.don_vi ?? '—',
         currentStock: d ? d.s_total : item.current_stock ?? 0,
         usableStock: d ? d.s_usable : null,
-        dDaily: d ? d.d_daily : null,
+        dDaily: d ? d.d_eff : null,
+        dForecast: d?.d_forecast ?? null,
+        deltaNeed: d?.delta_need ?? null,
         doi: d?.doi ?? null,
         level: d?.muc ?? null,
         greyReason: d?.ly_do_xam ?? null,
@@ -220,15 +229,16 @@ function InventoryContent() {
   };
 
   const th = doiQuery.data?.meta.thresholds;
+  const horizonDays = doiQuery.data?.meta.horizon_days ?? 30;
 
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-3xl font-extrabold text-neutral-900">Quản lý thuốc</h2>
+          <h2 className="text-3xl font-extrabold text-neutral-900">Danh mục & tồn kho</h2>
           <p className="text-sm text-neutral-500 mt-1">
-            Danh mục thuốc của bệnh viện, tồn kho theo lô và nhãn DOI — cùng cách tính với
-            trang Cảnh báo thiếu hụt.
+            Toàn bộ {allRows.length.toLocaleString('vi-VN')} mã thuốc: thông tin danh mục, tồn
+            theo lô và nhãn DOI. Đây là nơi cập nhật dữ liệu kho.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2.5">
@@ -287,6 +297,8 @@ function InventoryContent() {
         <InventoryTable
           rows={paged}
           isLoading={isLoading || (doiQuery.isLoading && !doiQuery.isError)}
+          horizonDays={horizonDays}
+          basis={doiQuery.data?.basis}
           total={filtered.length}
           page={page}
           pageSize={PAGE_SIZE}

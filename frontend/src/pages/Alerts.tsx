@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, RefreshCw, Search } from 'lucide-react';
+import { ExternalLink, Loader2, RefreshCw, Search } from 'lucide-react';
 
 import { useUIStore } from '../store/uiStore';
 import { useAuthStore } from '../store/authStore';
 import { dssService } from '../services/dssService';
 import { cn } from '../utils/cn';
+import { ROUTES } from '../utils/constants';
 import KpiTile from '../components/dashboard/KpiTile';
 import LevelPill from '../components/dashboard/LevelPill';
 import {
@@ -20,6 +22,15 @@ const PAGE_SIZE = 25;
 
 const fmt = (v: number | null | undefined, digits = 0) =>
   v == null ? '—' : v.toLocaleString('vi-VN', { maximumFractionDigits: digits });
+
+/** DOI (số ngày) → ngày lịch dd/mm. Thủ kho làm việc theo ngày trên lịch,
+ *  không theo số ngày trừu tượng. */
+const ngayHet = (doi: number | null | undefined) => {
+  if (doi == null) return '—';
+  const d = new Date();
+  d.setDate(d.getDate() + Math.floor(doi));
+  return d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+};
 
 /**
  * Cảnh báo thiếu hụt — 12/09/2026.
@@ -39,11 +50,19 @@ export default function Alerts() {
   const { isAuthenticated } = useAuthStore();
   useEffect(() => setPageTitle('Cảnh báo thiếu hụt'), [setPageTitle]);
 
-  const [focus, setFocus] = useState(true);
-  const [level, setLevel] = useState<AlertLevel | null>(null);
+  // ?level=red&focus=all&q=<mã> — Tổng quan và trang Danh mục mở sang đây bằng
+  // đường dẫn này để người dùng không phải lọc lại bằng tay.
+  const [searchParams] = useSearchParams();
+  const levelBanDau = searchParams.get('level');
+  const [focus, setFocus] = useState(searchParams.get('focus') !== 'all');
+  const [level, setLevel] = useState<AlertLevel | null>(
+    levelBanDau === 'red' || levelBanDau === 'amber' || levelBanDau === 'green' || levelBanDau === 'grey'
+      ? levelBanDau
+      : null,
+  );
   const [danhMuc, setDanhMuc] = useState('');
-  const [search, setSearch] = useState('');
-  const [q, setQ] = useState('');
+  const [search, setSearch] = useState(searchParams.get('q') ?? '');
+  const [q, setQ] = useState(searchParams.get('q') ?? '');
   const [page, setPage] = useState(1);
 
   // gõ xong 300ms mới gọi server
@@ -89,10 +108,12 @@ export default function Alerts() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-3xl font-extrabold text-neutral-900">Cảnh báo thiếu hụt</h2>
-          <p className="text-sm text-neutral-500 mt-1">
-            {data?.basis ?? 'DOI = tồn hữu dụng (FEFO) ÷ nhu cầu/ngày'} · nhu cầu dự báo quy về{' '}
-            {horizon} ngày
+          <p className="text-sm text-neutral-600 mt-1">
+            Các mã cần xử lý trong {horizon} ngày tới, xếp theo mức nguy cấp
             {data?.meta.forecast_period ? ` · kỳ dự báo ${data.meta.forecast_period}` : ''}
+          </p>
+          <p className="text-xs text-neutral-500 mt-1">
+            {data?.basis ?? `DOI = Tồn hữu dụng ÷ (Nhu cầu dự báo ÷ ${horizon} ngày)`}
           </p>
         </div>
         <button
@@ -173,7 +194,7 @@ export default function Alerts() {
           context={forecastLine ?? 'Chưa ghi nhận dự báo kỳ tới ở trang Phân tích — cột nhu cầu/thiếu hụt để trống'}
           footer={
             data?.demand.ready
-              ? `Định mức thực nghiệm · ${fmt(data.demand.so_ma)} mã có nhu cầu`
+              ? `Định mức thực nghiệm · ${fmt(data.demand.so_ma)} mã có nhu cầu trong tập đang xem`
               : data?.demand.error
                 ? `Tầng 2 lỗi: ${data.demand.error}`
                 : undefined
@@ -282,6 +303,8 @@ function AlertsFullTable({
   demandReady: boolean;
   horizonDays: number;
 }) {
+  const navigate = useNavigate();
+
   if (loading) {
     return (
       <div className="px-5 py-5 space-y-2">
@@ -301,17 +324,31 @@ function AlertsFullTable({
           <tr className="text-neutral-500 text-[11px] uppercase tracking-wide">
             <th className="text-left px-5 py-2.5 font-semibold">Thuốc</th>
             <th className="text-left px-3 py-2.5 font-semibold">Danh mục</th>
-            <th className="text-right px-3 py-2.5 font-semibold" title="Tổng tồn theo lô">Tồn</th>
-            <th className="text-right px-3 py-2.5 font-semibold" title="Tồn sau khi trừ lô sắp hết hạn (FEFO)">Hữu dụng</th>
-            <th className="text-right px-3 py-2.5 font-semibold" title="Mẫu số: tiêu hao trung bình 12 kỳ">Nhu cầu/ngày</th>
-            <th className="text-right px-3 py-2.5 font-semibold" title={`Nhu cầu dự báo ${horizonDays} ngày = Σ Ŷ·p̂·Norm + nền`}>
+            <th
+              className="text-right px-3 py-2.5 font-semibold"
+              title="Phần tồn còn dùng kịp trước hạn, tính theo lô hết hạn sớm trước"
+            >
+              Tồn hữu dụng
+            </th>
+            <th
+              className="text-right px-3 py-2.5 font-semibold"
+              title={`Số ca dự báo kỳ tới quy đổi theo định mức tiêu hao, tính cho ${horizonDays} ngày`}
+            >
               Nhu cầu {horizonDays}ng
             </th>
-            <th className="text-right px-3 py-2.5 font-semibold" title="Days of Inventory = hữu dụng ÷ nhu cầu/ngày">DOI</th>
-            <th className="text-right px-3 py-2.5 font-semibold" title={`Δ = max(0, nhu cầu ${horizonDays} ngày − hữu dụng)`}>
+            <th
+              className="text-right px-3 py-2.5 font-semibold"
+              title={`Phần nhu cầu ${horizonDays} ngày mà tồn hữu dụng không đáp ứng. Chưa trừ hàng đang về`}
+            >
               Thiếu hụt
             </th>
+            <th className="text-right px-3 py-2.5 font-semibold" title="Mẫu số DOI = nhu cầu dự báo ÷ chân trời">Nhu cầu/ngày</th>
+            <th className="text-right px-3 py-2.5 font-semibold" title="Số ngày tồn hữu dụng đủ dùng theo nhu cầu dự báo">DOI</th>
+            <th className="text-right px-3 py-2.5 font-semibold" title="Ngày tồn hữu dụng dùng hết, nếu không nhập thêm">
+              Đủ đến
+            </th>
             <th className="text-left px-5 py-2.5 font-semibold">Mức</th>
+            <th className="px-3 py-2.5" />
           </tr>
         </thead>
         <tbody>
@@ -327,19 +364,14 @@ function AlertsFullTable({
                 </div>
               </td>
               <td className="px-3 py-2.5 text-neutral-600">{r.danh_muc}</td>
-              <td className="px-3 py-2.5 text-right tabular-nums text-neutral-600">{fmt(r.s_total)}</td>
-              <td className="px-3 py-2.5 text-right tabular-nums">
+              <td className="px-3 py-2.5 text-right tabular-nums" title={`Tổng tồn theo lô: ${fmt(r.s_total)}`}>
                 {fmt(r.s_usable)}
                 {r.s_expiring > 0 && (
                   <span className="block text-[10px] text-amber-700">−{fmt(r.s_expiring)} sắp hết hạn</span>
                 )}
               </td>
-              <td className="px-3 py-2.5 text-right tabular-nums text-neutral-600">{fmt(r.d_daily, 2)}</td>
               <td className="px-3 py-2.5 text-right tabular-nums">
                 {!demandReady ? <span className="text-neutral-400" title="Ghi nhận dự báo ở trang Phân tích">chưa có dự báo</span> : fmt(r.d_forecast, 1)}
-              </td>
-              <td className="px-3 py-2.5 text-right tabular-nums font-semibold whitespace-nowrap">
-                {r.doi == null ? '—' : `${fmt(r.doi, 1)} ng`}
               </td>
               <td className="px-3 py-2.5 text-right tabular-nums">
                 {!demandReady ? (
@@ -352,11 +384,33 @@ function AlertsFullTable({
                   <span className="text-neutral-400">0</span>
                 )}
               </td>
+              <td
+                className="px-3 py-2.5 text-right tabular-nums text-neutral-600"
+                title={`Tiêu hao TB 12 kỳ: ${fmt(r.d_daily, 2)}/ngày`}
+              >
+                {fmt(r.d_eff, 2)}
+              </td>
+              <td className="px-3 py-2.5 text-right tabular-nums font-semibold whitespace-nowrap">
+                {r.doi == null ? '—' : `${fmt(r.doi, 1)} ng`}
+              </td>
+              <td className="px-3 py-2.5 text-right tabular-nums text-neutral-600 whitespace-nowrap">
+                {ngayHet(r.doi)}
+              </td>
               <td className="px-5 py-2.5">
                 <LevelPill
                   level={r.muc}
                   label={r.muc === 'grey' && r.ly_do_xam ? GREY_REASON_LABELS[r.ly_do_xam] : undefined}
                 />
+              </td>
+              <td className="px-3 py-2.5">
+                <button
+                  type="button"
+                  onClick={() => navigate(`${ROUTES.INVENTORY}?q=${encodeURIComponent(r.supply_code)}`)}
+                  className="p-1.5 rounded-lg text-neutral-400 hover:text-blue-600 hover:bg-blue-50"
+                  title="Mở mã này trong Danh mục & tồn kho"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                </button>
               </td>
             </tr>
           ))}

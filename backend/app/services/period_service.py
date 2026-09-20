@@ -41,18 +41,9 @@ logger = logging.getLogger(__name__)
 
 TOAN_QUOC = "TOAN_QUOC"
 
-# Ngưỡng mặc định — chỉ dùng khi system_config chưa có khoá dss.thresholds.
-# Giá trị thật đến từ Đ9-C: trung vị chu kỳ nhập của 1.992 mã bổ sung đều.
-DEFAULT_THRESHOLDS: Dict[str, Any] = {
-    "doi_red_days": 18,
-    "doi_amber_days": 36,
-    "horizon_days": 30,
-    "fefo_window_days": 30,
-    "active_period_lookback": 3,
-    "focus_min_resp_share": 25,
-    "overstock_factor": 2,
-    "incoming_stock_considered": False,
-}
+# Ngưỡng mặc định — MỘT bản duy nhất ở dss_alerts.THRESHOLDS_DEFAULT (19/09/2026).
+# Trước đây file này giữ bản sao thứ hai kèm 4 tham số không nơi nào đọc.
+from app.services.dss_alerts import THRESHOLDS_DEFAULT as DEFAULT_THRESHOLDS  # noqa: E402
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -251,75 +242,6 @@ def catalogue_counts(db: Session) -> Dict[str, int]:
     if _has(db, "v_supply_focus"):
         out["focus"] = int(db.execute(text("SELECT COUNT(*) FROM v_supply_focus")).scalar() or 0)
     return out
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Đếm cảnh báo tồn kho — BẢN TẠM CỦA G1
-# ─────────────────────────────────────────────────────────────────────────────
-
-def stock_signal_counts(db: Session) -> Dict[str, Any]:
-    """Đếm sơ bộ theo DOI, dùng cho các thẻ KPI ở G1.
-
-    ⚠ ĐÂY LÀ BẢN TẠM. Bản đầy đủ thuộc G4 và sẽ khác ở ba điểm:
-        • tồn hữu dụng theo FEFO (loại lô hết hạn trong cửa sổ bảo vệ)
-        • tách `level_reason` ba nhánh — đặc biệt là "tồn = 0 do đã ngừng dùng",
-          nhóm chiếm tới 25,8% danh mục và KHÔNG phải là hàng sắp hết
-        • ngưỡng riêng theo từng mã (chu kỳ nhập của chính mã đó)
-
-    Ở G1 chỉ cần một con số trung thực để thay cho phép đếm cũ dựa trên
-    `safety_stock` — cột đó nay đã bị vô hiệu hoá nên phép đếm cũ luôn trả 0.
-
-        DOI = tồn hiện có / nhu cầu trung bình ngày (toàn viện, 12 kỳ gần nhất)
-
-    Mã không có mẫu số (chưa có tiêu hao) → 'grey', KHÔNG phải 'green'. Nếu để
-    rơi vào green thì hàng nghìn mã không có định mức sẽ hiện màu xanh và
-    dashboard trông rất đẹp mà hoàn toàn vô nghĩa.
-    """
-    empty = {"red": 0, "amber": 0, "green": 0, "grey": 0, "zero_stock": 0,
-             "measured": 0, "basis": "chua_du_du_lieu"}
-    if not (_has(db, "v_supply_daily_demand") and _has(db, "inventory")
-            and _has(db, "medical_supplies")):
-        return empty
-
-    th = get_thresholds(db)
-    red_days = float(th["doi_red_days"])
-    amber_days = float(th["doi_amber_days"])
-
-    rows = db.execute(text(
-        """
-        SELECT  d.supply_code,
-                d.d_daily                              AS d_daily,
-                COALESCE(SUM(i.current_stock), 0)      AS stock,
-                COUNT(i.id)                            AS n_inv
-        FROM    v_supply_daily_demand d
-        JOIN    medical_supplies m ON m.supply_code = d.supply_code
-        LEFT JOIN inventory      i ON i.supply_id    = m.id
-        GROUP BY d.supply_code, d.d_daily
-        """)).fetchall()
-
-    c = {"red": 0, "amber": 0, "green": 0, "grey": 0, "zero_stock": 0}
-    for r in rows:
-        d_daily = float(r.d_daily or 0)
-        stock = float(r.stock or 0)
-        if r.n_inv == 0 or d_daily <= 0:
-            c["grey"] += 1
-            continue
-        if stock <= 0:
-            # Tách riêng: phần lớn nhóm này là hàng đã ngừng dùng, không phải
-            # hàng sắp hết. G4 phân biệt bằng level_reason.
-            c["zero_stock"] += 1
-            continue
-        doi = stock / d_daily
-        if doi <= red_days:
-            c["red"] += 1
-        elif doi <= amber_days:
-            c["amber"] += 1
-        else:
-            c["green"] += 1
-
-    c["measured"] = c["red"] + c["amber"] + c["green"] + c["zero_stock"]
-    c["basis"] = "doi_tam_thoi_G1"
-    return c
 
 
 # ─────────────────────────────────────────────────────────────────────────────

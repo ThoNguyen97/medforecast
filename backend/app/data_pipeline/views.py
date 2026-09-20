@@ -144,9 +144,7 @@ CAU_HINH_MAC_DINH = {
     ),
     "dss.thresholds": (
         '{"doi_red_days": 18, "doi_amber_days": 36, "horizon_days": 30, '
-        '"fefo_window_days": 30, "active_period_lookback": 3, '
-        '"focus_min_resp_share": 25, "overstock_factor": 2, '
-        '"incoming_stock_considered": false}',
+        '"fefo_window_days": 30}',
         "Tầng 3 — ngưỡng DOI và chân trời nhu cầu. "
         "Sửa ở Quản trị → Tham số DSS.",
     ),

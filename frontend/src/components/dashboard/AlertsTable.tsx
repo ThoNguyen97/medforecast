@@ -44,8 +44,8 @@ export default function AlertsTable({
             <th className="text-left px-5 py-2.5 font-semibold">Thuốc</th>
             <th className="text-left px-3 py-2.5 font-semibold">Danh mục</th>
             <th className="text-right px-3 py-2.5 font-semibold">Tồn hữu dụng</th>
-            <th className="text-right px-3 py-2.5 font-semibold">Nhu cầu/ngày</th>
-            <th className="text-right px-3 py-2.5 font-semibold">DOI</th>
+            <th className="text-right px-3 py-2.5 font-semibold" title="Nhu cầu dự báo ÷ chân trời">Nhu cầu/ngày</th>
+            <th className="text-right px-3 py-2.5 font-semibold" title="Tồn hữu dụng ÷ nhu cầu/ngày">DOI</th>
             <th className="text-right px-3 py-2.5 font-semibold" title={`Δ = max(0, nhu cầu ${horizonDays} ngày − tồn hữu dụng)`}>
               Thiếu hụt dự kiến
             </th>
@@ -56,7 +56,7 @@ export default function AlertsTable({
           {rows.map((r) => (
             <tr
               key={r.supply_code}
-              onClick={() => navigate(ROUTES.ALERTS)}
+              onClick={() => navigate(`${ROUTES.ALERTS}?q=${encodeURIComponent(r.supply_code)}`)}
               className="border-t border-neutral-100 hover:bg-neutral-50 cursor-pointer"
             >
               <td className="px-5 py-2.5">
@@ -74,7 +74,9 @@ export default function AlertsTable({
                   <span className="block text-[10px] text-amber-700">−{fmt(r.s_expiring)} sắp hết hạn</span>
                 )}
               </td>
-              <td className="px-3 py-2.5 text-right tabular-nums text-neutral-600">{fmt(r.d_daily, 1)}</td>
+              <td className="px-3 py-2.5 text-right tabular-nums text-neutral-600" title={`Tiêu hao TB 12 kỳ: ${fmt(r.d_daily, 1)}/ngày`}>
+                {fmt(r.d_eff, 1)}
+              </td>
               <td className="px-3 py-2.5 text-right tabular-nums font-semibold whitespace-nowrap">
                 {r.doi == null ? '—' : `${fmt(r.doi, 1)} ng`}
               </td>

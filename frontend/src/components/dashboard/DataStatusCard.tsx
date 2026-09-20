@@ -22,8 +22,12 @@ function fmtDate(s?: string | null) {
 
 /**
  * Thay cho "bản đồ dịch tễ" ở bản gợi ý: người vận hành cần biết dữ liệu
- * đang đứng ở đâu (PROD→STA đẩy lúc nào, app nạp lúc nào, FEFO phủ bao
- * nhiêu mã) hơn là một bản đồ mà hệ thống chỉ có một cơ sở.
+ * đang đứng ở đâu (kho trung gian cập nhật lúc nào, app nạp lúc nào, FEFO
+ * phủ bao nhiêu mã) hơn là một bản đồ mà hệ thống chỉ có một cơ sở.
+ *
+ * Ứng dụng chỉ nhìn thấy kho trung gian (MEDFORECAST_DW): nó đọc bảng
+ * watermark ở đó để biết dữ liệu mới tới đâu, không biết và không kết nối
+ * tới hệ thống phía trên. Chữ trên thẻ vì vậy chỉ nói về kho trung gian.
  */
 export default function DataStatusCard({ status }: { status: DataStatusSection }) {
   const navigate = useNavigate();
@@ -31,10 +35,23 @@ export default function DataStatusCard({ status }: { status: DataStatusSection }
   const runSync = useRunSync();
   const sta = sync?.sta;
   const warn = sta?.warning ?? null;
+  const nguon = sync?.source;
+  const nguonText =
+    nguon?.kind === 'sqlserver'
+      ? `${nguon.database ?? 'SQL Server'} · SQL Server`
+      : nguon?.kind === 'file'
+        ? 'Tệp CSV nạp tay'
+        : '—';
   const fefoPct = status.fefo.total ? Math.round((100 * status.fefo.codes) / status.fefo.total) : 0;
 
   return (
     <div className="space-y-3 text-[12.5px]">
+      <Row
+        icon={<Database className="w-3.5 h-3.5" />}
+        label="Nguồn dữ liệu"
+        value={nguonText}
+        ok={nguon?.kind === 'sqlserver'}
+      />
       <Row
         icon={<Database className="w-3.5 h-3.5" />}
         label="Đồng bộ HIS gần nhất"
@@ -43,12 +60,12 @@ export default function DataStatusCard({ status }: { status: DataStatusSection }
       />
       <Row
         icon={isLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : warn ? <AlertTriangle className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-        label="PROD → STA"
+        label="Kho trung gian cập nhật"
         value={
           isLoading
-            ? 'đang đọc MF_Watermark…'
+            ? 'đang kiểm tra…'
             : !sta?.available
-              ? (warn ?? 'không đọc được STA (nguồn không phải SQL Server hoặc chưa cấu hình)')
+              ? (warn ?? 'không đọc được kho trung gian (nguồn không phải SQL Server hoặc chưa cấu hình)')
               : warn
                 ? warn
                 : sta.last_pushes?.[0]

@@ -2,9 +2,26 @@
 
 Đặt tại: backend/app/services/dss_alerts.py
 
-    S_usable = Σ_b u_b        u_b = clamp( D(e_b) − C_{b−1}, 0, q_b )      FEFO
-    DOI      = S_usable / d_daily
+    d_eff    = D_i / horizon_days      nhu cầu dự báo mỗi ngày (Tầng 2)
+    S_usable = Σ_b u_b        u_b = clamp( d_eff·ngày_còn_hạn_b − C_{b−1}, 0, q_b )   FEFO
+    DOI      = S_usable / d_eff
     nhãn     = Đỏ ≤ 18 ngày · Vàng ≤ 36 ngày · Xanh > 36 ngày · Xám không đo được
+
+=============================================================================
+MẪU SỐ LÀ NHU CẦU DỰ BÁO, KHÔNG PHẢI TIÊU HAO LỊCH SỬ (19/09/2026)
+
+Trước 19/09 DOI chia cho `d_daily` (tiêu hao toàn viện TB 12 kỳ) còn D_i của
+Tầng 2 chỉ đi vào cột Δ_need. Hệ quả đo được: nhân số ca dự báo lên gấp đôi
+thì KHÔNG một mã nào đổi màu — Tầng 1 không lái Tầng 3, trái với mọi tài liệu
+("DOI_i = tồn hữu dụng FEFO_i / (D_i / horizon)"). Nay mẫu số là d_eff và
+CHỈ là d_eff: mã không có D_i thì không có mẫu số, nhận màu Xám kèm lý do
+`no_forecast`. Nhánh lùi về tiêu hao lịch sử đã gỡ ngày 20/09 — giữ nó thì
+trên màn hình tồn tại hai công thức DOI, người đọc không biết dòng nào theo
+công thức nào (đo 20/09: 0/1.476 mã dùng nhánh đó, gỡ không đổi con số nào).
+FEFO dùng CÙNG d_eff để "kịp dùng trước hạn" và DOI nói về cùng một tốc độ.
+Đo trên DB thật 19/09: tập trọng tâm 34/25/145/38 → 32/27/145/38 (2 mã
+Đỏ→Vàng) vì (D_i/30)/d_daily có trung vị 0,98 — đổi công thức không đổi bức
+tranh, nhưng từ nay Ŷ×2 làm 42/242 mã đổi nhãn thay vì 0.
 
 =============================================================================
 NGƯỠNG 18/36 TỪ ĐÂU
@@ -56,8 +73,7 @@ THRESHOLDS_DEFAULT: Dict[str, Any] = {
     "doi_red_days": 18,          # Đ9: trung vị chu kỳ nhập
     "doi_amber_days": 36,        # hai chu kỳ
     "horizon_days": 30,
-    "fefo_window_days": 30,      # lô hết hạn trong bao nhiêu ngày thì bị trừ
-    "overstock_factor": 2,
+    "fefo_window_days": 30,      # chỉ để thống kê s_expiring, không đổi s_usable
 }
 
 # Lý do màu Xám — trùng đúng union type `GreyReason` bên dashboardV2.ts
@@ -111,7 +127,7 @@ def _parse_date(v: Any) -> Optional[date]:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def usable_stock_fefo(lots: List[Tuple[float, Optional[date]]],
-                      d_daily: float,
+                      d_daily: float,   # tốc độ tiêu thụ/ngày — nơi gọi truyền d_eff
                       hom_nay: Optional[date] = None,
                       fefo_window_days: int = 30) -> Dict[str, Any]:
     """Tồn hữu dụng theo nguyên tắc hết-hạn-trước-xuất-trước.
@@ -233,9 +249,13 @@ def alert_rows(db: Session,
     """Một dòng cho mỗi mã thuốc: S_usable · D_forecast · DOI · nhãn màu.
 
     `demand` là {supply_code: nhu cầu dự báo trong horizon_days}, lấy từ
-    `dss_demand.demand_by_supply()`. Bỏ trống thì DOI vẫn tính được (mẫu số lấy
-    từ `v_supply_daily_demand`) nhưng cột nhu cầu dự báo để None và `Δ_need`
-    không tính — trạng thái đó được ghi rõ, không im lặng.
+    `dss_demand.demand_by_supply()`. Đây là MẪU SỐ DUY NHẤT của DOI
+    (d_eff = D_i / horizon). Mã không có D_i — hoặc không truyền `demand` —
+    không đo được: DOI None, màu Xám, lý do `no_forecast`.
+
+    `d_daily` (tiêu hao TB 12 kỳ) vẫn đọc từ `v_supply_daily_demand` nhưng chỉ
+    để phân biệt lý do Xám: `no_norm` là mã 12 kỳ không xuất lần nào (đã ngừng
+    dùng), khác hẳn `no_forecast` là mã còn dùng mà Tầng 2 chưa cho D_i.
 
     `only_focus = True` giới hạn ở tập trọng tâm (~555 mã có tỷ trọng hô hấp
     ≥ 25%) — tập mà mô hình dịch tễ thật sự lái được nhu cầu.
@@ -282,31 +302,38 @@ def alert_rows(db: Session,
     dem = {"red": 0, "amber": 0, "green": 0, "grey": 0}
     ly_do_xam: Dict[str, int] = {}
     fefo_that = 0
-
     for r in rows:
         code = r.supply_code
         lots = lots_by_code.get(code, [])
         d_daily = float(r.d_daily or 0)
+        d_forecast = demand.get(code)
 
-        st = usable_stock_fefo(lots, d_daily, hom_nay, fefo_win)
+        # Mẫu số DUY NHẤT: nhu cầu dự báo mỗi ngày. Không có D_i → không có
+        # mẫu số → Xám, chứ không lùi về tiêu hao lịch sử (xem đầu file).
+        d_eff = (float(d_forecast) / float(horizon)
+                 if d_forecast is not None and float(d_forecast) > 0 and horizon > 0
+                 else 0.0)
+
+        st = usable_stock_fefo(lots, d_eff, hom_nay, fefo_win)
         if st["fefo_ap_dung"]:
             fefo_that += 1
         s_usable = float(st["s_usable"])
 
-        d_forecast = demand.get(code)
         doi: Optional[float] = None
         ly_do: Optional[str] = None
 
         if not lots:
             ly_do = GREY_NO_STOCK_DATA
-        elif d_daily <= 0:
-            ly_do = GREY_NO_NORM
+        elif d_eff <= 0:
+            # Không xuất lần nào trong 12 kỳ → mã đã ngừng dùng (no_norm).
+            # Còn xuất mà Tầng 2 chưa cho D_i → no_forecast.
+            ly_do = GREY_NO_NORM if d_daily <= 0 else GREY_NO_FORECAST
         elif s_usable <= 0:
             # Tồn 0 + có nhu cầu → Đỏ thật. Tồn 0 + không nhu cầu đã bị chặn ở
-            # nhánh d_daily <= 0 phía trên.
+            # nhánh d_eff <= 0 phía trên.
             doi = 0.0
         else:
-            doi = s_usable / d_daily
+            doi = s_usable / d_eff
 
         muc = classify(doi, red_days, amber_days)
         if muc == "grey":
@@ -326,10 +353,12 @@ def alert_rows(db: Session,
             "nguon_ton_kho": nguon_ton,
             "so_lo": st["so_lo"], "so_lo_khong_han": st["so_lo_khong_han"],
             "d_daily": round(d_daily, 4),
+            "d_eff": round(d_eff, 4),
             "d_forecast": (round(float(d_forecast), 3)
                            if d_forecast is not None else None),
             "delta_need": delta,
             "doi": (round(doi, 1) if doi is not None else None),
+            "het_hang": bool(lots) and s_usable <= 0 and d_eff > 0,
             "muc": muc, "ly_do_xam": ly_do,
             "ty_trong_hohap": r.ty_trong_hohap,
         })
@@ -366,11 +395,18 @@ def _canh_bao(tong: int, fefo_that: int, co_demand: bool,
                   "— không có hạn dùng nào đọc được. S_usable đang bằng tồn hiện có. "
                   "Chạy: python scripts/run_dss_load.py --flow inventory_lot")
     elif fefo_that < tong:
-        cb.append(f"{fefo_that}/{tong} mã có lô tồn kèm hạn dùng (đã áp FEFO); "
-                  f"{tong - fefo_that} mã còn lại không có dòng tồn kho → Xám.")
+        khong_ton = dem.get("grey", 0)
+        khong_han = tong - fefo_that - khong_ton
+        msg = f"{fefo_that}/{tong} mã có lô tồn kèm hạn dùng (đã áp FEFO)"
+        if khong_ton:
+            msg += f"; {khong_ton} mã không có dòng tồn kho → Xám"
+        if khong_han > 0:
+            msg += f"; {khong_han} mã có tồn nhưng lô không có hạn dùng (S_usable = tồn hiện có)"
+        cb.append(msg + ".")
     if not co_demand:
-        cb.append("Chưa truyền nhu cầu dự báo: cột D_forecast và Δ_need để trống. "
-                  "DOI vẫn đúng vì mẫu số lấy từ tiêu hao 12 kỳ.")
+        cb.append("Chưa có nhu cầu dự báo kỳ tới (Tầng 2): không có mẫu số nên "
+                  "toàn bộ mã về màu Xám, cột nhu cầu và thiếu hụt để trống. "
+                  "Ghi nhận dự báo ở trang Phân tích để đo lại.")
     if dem["grey"] > 0.5 * tong:
         cb.append(f"{dem['grey']}/{tong} mã màu Xám — phần lớn danh mục chưa "
                   f"đo được, đừng đọc các tỷ lệ % như thể đại diện cả kho.")

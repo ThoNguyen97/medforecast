@@ -29,8 +29,8 @@ const navItems: NavItem[] = [
   { label: 'Dữ liệu bệnh', path: ROUTES.EPIDEMIOLOGY, icon: HeartPulse },
   { label: 'Dữ liệu thời tiết', path: ROUTES.WEATHER, icon: CloudSun },
   { label: 'Phân tích & Dự báo', path: ROUTES.FORECASTING, icon: TrendingUp },
-  { label: 'Quản lý thuốc', path: ROUTES.INVENTORY, icon: Boxes },
   { label: 'Cảnh báo thiếu hụt', path: ROUTES.ALERTS, icon: ShieldAlert },
+  { label: 'Danh mục & tồn kho', path: ROUTES.INVENTORY, icon: Boxes },
   { label: 'Báo cáo', path: ROUTES.REPORTS, icon: FileBarChart },
   { label: 'Quản trị', path: ROUTES.SETTINGS, icon: Settings, adminOnly: true },
 ];

@@ -31,7 +31,9 @@ export interface SyncStatus {
   }>;
   /** Bốn bảng fact DSS (11/09/2026): có/không, kỳ mới nhất. */
   dss_tables?: Record<string, { rows: number; latest: string | null } | null>;
-  /** Trạng thái PROD→STA đọc từ MF_Watermark / MF_SyncLog. */
+  /** Nguồn ứng dụng đang đọc — chỉ tên CSDL, không có host. */
+  source?: { kind: 'sqlserver' | 'file' | 'unknown'; database: string | null };
+  /** Trạng thái kho trung gian đọc từ MF_Watermark / MF_SyncLog. */
   sta?: {
     available: boolean;
     watermarks?: Array<{ TenLuong: string; MocDaDay: string | null; LanChayCuoi: string | null }>;
