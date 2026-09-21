@@ -141,8 +141,24 @@ export default function Alerts() {
         </div>
       )}
 
-      {/* KPI */}
+      {/* KPI — Dự báo kỳ tới đứng đầu: đó là đầu vào sinh ra bốn con số màu
+          phía sau, đọc trái sang phải là đúng chiều nhân quả. */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <KpiTile
+          label="Dự báo kỳ tới"
+          tone="blue"
+          loading={!data}
+          value={data?.forecast.ready ? fmt(data.forecast.total.point) : '—'}
+          unit={data?.forecast.ready ? 'ca' : undefined}
+          context={forecastLine ?? 'Chưa ghi nhận dự báo kỳ tới ở trang Phân tích — cột nhu cầu/thiếu hụt để trống'}
+          footer={
+            data?.demand.ready
+              ? `Định mức thực nghiệm · ${fmt(data.demand.so_ma)} mã có nhu cầu trong tập đang xem`
+              : data?.demand.error
+                ? `Tầng 2 lỗi: ${data.demand.error}`
+                : undefined
+          }
+        />
         <KpiTile
           label="Đỏ"
           tone="red"
@@ -183,21 +199,6 @@ export default function Alerts() {
                   .map(([k, n]) => `${GREY_REASON_LABELS[k as keyof typeof GREY_REASON_LABELS] ?? k}: ${n}`)
                   .join(' · ')
               : undefined
-          }
-        />
-        <KpiTile
-          label="Dự báo kỳ tới"
-          tone="blue"
-          loading={!data}
-          value={data?.forecast.ready ? fmt(data.forecast.total.point) : '—'}
-          unit={data?.forecast.ready ? 'ca' : undefined}
-          context={forecastLine ?? 'Chưa ghi nhận dự báo kỳ tới ở trang Phân tích — cột nhu cầu/thiếu hụt để trống'}
-          footer={
-            data?.demand.ready
-              ? `Định mức thực nghiệm · ${fmt(data.demand.so_ma)} mã có nhu cầu trong tập đang xem`
-              : data?.demand.error
-                ? `Tầng 2 lỗi: ${data.demand.error}`
-                : undefined
           }
         />
       </div>

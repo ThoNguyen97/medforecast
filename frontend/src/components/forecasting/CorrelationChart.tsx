@@ -99,14 +99,7 @@ export default function CorrelationChart({ data, targetMonth, coefficients }: Pr
               axisLine={false}
               width={40}
             />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: '#fff',
-                border: '1px solid #e5e7eb',
-                borderRadius: 8,
-                fontSize: 12,
-              }}
-            />
+            <Tooltip content={<CorrelationTooltip />} cursor={{ fill: '#f8fafc' }} />
 
             {/* Cột số ca mắc */}
             <Bar
@@ -136,6 +129,64 @@ export default function CorrelationChart({ data, targetMonth, coefficients }: Pr
             ))}
           </ComposedChart>
         </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+/** Đơn vị và số chữ số của từng đường thời tiết. */
+const DON_VI: Record<string, { don_vi: string; so_le: number }> = {
+  'Nhiệt độ': { don_vi: '°C', so_le: 1 },
+  'Độ ẩm': { don_vi: '%', so_le: 1 },
+  'Lượng mưa': { don_vi: 'mm', so_le: 1 },
+  AQI: { don_vi: '', so_le: 0 },
+  'PM2.5': { don_vi: ' µg/m³', so_le: 1 },
+};
+
+interface DongTooltip {
+  name: string;
+  value: number | null;
+  color: string;
+  payload: { is_forecast: boolean };
+}
+
+/**
+ * Cột số ca của năm đang dự báo và của các năm đã ghi nhận là HAI thứ khác
+ * nhau — biểu đồ đã tô hai màu, tooltip phải gọi đúng tên thì người đọc mới
+ * không nhầm số dự báo thành số thực tế.
+ */
+function CorrelationTooltip({
+  active,
+  label,
+  payload,
+}: {
+  active?: boolean;
+  label?: string;
+  payload?: DongTooltip[];
+}) {
+  if (!active || !payload?.length) return null;
+  const laDuBao = payload[0]?.payload?.is_forecast === true;
+  return (
+    <div className="bg-white border border-neutral-200 rounded-lg shadow-sm px-3 py-2 text-xs">
+      <div className="font-semibold text-neutral-900 mb-1">
+        {label}
+        {laDuBao && <span className="ml-1.5 text-[10px] font-medium text-blue-700">dự báo</span>}
+      </div>
+      <div className="space-y-0.5">
+        {payload.map((d) => {
+          if (d.value == null) return null;
+          const ten = d.name === 'Số ca mắc' ? (laDuBao ? 'Số ca mắc dự báo' : 'Số ca đã ghi nhận') : d.name;
+          const dv = DON_VI[d.name];
+          const so = dv
+            ? `${d.value.toLocaleString('vi-VN', { maximumFractionDigits: dv.so_le })}${dv.don_vi}`
+            : Math.round(d.value).toLocaleString('vi-VN');
+          return (
+            <div key={d.name} className="flex items-baseline justify-between gap-4" style={{ color: d.color }}>
+              <span>{ten}</span>
+              <span className="tabular-nums font-medium">{so}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -211,7 +262,8 @@ function CoefficientsBar({
 
 function Legend() {
   const items = [
-    { label: 'Số ca mắc', color: '#2563eb', shape: 'square' as const },
+    { label: 'Số ca đã ghi nhận', color: '#bfdbfe', shape: 'square' as const },
+    { label: 'Số ca mắc dự báo', color: '#2563eb', shape: 'square' as const },
     { label: 'Nhiệt độ', color: '#0f766e', shape: 'line' as const },
     { label: 'Độ ẩm', color: '#92400e', shape: 'line' as const },
     { label: 'Lượng mưa', color: '#3b82f6', shape: 'line' as const, dashed: true },
