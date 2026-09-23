@@ -519,10 +519,10 @@ export default function Epidemiology() {
             onClick={handleSyncHIS}
             disabled={runSync.isPending}
             className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-50 border border-emerald-100 rounded-xl text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
-            title="Đồng bộ dữ liệu khám bệnh & tồn kho từ HIS"
+            title="Nạp dữ liệu ca bệnh & tồn kho từ snapshot MEDFORECAST_DW (SQL Server cục bộ)"
           >
             {runSync.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Database className="w-4 h-4" />}
-            {runSync.isPending ? 'Đang đồng bộ…' : 'Đồng bộ HIS'}
+            {runSync.isPending ? 'Đang nạp…' : 'Nạp dữ liệu DW'}
           </button>
           <button
             type="button"

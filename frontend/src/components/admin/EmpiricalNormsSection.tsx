@@ -15,7 +15,7 @@ const fmt = (v: number | null | undefined, d = 0) =>
  *
  * Bảng này hiện đúng con số Tầng 2 nhân với Ŷ_g × p̂(g,ro): tử số (tiêu hao),
  * mẫu số (ca) và Norm theo từng rổ chăm sóc, trên cùng cửa sổ với tỷ trọng
- * rổ. Định mức tự cập nhật mỗi lần đồng bộ HIS; muốn đổi cách tính thì đổi
+ * rổ. Định mức tự cập nhật mỗi lần nạp dữ liệu DW; muốn đổi cách tính thì đổi
  * tham số ở tab "Tham số DSS", không có ô nhập tay.
  *
  * Thay cho tab "Định mức thuốc" (Nhẹ/TB/Nặng, nhập tay) trước 12/09/2026.
@@ -87,7 +87,7 @@ export default function EmpiricalNormsSection() {
             <p className="mt-3 text-[12px] text-neutral-600 leading-snug">
               {data.periods.length > 0
                 ? `Cửa sổ ${data.periods[0]} → ${data.periods[data.periods.length - 1]} (${data.periods.length} kỳ)`
-                : 'Chưa có kỳ nào trong cửa sổ (chưa đồng bộ HIS)'} ·
+                : 'Chưa có kỳ nào trong cửa sổ (chưa nạp dữ liệu DW)'} ·
               ngưỡng mẫu nhỏ {data.cfg.min_cases_per_bucket} ca · {fmt(data.total)} mã có tiêu hao trong nhóm.
             </p>
             <p className="mt-1 text-[11px] text-neutral-400 leading-snug">{data.cong_thuc}</p>
@@ -119,7 +119,7 @@ export default function EmpiricalNormsSection() {
           </div>
         ) : data.rows.length === 0 ? (
           <div className="py-12 text-center text-sm text-neutral-400">
-            {data.periods.length === 0 ? 'Chưa có dữ liệu fact_usage/cases_by_care_level — đồng bộ HIS trước.' : 'Không có mã nào khớp.'}
+            {data.periods.length === 0 ? 'Chưa có dữ liệu fact_usage/cases_by_care_level — nạp dữ liệu DW trước.' : 'Không có mã nào khớp.'}
           </div>
         ) : (
           <div className="overflow-x-auto">

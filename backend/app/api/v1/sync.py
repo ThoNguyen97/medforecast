@@ -46,11 +46,12 @@ def sync_status(db: Session = Depends(get_db),
 # ── Cấu hình kết nối — sửa từ giao diện, không phải xuống code ───────────────
 class SyncConfigIn(BaseModel):
     """Mật khẩu là tuỳ chọn: bỏ trống khi lưu = GIỮ mật khẩu cũ."""
-    source: str = Field("file", pattern="^(file|sqlserver)$")
-    host: str = ""
+    source: str = Field("sqlserver", pattern="^sqlserver$")   # nguồn tệp CSV đã bỏ 23/09/2026
+    host: str = "localhost"
     port: int = 1433
-    instance: str = ""            # instance có tên (MÁY\\STA) — đặt thì bỏ qua port
+    instance: str = ""            # instance có tên (localhost\\SQLEXPRESS) — đặt thì bỏ qua port
     database: str = "MEDFORECAST_DW"
+    auth: str = Field("windows", pattern="^(windows|sql)$")   # Trusted_Connection | UID/PWD
     username: str = ""
     password: Optional[str] = None
     driver: str = "ODBC Driver 18 for SQL Server"
@@ -82,8 +83,4 @@ def test_sync_config(payload: SyncConfigIn,
                      _user: User = Depends(get_admin_user)):
     """Thử kết nối bằng cấu hình VỪA NHẬP (chưa lưu). Trả từng bước
     kiểm tra để giao diện chỉ đúng chỗ hỏng."""
-    if payload.source != "sqlserver":
-        return {"ok": True, "steps": [{
-            "name": "Nguồn file", "ok": True,
-            "detail": "Nguồn 'file' đọc CSV nội bộ — không có gì để thử."}]}
     return sync_config_service.test_connection(db, payload.model_dump())

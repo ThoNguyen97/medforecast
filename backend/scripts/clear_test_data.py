@@ -39,15 +39,10 @@ DELETE_ORDER = [
     # Logs trước
     ("audit_logs", "Nhật ký audit"),
     ("system_logs", "Nhật ký hệ thống"),
-    # Cảnh báo + kế hoạch
-    ("alerts", "Cảnh báo thiếu hụt"),
-    # Yêu cầu vật tư
-    ("supply_requirements", "Yêu cầu vật tư"),
     # Dự báo
     ("disease_forecasts", "Dự báo dịch bệnh"),
-    # Inventory + Conversion Ratios (đều có FK → medical_supplies)
+    # Inventory (FK → medical_supplies)
     ("inventory", "Tồn kho"),
-    ("conversion_ratios", "Định mức vật tư"),
     # Master data vật tư
     ("medical_supplies", "Danh mục vật tư"),
     # Dữ liệu nhập tay

@@ -14,7 +14,7 @@ export function useSyncStatus() {
   });
 }
 
-/** Chạy đồng bộ dữ liệu từ HIS; sau khi xong, làm mới dashboard. */
+/** Nạp dữ liệu từ snapshot MEDFORECAST_DW (SQL Server cục bộ); xong thì làm mới dashboard. */
 export function useRunSync() {
   const queryClient = useQueryClient();
   return useMutation({

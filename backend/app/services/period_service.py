@@ -13,7 +13,7 @@ nhau, và cả ba đều sai theo cùng một kiểu:
 
 `max(recorded_at)` rơi vào KỲ ĐANG MỞ. Tháng 9/2026 mới có 3 ca trong khi
 tháng 8 có 341 ca, nên phép so sánh cho ra tăng trưởng 6500% — và con số đó
-đi thẳng vào hàm đánh giá mức nguy cơ, khiến dashboard luôn báo "Cao".
+đi thẳng vào hàm xếp mức cảnh báo dịch tễ, khiến dashboard luôn báo "Cao".
 
 Từ G1: mốc thời gian lấy từ `mart_monthly_cases_by_block` với
 `is_complete = 1`, và mọi số ca đều đọc từ mart đó. Một chỗ duy nhất, một quy

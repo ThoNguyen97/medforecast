@@ -1161,7 +1161,7 @@ def _render_forecast_pdf(data: Dict, start: date, end: date) -> Response:
         period_label=f"{start.strftime('%d/%m/%Y')} - {end.strftime('%d/%m/%Y')}",
         headers=[
             "Tháng", "Bệnh", "Khu vực", "Dự báo", "Thực tế", "Độ lệch",
-            "Mức nguy cơ", "Lý do",
+            "Mức cảnh báo dịch tễ", "Lý do",
         ],
         rows=rows,
         col_widths_cm=[2.2, 3.8, 4.0, 2.2, 2.2, 2.2, 2.4, 6.0],
@@ -1334,7 +1334,7 @@ def _render_forecast_excel(data: Dict, start: date, end: date) -> Response:
         sheet_title="Dự báo ca bệnh",
         headers=[
             "Tháng", "Bệnh", "Khu vực", "Số ca dự báo", "Số ca thực tế",
-            "Độ lệch", "Ca nền", "Mức nguy cơ", "Lý do dự báo",
+            "Độ lệch", "Ca nền", "Mức cảnh báo dịch tễ", "Lý do dự báo",
         ],
         rows=rows,
         column_widths=[10, 22, 24, 14, 14, 10, 12, 14, 60],

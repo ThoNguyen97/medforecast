@@ -86,7 +86,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.VERSION,
-    description="AI-powered medical supply forecasting system for hospitals",
+    description="Hệ thống hỗ trợ ra quyết định (DSS): dự báo ca bệnh hô hấp theo chuỗi thời gian và cảnh báo ngưỡng tồn kho vật tư y tế",
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,
@@ -109,7 +109,7 @@ logger.info("CORS configured for origins: %s", settings.cors_origins_list)
 async def root():
     """Root endpoint — basic service info."""
     return {
-        "message": "MedForecast AI - Medical Supply Forecasting System",
+        "message": "MedForecast - Hệ thống DSS dự báo ca bệnh và cảnh báo thiếu hụt vật tư y tế",
         "version": settings.VERSION,
         "environment": settings.ENVIRONMENT,
         "docs": "/docs",

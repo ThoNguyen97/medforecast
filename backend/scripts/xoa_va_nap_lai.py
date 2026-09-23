@@ -46,20 +46,17 @@ from pathlib import Path
 
 XOA_DU_LIEU = [
     # nghiệp vụ — dựng lại từ HIS qua cầu nối trong SyncService
-    "disease_cases", "case_supply_usage", "inventory", "medical_supplies",
+    "disease_cases", "inventory", "medical_supplies",
     # dẫn xuất — tính lại sau khi có dữ liệu mới
-    "disease_forecasts", "supply_requirements", "supply_recommendations",
-    "alerts", "system_logs",
+    "disease_forecasts", "system_logs",
     # tầng pipeline — lần đồng bộ tới dựng lại toàn bộ
-    "stg_case_supply", "stg_inventory",
     "dim_icd", "dim_region", "dim_supply",
-    "fact_disease_case", "fact_supply_usage", "fact_inventory_snapshot",
+    "fact_disease_case",
     "mart_icd_share_in_block", "mart_inventory",
     "mart_monthly_cases_by_block", "mart_monthly_weather",
     "sync_state",
 ]
-GIU = ["users", "system_config", "severity_rates", "disease_supply_norms",
-       "conversion_ratios", "audit_logs", "environmental_data"]
+GIU = ["users", "system_config", "audit_logs", "environmental_data"]
 
 
 def main() -> int:

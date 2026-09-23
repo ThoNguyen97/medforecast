@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-NẠP BỐN LUỒNG DSS TỪ STA VỀ DB LOCAL
+NẠP BỐN LUỒNG DSS TỪ SNAPSHOT MEDFORECAST_DW (SQL SERVER CỤC BỘ) VỀ DATA MART SQLITE
 =============================================================================
 Đặt tại: backend/scripts/run_dss_load.py
 
@@ -10,9 +10,9 @@ NẠP BỐN LUỒNG DSS TỪ STA VỀ DB LOCAL
     python scripts/run_dss_load.py --full         # nạp lại toàn bộ lịch sử
     python scripts/run_dss_load.py --flow usage_total
 
-Kết nối STA lấy từ chính cấu hình đã lưu trong ứng dụng
+Kết nối SQL Server cục bộ lấy từ chính cấu hình đã lưu trong ứng dụng
 (`system_config['his_sync.connection']`, mật khẩu đã mã hoá) qua
-`sync_config_service.build_connector` — cùng đường mà nút "Đồng bộ HIS" trên
+`sync_config_service.build_connector` — cùng đường mà nút "Nạp dữ liệu DW" trên
 giao diện đang dùng, nên không phải khai báo lại chuỗi kết nối ở đâu cả.
 
 -----------------------------------------------------------------------------

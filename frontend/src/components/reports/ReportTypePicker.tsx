@@ -31,7 +31,7 @@ export const REPORT_TYPES: ReportTypeMeta[] = [
   {
     key: 'forecast',
     title: 'Dự báo ca bệnh',
-    description: 'Số ca dự báo, mức nguy cơ và lý do dự báo.',
+    description: 'Số ca dự báo, mức cảnh báo dịch tễ và căn cứ dự báo.',
     icon: TrendingUp,
     accent: 'blue',
   },

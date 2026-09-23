@@ -22,12 +22,12 @@ function fmtDate(s?: string | null) {
 
 /**
  * Thay cho "bản đồ dịch tễ" ở bản gợi ý: người vận hành cần biết dữ liệu
- * đang đứng ở đâu (kho trung gian cập nhật lúc nào, app nạp lúc nào, FEFO
+ * đang đứng ở đâu (bệnh viện chốt snapshot tới kỳ nào, app nạp lúc nào, FEFO
  * phủ bao nhiêu mã) hơn là một bản đồ mà hệ thống chỉ có một cơ sở.
  *
- * Ứng dụng chỉ nhìn thấy kho trung gian (MEDFORECAST_DW): nó đọc bảng
- * watermark ở đó để biết dữ liệu mới tới đâu, không biết và không kết nối
- * tới hệ thống phía trên. Chữ trên thẻ vì vậy chỉ nói về kho trung gian.
+ * Ứng dụng chỉ nhìn thấy snapshot MEDFORECAST_DW (SQL Server cục bộ): nó đọc
+ * MF_Watermark ở đó để biết bệnh viện đã chốt dữ liệu tới đâu, không kết nối
+ * tới HIS. Chữ trên thẻ vì vậy chỉ nói về snapshot.
  */
 export default function DataStatusCard({ status }: { status: DataStatusSection }) {
   const navigate = useNavigate();
@@ -39,9 +39,7 @@ export default function DataStatusCard({ status }: { status: DataStatusSection }
   const nguonText =
     nguon?.kind === 'sqlserver'
       ? `${nguon.database ?? 'SQL Server'} · SQL Server`
-      : nguon?.kind === 'file'
-        ? 'Tệp CSV nạp tay'
-        : '—';
+      : '—';
   const fefoPct = status.fefo.total ? Math.round((100 * status.fefo.codes) / status.fefo.total) : 0;
 
   return (
@@ -54,18 +52,18 @@ export default function DataStatusCard({ status }: { status: DataStatusSection }
       />
       <Row
         icon={<Database className="w-3.5 h-3.5" />}
-        label="Đồng bộ HIS gần nhất"
-        value={status.last_sync ? `${fmtDate(status.last_sync.run_at)} · kỳ ${status.last_sync.last_period ?? '—'}` : 'Chưa đồng bộ'}
+        label="Nạp dữ liệu DW gần nhất"
+        value={status.last_sync ? `${fmtDate(status.last_sync.run_at)} · kỳ ${status.last_sync.last_period ?? '—'}` : 'Chưa nạp'}
         ok={status.last_sync?.status === 'ok'}
       />
       <Row
         icon={isLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : warn ? <AlertTriangle className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-        label="Kho trung gian cập nhật"
+        label="Mốc dữ liệu bệnh viện chốt"
         value={
           isLoading
             ? 'đang kiểm tra…'
             : !sta?.available
-              ? (warn ?? 'không đọc được kho trung gian (nguồn không phải SQL Server hoặc chưa cấu hình)')
+              ? (warn ?? 'không đọc được MF_Watermark (chưa cấu hình SQL Server cục bộ)')
               : warn
                 ? warn
                 : sta.last_pushes?.[0]
@@ -85,6 +83,14 @@ export default function DataStatusCard({ status }: { status: DataStatusSection }
             </span>
           </div>
         ))}
+        {status.as_of && (
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-neutral-600" title="FEFO/DOI đánh giá tại ngày chụp lô, không phải hôm nay — số cảnh báo không trôi theo lịch">
+              Ngày đánh giá FEFO
+            </span>
+            <span className="tabular-nums font-medium text-neutral-900">{fmtDate(status.as_of)}</span>
+          </div>
+        )}
         <div className="flex items-baseline justify-between gap-2">
           <span className="text-neutral-600">FEFO áp dụng</span>
           <span className="tabular-nums font-medium text-neutral-900">
@@ -101,7 +107,7 @@ export default function DataStatusCard({ status }: { status: DataStatusSection }
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 border border-blue-100 text-blue-700 text-xs font-medium hover:bg-blue-100 disabled:opacity-60"
         >
           <RefreshCw className={cn('w-3.5 h-3.5', runSync.isPending && 'animate-spin')} />
-          {runSync.isPending ? 'Đang đồng bộ…' : 'Đồng bộ HIS'}
+          {runSync.isPending ? 'Đang nạp…' : 'Nạp dữ liệu DW'}
         </button>
         <button
           type="button"

@@ -10,7 +10,7 @@ const TONE: Record<Insight['tone'], { icon: React.ReactNode; cls: string }> = {
 };
 
 /**
- * Diễn giải do backend sinh theo quy tắc từ chính số liệu trên màn hình —
+ * Diễn giải do backend tổng hợp từ chính số liệu trên màn hình theo ngưỡng cấu hình —
  * mỗi dòng đều dẫn được về một con số ở thẻ hoặc bảng phía trên.
  */
 export default function InsightsCard({ items }: { items: Insight[] }) {

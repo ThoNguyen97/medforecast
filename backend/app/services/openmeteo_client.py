@@ -21,7 +21,7 @@ import requests
 logger = logging.getLogger(__name__)
 
 
-# Toạ độ trung tâm cho các tỉnh/thành phổ biến tại VN (đủ cho demo TP.HCM + lân cận)
+# Toạ độ tâm địa lý của các tỉnh/thành phục vụ truy vấn Open-Meteo (TP.HCM và các tỉnh lân cận)
 PROVINCE_COORDS: Dict[str, Tuple[float, float]] = {
     "TP. Hồ Chí Minh": (10.7769, 106.7009),
     "Thành phố Hồ Chí Minh": (10.7769, 106.7009),

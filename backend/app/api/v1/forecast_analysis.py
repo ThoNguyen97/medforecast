@@ -561,16 +561,16 @@ def analyze_forecast(
 
         model_used = "multivariate_v1"
         ml_accuracy: Dict[str, Any] | None = None
-        # Khoảng tin cậy THẬT (walk-forward) từ ensemble — ghi đè khoảng ±15%
-        # heuristic khi có. None = chưa có ensemble, dùng lại ±15% lúc lưu.
+        # Khoảng dự báo thực nghiệm (walk-forward) từ ensemble — ghi đè khoảng ±15%
+        # mặc định khi có. None = chưa có ensemble, dùng lại ±15% lúc lưu.
         ci_interval: Dict[str, Any] | None = None
         # Ensemble có chạy được cho khoá đang phân tích không (True = số dự báo
-        # là đầu ra mô hình; False = heuristic cùng kỳ, có thể là 0 vì không
+        # là đầu ra mô hình; False = phương án cùng kỳ (seasonal baseline), có thể là 0 vì không
         # có ca cùng kỳ nào trong 5 năm — tức KHÔNG có căn cứ để ghi nhận).
         co_ensemble = False
 
         # Engine chính: ensemble mức nhóm đã kiểm walk-forward (group_forecast).
-        # Heuristic cùng-kỳ phía trên chỉ là fallback khi chuỗi quá ngắn.
+        # Phương án cùng kỳ (seasonal baseline) phía trên chỉ dùng thay thế khi chuỗi quá ngắn.
         def _accuracy_tu_ensemble(a):
             # Backtest nhanh chỉ đo MAE/WAPE; không bịa RMSE = MAE.
             return {
@@ -625,7 +625,7 @@ def analyze_forecast(
                     except ValueError:
                         logger.info(
                             "Chưa đủ dữ liệu MART khối %s cho kỳ %s-%02d — "
-                            "giữ dự báo heuristic làm phương án thay thế.",
+                            "dùng phương án cùng kỳ (seasonal baseline) làm dự báo thay thế.",
                             disease, payload.target_year, payload.target_month,
                         )
                 # Vẫn tính dự báo riêng cho TỪNG TỈNH để hiển thị bảng chi
@@ -650,7 +650,7 @@ def analyze_forecast(
                     if iv.get("lower") is not None:
                         ci_interval = {"lower": iv["lower"], "upper": iv["upper"]}
         except Exception:
-            logger.exception("Ensemble nhóm lỗi — dùng dự báo fallback")
+            logger.exception("Ensemble nhóm lỗi — dùng phương án cùng kỳ (seasonal baseline)")
     else:
         # Dùng lại kết quả mô hình đã lưu — không tính toán lại.
         co_ensemble = True  # bản đã ghi nhận — không xét lại căn cứ ở đây
@@ -780,7 +780,7 @@ def analyze_forecast(
     explanation_text = " | ".join(explanation_bullets)[:1000]
 
     # Một khoá (nhóm bệnh × khu vực × tháng) KHÔNG có căn cứ dự báo khi ensemble
-    # không chạy được (chuỗi < SO_THANG_TOI_THIEU tháng) VÀ heuristic cùng kỳ
+    # không chạy được (chuỗi < SO_THANG_TOI_THIEU tháng) VÀ phương án cùng kỳ (seasonal baseline)
     # cũng bằng 0 (5 năm trước không có ca nào tháng này). Con số 0 khi đó không
     # phải đầu ra mô hình — ghi xuống DB chỉ đẻ ra dòng "0 ca" ở Lịch sử và dòng
     # "0/0" ở bảng Dữ liệu ca bệnh gần đây. Không ghi.
@@ -815,12 +815,6 @@ def analyze_forecast(
             .all()
         )
         if old_forecasts:
-            # Xoá supply_requirements liên kết để không leak FK
-            from app.models.supply_requirement import SupplyRequirement
-            old_ids = [f.id for f in old_forecasts]
-            db.query(SupplyRequirement).filter(
-                SupplyRequirement.forecast_id.in_(old_ids)
-            ).delete(synchronize_session=False)
             for fc in old_forecasts:
                 db.delete(fc)
             db.flush()
@@ -838,7 +832,7 @@ def analyze_forecast(
             location=region,
             predicted_cases=predicted,
             # Khoảng thực nghiệm (walk-forward) khi có ensemble; ±15% chỉ còn
-            # là fallback khi chưa đủ dữ liệu chạy ensemble (12/09/2026).
+            # là khoảng mặc định khi chưa đủ dữ liệu chạy ensemble (12/09/2026).
             confidence_lower=(ci_interval["lower"] if ci_interval else int(predicted * 0.85)),
             confidence_upper=(ci_interval["upper"] if ci_interval else int(predicted * 1.15)),
             model_used=model_used,
@@ -1082,15 +1076,6 @@ class ActualUpdateRequest(BaseModel):
     actual_cases: int = Field(..., ge=0)
 
 
-def _xoa_requirements_lien_ket(db: Session, forecast_ids) -> None:
-    """Xoá supply_requirements trỏ tới các forecast sắp bị xoá (tránh treo FK)."""
-    from app.models.supply_requirement import SupplyRequirement
-
-    db.query(SupplyRequirement).filter(
-        SupplyRequirement.forecast_id.in_(forecast_ids)
-    ).delete(synchronize_session=False)
-
-
 @router.delete("/history")
 async def xoa_toan_bo_lich_su(
     db: Session = Depends(get_db),
@@ -1101,7 +1086,6 @@ async def xoa_toan_bo_lich_su(
     get_admin_user chặn ngay ở tầng phụ thuộc: tài khoản không phải
     Administrator sẽ nhận 403 trước khi vào thân hàm.
     """
-    _xoa_requirements_lien_ket(db, db.query(DiseaseForecast.id))
     so_dong = db.query(DiseaseForecast).delete(synchronize_session=False)
     db.commit()
     logger.warning(
@@ -1141,7 +1125,6 @@ async def xoa_mot_du_bao(
             ),
         )
 
-    _xoa_requirements_lien_ket(db, [fc.id])
     db.delete(fc)
     db.commit()
     logger.info(
@@ -1245,7 +1228,7 @@ async def export_forecast_pdf(
             ["Ca nền (TB cùng kỳ)", f"{int(fc.baseline_cases or 0):,}"],
             ["Hệ số thời tiết", f"{float(fc.weather_factor or 1):.3f}"],
             ["Hệ số xu hướng", f"{float(fc.trend_factor or 1):.3f}"],
-            ["Mức nguy cơ", risk_label_map.get(fc.risk_level or "", "—")],
+            ["Mức cảnh báo dịch tễ", risk_label_map.get(fc.risk_level or "", "—")],
             [
                 "Khoảng tin cậy",
                 f"{int(fc.confidence_lower or 0):,} - {int(fc.confidence_upper or 0):,}",

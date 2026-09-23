@@ -58,7 +58,7 @@ JOIN    INFORMATION_SCHEMA.TABLES  t ON t.TABLE_NAME = c.TABLE_NAME
 WHERE   c.COLUMN_NAME LIKE '%DONDATHANG%'
 ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION;
 
--- Đ8-B · Toàn bộ cột của bảng đơn đặt hàng (nếu tên đúng như dự đoán)
+-- Đ8-B · Toàn bộ cột của bảng đơn đặt hàng (nếu tên bảng khớp giả thiết đặt tên)
 SELECT  c.TABLE_NAME, c.ORDINAL_POSITION, c.COLUMN_NAME, c.DATA_TYPE
 FROM    INFORMATION_SCHEMA.COLUMNS c
 WHERE   c.TABLE_NAME LIKE 'TT_DUOC_DONDATHANG%'

@@ -1,11 +1,11 @@
-"""Service đồng bộ dữ liệu từ nguồn (HIS SQL Server / file) vào DB trung gian.
+"""Service nạp dữ liệu từ CSDL nghiên cứu MEDFORECAST_DW (SQL Server cục bộ) vào Data Mart SQLite.
 
 Bọc DataPipeline để dashboard gọi qua API:
   - run_sync(): kéo dữ liệu MỚI (khám bệnh + tồn kho) → STAGING → CLEAN → MART.
   - get_status(): trạng thái lần đồng bộ gần nhất + số liệu hiện có.
 
 Cấu hình lấy theo THỨ TỰ ƯU TIÊN:
-  1. Bảng system_config trong DB (admin lưu từ màn hình Quản trị → Kết nối HIS)
+  1. Bảng system_config trong DB (admin lưu từ màn hình Quản trị → Nguồn dữ liệu (CSDL DW))
      — xem app/services/sync_config_service.py
   2. Biến môi trường PIPELINE_* trong .env (cách cũ, vẫn chạy khi DB chưa có gì)
 Pipeline ghi vào DB theo PIPELINE_DB_URL, mặc định = DATABASE_URL của app
@@ -20,7 +20,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.data_pipeline.icd_hierarchy import IcdHierarchy
-from app.data_pipeline.connectors import FileConnector, SqlServerConnector
+from app.data_pipeline.connectors import SqlServerConnector
 from app.data_pipeline import dss_loader
 from app.data_pipeline.pipeline import DataPipeline
 from app.services import sync_config_service
@@ -102,7 +102,7 @@ def _ngan_gon(exc: Exception) -> str:
 
 def _build_pipeline(db: Optional[Session] = None) -> DataPipeline:
     icd_dir = os.environ.get("PIPELINE_ICD_DIR", "../data")
-    # Không bắt buộc có TM_ICD*.xlsx: nguồn STA đã kèm sẵn cột disease_group.
+    # Không bắt buộc có TM_ICD*.xlsx: view vw_MedForecast_* đã kèm sẵn cột disease_group.
     hier = IcdHierarchy.from_dir_optional(icd_dir)
 
     # 1) Cấu hình admin đã lưu trong DB — thắng .env, đổi không cần restart.
@@ -119,41 +119,20 @@ def _build_pipeline(db: Optional[Session] = None) -> DataPipeline:
         logger.info("Đồng bộ theo cấu hình kết nối lưu trong DB.")
         return DataPipeline(connector, hier)
 
-    # 2) Cách cũ: biến môi trường
-    source = os.environ.get("PIPELINE_SOURCE", "file")
-    if source == "sqlserver":
-        conn = os.environ.get("PIPELINE_SQLSERVER_CONN")
-        if not conn:
-            raise RuntimeError(
-                "Chưa cấu hình kết nối HIS: vào Quản trị → Kết nối HIS, "
-                "hoặc đặt PIPELINE_SQLSERVER_CONN trong .env.")
-        # Biến này phải là URL SQLAlchemy, KHÔNG phải chuỗi ODBC thuần —
-        # connectors.py đưa thẳng vào create_engine. Chuỗi ODBC (DRIVER=...;
-        # SERVER=...) làm SQLAlchemy ném "Could not parse SQLAlchemy URL",
-        # một câu chẳng chỉ ra chỗ sai (12/09/2026).
-        if "://" not in conn:
-            raise RuntimeError(
-                "PIPELINE_SQLSERVER_CONN trong .env đang là chuỗi ODBC thuần. "
-                "Cần URL SQLAlchemy, ví dụ: mssql+pyodbc://user:mat_khau@host:1433/"
-                "MEDFORECAST_DW?driver=ODBC+Driver+17+for+SQL+Server. "
-                "Cách gọn hơn: vào Quản trị → Kết nối HIS và lưu cấu hình ở đó "
-                "(cấu hình trong DB thắng .env, đổi không cần khởi động lại).")
-        connector = SqlServerConnector(conn)
-    else:
-        # Nguồn tệp là di sản thời chưa nối HIS. Trên một DB vừa dựng lại thì
-        # cả cấu hình DB lẫn thư mục CSV đều không có, và pandas ném
-        # FileNotFoundError tận trong pipeline → nút Đồng bộ trả 500 kèm
-        # traceback, đúng lúc người dùng cần một câu hướng dẫn (12/09/2026).
-        thu_muc = os.environ.get("PIPELINE_DATA_DIR", "../data")
-        connector = FileConnector(thu_muc)
-        thieu = [t for t in (connector.case_file, connector.inventory_file)
-                 if not (connector.data_dir / t).exists()]
-        if thieu:
-            raise RuntimeError(
-                "Chưa cấu hình kết nối HIS. Vào Quản trị → Kết nối HIS, nhập "
-                "thông tin máy chủ STA rồi bấm Kiểm tra kết nối và Lưu, sau đó "
-                "Đồng bộ lại. (Hệ thống đang rơi về nguồn tệp CSV cũ nhưng "
-                f"không thấy {', '.join(thieu)} trong {connector.data_dir}.)")
+    # 2) Dự phòng: biến môi trường PIPELINE_SQLSERVER_CONN trong .env
+    #    (23/09/2026: nguồn tệp CSV đã bỏ — chỉ còn SQL Server cục bộ).
+    conn = os.environ.get("PIPELINE_SQLSERVER_CONN", "").strip()
+    if not conn:
+        raise RuntimeError(
+            "Chưa cấu hình CSDL nghiên cứu MEDFORECAST_DW: vào Quản trị → "
+            "Nguồn dữ liệu (CSDL DW), bấm Kiểm tra kết nối rồi Lưu; hoặc đặt "
+            "PIPELINE_SQLSERVER_CONN trong backend/.env.")
+    # Chấp nhận cả URL SQLAlchemy lẫn chuỗi ODBC thuần (DRIVER=...;SERVER=...):
+    # chuỗi ODBC được bọc qua odbc_connect để create_engine hiểu.
+    if "://" not in conn:
+        from urllib.parse import quote_plus
+        conn = "mssql+pyodbc:///?odbc_connect=" + quote_plus(conn)
+    connector = SqlServerConnector(conn)
     return DataPipeline(connector, hier)
 
 
@@ -169,7 +148,7 @@ class SyncService:
            — dss_loader.load_all. 11/09/2026: trước đây CHỈ nạp được qua CLI
            scripts/run_dss_load.py; nút Đồng bộ trên giao diện không đụng tới,
            nên fact_usage_total / fact_inventory_lot đứng yên trong khi thủ tục
-           PROD đã đẩy số mới xuống STA — Dashboard DSS chạy trên số cũ mà
+           snapshot MEDFORECAST_DW mới được khôi phục — Dashboard DSS chạy trên số cũ mà
            không có dấu hiệu nào.
         3. Làm mới bảng nghiệp vụ cũ (disease_cases, inventory) từ fact/mart.
         """
@@ -225,17 +204,19 @@ class SyncService:
             logger.warning("Tạo view sau đồng bộ lỗi: %s", exc)
         return result
 
-    # ── trạng thái kho trung gian (STA) ────────────────────────────────
+    # ── mốc chốt của snapshot MEDFORECAST_DW (MF_Watermark / MF_SyncLog) ──
     @staticmethod
     def trang_thai_sta(connector) -> dict:
-        """Đọc MF_Watermark + MF_SyncLog trên STA — thứ hai thủ tục PROD ghi rất
+        """Đọc MF_Watermark + MF_SyncLog trong snapshot MEDFORECAST_DW — thủ tục
+        phía bệnh viện ghi hai bảng này khi sinh snapshot; đây là "mốc dữ liệu
+        bệnh viện chốt" hiển thị trên Tổng quan. Ghi chú cũ: thủ tục ghi rất
         tử tế (ok/failed, thông điệp có số dòng, bất biến) nhưng backend chưa
         từng đọc (11/09/2026). Không có bước này, job PROD lỗi ba ngày thì màn
         hình vẫn hiện số ba ngày trước với nhãn "đã đồng bộ hôm nay".
 
         Trả {"available": bool, "watermarks": [...], "last_pushes": [...],
              "warning": str | None}. Chỉ có ý nghĩa với SqlServerConnector;
-        FileConnector trả available=False.
+        Connector không phải SQL Server trả available=False.
         """
         out = {"available": False, "watermarks": [], "last_pushes": [], "warning": None}
         if not isinstance(connector, SqlServerConnector):
@@ -269,8 +250,8 @@ class SyncService:
         elif failed:
             out["warning"] = f"{len(failed)}/{len(out['last_pushes'])} lần cập nhật gần đây thất bại — xem nhật ký."
         elif loi:
-            out["warning"] = ("Thiếu quyền đọc trên STA (" + "; ".join(loi)
-                              + "). Chạy sql_his/phase0/G1_05_STA_quyen_trang_thai.sql.")
+            out["warning"] = ("Không đọc được MF_Watermark/MF_SyncLog trong snapshot ("
+                              + "; ".join(loi) + ").")
         return out
 
     def _lam_moi_bang_nghiep_vu(self) -> dict:
@@ -284,7 +265,7 @@ class SyncService:
           - tầng pipeline (fact_*, mart_*) — do job đồng bộ dựng, phục vụ dự báo
             phân cấp và kế hoạch thuốc.
         Job đồng bộ chỉ ghi lớp thứ hai. Không có cầu nối này thì sau khi nối
-        HIS, các trang cũ vẫn hiển thị dữ liệu CSV import từ trước — hai màn
+        nguồn DW, các trang cũ vẫn hiển thị dữ liệu CSV import từ trước — hai màn
         hình cạnh nhau ra hai con số khác nhau.
 
         Cách làm: disease_cases XOÁ-RỒI-CHÈN toàn bộ từ fact_disease_case (nguồn
@@ -335,7 +316,7 @@ class SyncService:
                 disease_type="respiratory",
                 case_count=int(r.cases or 0),
                 location=r.region,
-                data_source="HIS-STA",
+                data_source="MEDFORECAST_DW",
             ) for r in facts
         ])
 
@@ -431,7 +412,7 @@ class SyncService:
         except Exception:                                 # noqa: BLE001
             out["source"] = {"kind": "unknown", "database": None}
 
-        # Trạng thái kho trung gian (mở kết nối STA — chỉ khi có cấu hình SQL Server)
+        # Mốc chốt snapshot (mở kết nối SQL Server cục bộ — chỉ khi có cấu hình SQL Server)
         try:
             out["sta"] = self.trang_thai_sta(_build_pipeline(self.db).connector)
         except Exception as exc:                          # noqa: BLE001

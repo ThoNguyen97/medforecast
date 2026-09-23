@@ -16,7 +16,7 @@ import {
 import { cn } from '../../utils/cn';
 
 /**
- * Quản trị → Kết nối HIS.
+ * Quản trị → Nguồn dữ liệu (CSDL DW).
  *
  * Cấu hình lưu trong DB (bảng system_config) thay vì file .env: admin đổi
  * host/mật khẩu ngay trên giao diện, có nút thử kết nối trước khi lưu, và lần
@@ -28,10 +28,11 @@ import { cn } from '../../utils/cn';
 
 const RONG: HisConnectionInput = {
   source: 'sqlserver',
-  host: '',
+  host: 'localhost',
   port: 1433,
   instance: '',
   database: 'MEDFORECAST_DW',
+  auth: 'windows',
   username: 'medforecast_app',
   password: '',
   driver: 'ODBC Driver 18 for SQL Server',
@@ -83,6 +84,7 @@ export default function HisConnectionSection() {
   };
 
   const laSqlServer = form.source === 'sqlserver';
+  const laWindowsAuth = form.auth === 'windows';
 
   if (isLoading) {
     return (
@@ -98,44 +100,25 @@ export default function HisConnectionSection() {
       <div className="bg-white rounded-2xl border border-neutral-200 p-5 space-y-4">
         <div className="flex items-center gap-2">
           <Database className="w-5 h-5 text-primary-600" />
-          <h3 className="font-semibold text-neutral-800">Nguồn dữ liệu đồng bộ</h3>
+          <h3 className="font-semibold text-neutral-800">Nguồn dữ liệu — CSDL nghiên cứu MEDFORECAST_DW</h3>
           {cfg?.da_luu_trong_db ? (
             <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
               đang dùng cấu hình lưu trong hệ thống
             </span>
           ) : (
             <span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
-              chưa lưu — đang chạy theo file .env trên máy chủ
+              chưa lưu — đang chạy theo file .env của backend
             </span>
           )}
         </div>
 
-        <div className="flex flex-wrap gap-4">
-          {(
-            [
-              ['sqlserver', 'SQL Server (DB trung chuyển STA)', 'Đọc dữ liệu HIS đã tổng hợp — dùng khi triển khai'],
-              ['file', 'File CSV nội bộ', 'Dữ liệu mẫu đóng gói sẵn — dùng khi demo/dev'],
-            ] as const
-          ).map(([val, label, mota]) => (
-            <label
-              key={val}
-              className={cn(
-                'flex-1 min-w-[260px] border rounded-xl p-3 cursor-pointer transition',
-                form.source === val
-                  ? 'border-primary-500 bg-primary-50/50 ring-1 ring-primary-500'
-                  : 'border-neutral-200 hover:border-neutral-300',
-              )}
-            >
-              <input
-                type="radio"
-                className="sr-only"
-                checked={form.source === val}
-                onChange={() => doi('source', val)}
-              />
-              <div className="font-medium text-sm text-neutral-800">{label}</div>
-              <div className="text-xs text-neutral-500 mt-0.5">{mota}</div>
-            </label>
-          ))}
+        <div className="border rounded-xl p-3 border-primary-500 bg-primary-50/50 ring-1 ring-primary-500 max-w-xl">
+          <div className="font-medium text-sm text-neutral-800">SQL Server — CSDL nghiên cứu MEDFORECAST_DW</div>
+          <div className="text-xs text-neutral-500 mt-0.5">
+            Snapshot database do bệnh viện bàn giao (12 bảng MF_*, đã khử định danh), khôi phục trên
+            SQL Server cục bộ của máy trạm. Ứng dụng đọc 7 view vw_MedForecast_* tại đây — không kết nối
+            tới HIS hay máy chủ trung gian nào.
+          </div>
         </div>
       </div>
 
@@ -145,12 +128,12 @@ export default function HisConnectionSection() {
           <h3 className="font-semibold text-neutral-800">Thông số kết nối</h3>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Truong label="Máy chủ (host/IP)" required>
-              <input className={o} value={form.host} placeholder="vd: 10.0.0.20"
+            <Truong label="Máy chủ SQL Server" required ghiChu="Cục bộ: localhost hoặc 127.0.0.1">
+              <input className={o} value={form.host} placeholder="localhost"
                      onChange={(e) => doi('host', e.target.value)} />
             </Truong>
-            <Truong label="Instance (nếu có)" ghiChu="Đặt instance thì port bị bỏ qua">
-              <input className={o} value={form.instance} placeholder="vd: STA"
+            <Truong label="Instance (nếu có)" ghiChu="vd SQLEXPRESS → localhost\\SQLEXPRESS; đặt instance thì port bị bỏ qua">
+              <input className={o} value={form.instance} placeholder="vd: SQLEXPRESS"
                      onChange={(e) => doi('instance', e.target.value)} />
             </Truong>
             <Truong label="Port">
@@ -162,17 +145,25 @@ export default function HisConnectionSection() {
               <input className={o} value={form.database}
                      onChange={(e) => doi('database', e.target.value)} />
             </Truong>
-            <Truong label="Tài khoản" required>
-              <input className={o} value={form.username} autoComplete="off"
+            <Truong label="Xác thực" ghiChu="SQL Server cục bộ thường chỉ bật Windows Authentication">
+              <select className={o} value={form.auth}
+                      onChange={(e) => doi('auth', e.target.value as 'windows' | 'sql')}>
+                <option value="windows">Windows Authentication</option>
+                <option value="sql">SQL Server Authentication (tài khoản/mật khẩu)</option>
+              </select>
+            </Truong>
+            <Truong label="Tài khoản" required={!laWindowsAuth}>
+              <input className={o} value={form.username} autoComplete="off" disabled={laWindowsAuth}
                      onChange={(e) => doi('username', e.target.value)} />
             </Truong>
             <Truong
               label="Mật khẩu"
-              required={!cfg?.has_password}
-              ghiChu={cfg?.has_password ? 'Để trống = giữ mật khẩu đã lưu' : undefined}
+              required={!laWindowsAuth && !cfg?.has_password}
+              ghiChu={laWindowsAuth ? 'Không dùng với Windows Authentication'
+                      : cfg?.has_password ? 'Để trống = giữ mật khẩu đã lưu' : undefined}
             >
               <input className={o} type="password" value={form.password ?? ''}
-                     placeholder={cfg?.has_password ? '••••••••' : ''}
+                     placeholder={cfg?.has_password ? '••••••••' : ''} disabled={laWindowsAuth}
                      autoComplete="new-password"
                      onChange={(e) => doi('password', e.target.value)} />
             </Truong>
@@ -184,8 +175,8 @@ export default function HisConnectionSection() {
                 <option>ODBC Driver 17 for SQL Server</option>
               </select>
             </Truong>
-            <Truong label="Cửa sổ nạp lại (tháng)"
-                    ghiChu="Phải khớp @SoThangLuiLai của job bên HIS">
+            <Truong label="Số kỳ nạp lại (tháng)"
+                    ghiChu="Số kỳ gần nhất được xoá-nạp lại mỗi lần; snapshot đóng băng thì 0 cũng đủ">
               <input className={o} type="number" min={0} max={24} value={form.lookback_months}
                      onChange={(e) => doi('lookback_months', Number(e.target.value) || 0)} />
             </Truong>
@@ -194,7 +185,7 @@ export default function HisConnectionSection() {
                 <input type="checkbox" className="rounded border-neutral-300"
                        checked={form.trust_cert}
                        onChange={(e) => doi('trust_cert', e.target.checked)} />
-                Tin chứng chỉ tự ký (mạng nội bộ)
+                Tin chứng chỉ tự ký của SQL Server cục bộ
               </label>
             </Truong>
           </div>
@@ -250,7 +241,7 @@ export default function HisConnectionSection() {
           >
             <div className="font-medium text-sm">
               {testResult.ok
-                ? 'Kết nối tốt — đọc được dữ liệu từ cả ba nguồn'
+                ? 'Kết nối tốt — đọc được đủ 7 view của snapshot'
                 : 'Chưa kết nối được — xem từng bước bên dưới'}
             </div>
             <ul className="space-y-1.5">

@@ -1,19 +1,39 @@
-# Kết nối HIS eHospital: PROD → STAGING → MedForecast
+# Nguồn dữ liệu: snapshot MEDFORECAST_DW do bệnh viện bàn giao
+
+> **Cập nhật 23/09/2026.** Luồng vận hành thực tế KHÔNG còn job PROD → STA và
+> không còn kết nối mạng tới HIS. Sơ đồ dưới đây mô tả cách bệnh viện SINH RA
+> snapshot (phía họ) và cách ứng dụng ĐỌC snapshot đó (phía nhóm nghiên cứu).
 
 ```
-HIS PROD (eHospital, SQL Server)
-    │  thủ tục dbo.usp_MedForecast_DayDuLieu — TỔNG HỢP ngay trên PROD
-    │  SQL Agent job 01:00, tổng hợp lại cửa sổ 3 tháng
-    ▼  đẩy qua linked server MEDFORECAST_STA
-MEDFORECAST_DW (database riêng trên máy chủ STAGING)
-    │  MF_CaBenh_VatTu · MF_CaBenh_Nhom · MF_TonKho
-    │  MF_Watermark · MF_SyncLog · MF_MapVatTu
-    │  vw_MedForecast_CaBenh · vw_MedForecast_CaBenhNhom · vw_MedForecast_TonKho
-    ▼  PIPELINE_SOURCE=sqlserver, 02:00
-MedForecast (FastAPI + PostgreSQL) → React
+┌─ VÙNG BỆNH VIỆN (CNTT bệnh viện thực hiện, ngoài giờ) ───────────────────┐
+│ HIS eHospital PROD (SQL Server)                                           │
+│    │ 3 thủ tục usp_MedForecast_* — TỔNG HỢP + KHỬ ĐỊNH DANH ngay tại PROD│
+│    ▼                                                                      │
+│ MEDFORECAST_DW  (12 bảng dbo.MF_*, MF_Watermark = mốc kỳ chốt)           │
+│    │ sao lưu .bak                                                         │
+└────┼──────────────────────────────────────────────────────────────────────┘
+     ▼  BÀN GIAO SNAPSHOT theo đợt (không có dữ liệu cá nhân)
+┌─ MÁY TRẠM NGHIÊN CỨU ────────────────────────────────────────────────────┐
+│ SQL Server cục bộ ← RESTORE MEDFORECAST_DW                                │
+│    │ 7 view vw_MedForecast_*  (Windows Authentication, localhost)         │
+│    ▼  backend/app/data_pipeline (pipeline.py + dss_loader.py)             │
+│ Data Mart SQLite backend/data/medforecast.db (25 bảng + 4 view)           │
+│    ▼                                                                      │
+│ MedForecast (FastAPI) → React                                             │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
-MedForecast **không bao giờ** kết nối vào PROD.
+Thư mục này gồm hai nhóm file:
+
+| Nhóm | Ở đâu | Ai chạy |
+|---|---|---|
+| **Sinh snapshot** (thủ tục trên HIS PROD, linked server, job) | `phia_benh_vien/` | CNTT bệnh viện — xem README trong đó |
+| **Khôi phục lược đồ** (tạo bảng/view `MEDFORECAST_DW`, lược đồ SQLite local) | `01_STA_*.sql`, `phase0/*_STA_*.sql`, `phase0/*_LOCAL_*.sql` | Nhóm nghiên cứu, chạy trên SQL Server cục bộ / SQLite |
+
+Kiểm tra trước khi nạp: `cd backend && python scripts/kiem_tra_ket_noi_dw.py`.
+
+---
+*(Phần dưới là tài liệu gốc của giai đoạn bệnh viện tự vận hành job — giữ để tra cứu thiết kế.)*
 
 ## Hai lựa chọn thiết kế đáng chú ý
 

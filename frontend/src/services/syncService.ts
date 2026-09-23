@@ -33,7 +33,7 @@ export interface SyncStatus {
   dss_tables?: Record<string, { rows: number; latest: string | null } | null>;
   /** Nguồn ứng dụng đang đọc — chỉ tên CSDL, không có host. */
   source?: { kind: 'sqlserver' | 'file' | 'unknown'; database: string | null };
-  /** Trạng thái kho trung gian đọc từ MF_Watermark / MF_SyncLog. */
+  /** Mốc chốt của snapshot MEDFORECAST_DW đọc từ MF_Watermark / MF_SyncLog. */
   sta?: {
     available: boolean;
     watermarks?: Array<{ TenLuong: string; MocDaDay: string | null; LanChayCuoi: string | null }>;
@@ -49,13 +49,16 @@ export interface SyncStatus {
   };
 }
 
-/** Cấu hình kết nối HIS/STA — mật khẩu KHÔNG bao giờ được trả về từ server. */
+/** Cấu hình kết nối CSDL nghiên cứu MEDFORECAST_DW (SQL Server cục bộ) —
+ *  mật khẩu KHÔNG bao giờ được trả về từ server. */
 export interface HisConnectionConfig {
-  source: 'file' | 'sqlserver';
+  source: 'sqlserver';
   host: string;
   port: number;
   instance: string;
   database: string;
+  /** windows = Trusted_Connection (mặc định cho SQL Server cục bộ); sql = UID/PWD */
+  auth: 'windows' | 'sql';
   username: string;
   driver: string;
   trust_cert: boolean;

@@ -61,7 +61,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import text
@@ -242,6 +242,37 @@ def classify(doi: Optional[float], red_days: float, amber_days: float) -> str:
 # Bảng cảnh báo
 # ─────────────────────────────────────────────────────────────────────────────
 
+def ngay_neo(db: Session) -> Tuple[date, str]:
+    """Ngày "hôm nay" dùng cho FEFO — neo vào DỮ LIỆU, không vào đồng hồ.
+
+    Dữ liệu tồn kho là ảnh chụp (snapshot) bàn giao theo đợt. Nếu đo hạn dùng
+    bằng `date.today()` thì càng xa ngày chụp, càng nhiều lô bị coi là hết hạn
+    trong khi kho thật đã xuất/nhập khác — số Đỏ phồng lên giả tạo và kết quả
+    không tái lập được. Vì vậy:
+
+        1. MAX(snapshot_date) của fact_inventory_lot   (ảnh chụp lô mới nhất)
+        2. ngày cuối của kỳ đã chốt gần nhất (period_service) — khi chưa có lô
+        3. date.today() — khi DB trống hoàn toàn
+
+    Trả (ngày, nguồn) để giao diện/nhật ký nói rõ đang đánh giá tại thời điểm nào.
+    """
+    if _has(db, "fact_inventory_lot"):
+        v = db.execute(text("SELECT MAX(snapshot_date) FROM fact_inventory_lot")).scalar()
+        d = _parse_date(v) if v else None
+        if d:
+            return d, f"snapshot:{d.isoformat()}"
+    try:
+        from app.services.period_service import get_period_anchor
+        ky = (get_period_anchor(db) or {}).get("last_closed_period")
+        if ky:
+            y, m = int(ky[:4]), int(ky[5:7])
+            d = (date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)) - timedelta(days=1)
+            return d, f"closed_period:{ky}"
+    except Exception:  # noqa: BLE001 — chỉ là fallback, không được làm hỏng cảnh báo
+        pass
+    return date.today(), "today"
+
+
 def alert_rows(db: Session,
                demand: Optional[Dict[str, float]] = None,
                only_focus: bool = False,
@@ -265,7 +296,10 @@ def alert_rows(db: Session,
     amber_days = float(th["doi_amber_days"])
     horizon = int(th.get("horizon_days", 30))
     fefo_win = int(th.get("fefo_window_days", 30))
-    hom_nay = hom_nay or date.today()
+    if hom_nay is None:
+        hom_nay, nguon_ngay = ngay_neo(db)
+    else:
+        nguon_ngay = "param"
 
     co_ton = _has(db, "fact_inventory_lot") or _has(db, "inventory")
     if not (_has(db, "v_supply_daily_demand") and co_ton
@@ -375,6 +409,8 @@ def alert_rows(db: Session,
             "horizon_days": horizon,
             "co_nhu_cau_du_bao": bool(demand),
             "nguon_ton_kho": nguon_ton,
+            "as_of": hom_nay.isoformat(),
+            "as_of_nguon": nguon_ngay,
             "so_ma_ap_dung_fefo": fefo_that,
             "fefo_toan_bo": fefo_that == len(out) and len(out) > 0,
             "ly_do_xam": ly_do_xam,

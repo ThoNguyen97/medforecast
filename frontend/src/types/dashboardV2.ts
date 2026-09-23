@@ -267,6 +267,9 @@ export interface DataStatusSection {
   } | null;
   fefo: { codes: number; total: number };
   nguon_ton_kho: string | null;
+  /** Ngày đánh giá FEFO/DOI = MAX(snapshot_date) của ảnh chụp lô (không phải hôm nay). */
+  as_of?: string | null;
+  as_of_nguon?: string | null;
 }
 
 export interface Insight {

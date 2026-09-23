@@ -82,7 +82,6 @@ class DataPipeline:
             grp = self.connector.fetch_case_group(since_period=since)
 
             clean, rejected, max_period = self._transform_cases(raw)
-            self._load_staging(db, raw, inv)
             self._upsert_dims(db, clean, inv)
             self._upsert_facts(db, clean)
             self._refresh_completeness(db)
@@ -186,35 +185,6 @@ class DataPipeline:
         db.flush()
 
     # ── STAGING (khử trùng theo row_hash) ──
-    def _load_staging(self, db, raw: pd.DataFrame, inv: pd.DataFrame):
-        if not raw.empty:
-            # Chỉ nạp hash của những THÁNG đang đồng bộ — tránh kéo toàn bộ bảng
-            # staging vào RAM khi lịch sử HIS lớn dần.
-            # [:7] khớp đúng cách cột month được cắt khi ghi vào staging bên dưới
-            months = sorted({str(x)[:7] for x in raw["month"].dropna().unique()})
-            existing = set(db.execute(
-                select(m.StgCaseSupply.row_hash)
-                .where(m.StgCaseSupply.month.in_(months))
-            ).scalars().all())
-            rows = []
-            for _, r in raw.iterrows():
-                h = _row_hash(r)
-                if h in existing:
-                    continue
-                existing.add(h)
-                rows.append(m.StgCaseSupply(
-                    month=str(r.get("month"))[:7], disease_code=str(r.get("disease_code"))[:20],
-                    disease_name=str(r.get("disease_name"))[:255], region=str(r.get("region"))[:120],
-                    cases=_safe_int(r.get("cases")), supply_code=str(r.get("supply_code"))[:60],
-                    supply_name=str(r.get("supply_name"))[:400],
-                    supply_quantity=_safe_float(r.get("supply_quantity")),
-                    supply_unit=str(r.get("supply_unit"))[:40],
-                    supply_category=str(r.get("supply_category"))[:255],
-                    note=str(r.get("note"))[:255], row_hash=h, source=self.connector.name,
-                ))
-            db.bulk_save_objects(rows)
-        db.flush()
-
     # ── DIM ──
     def _upsert_dims(self, db, clean: pd.DataFrame, inv: pd.DataFrame):
         # dim_icd: từ mã xuất hiện + danh mục phân cấp.
@@ -290,20 +260,6 @@ class DataPipeline:
             ) for r in cases.itertuples(index=False)
         ])
 
-        # fact_supply_usage: tổng lượng vật tư theo (period,icd,region,supply)
-        usage = (clean.dropna(subset=["supply_code"])
-                 .groupby(["period", "year", "month_num", "icd_code", "block_code",
-                           "region", "supply_code"], dropna=False)["supply_quantity"]
-                 .sum().reset_index())
-        usage = usage[usage["supply_code"].astype(str).str.strip() != ""]
-        db.execute(delete(m.FactSupplyUsage).where(m.FactSupplyUsage.period.in_(periods)))
-        db.bulk_save_objects([
-            m.FactSupplyUsage(
-                period=r.period, year=int(r.year), month=int(r.month_num),
-                icd_code=r.icd_code, block_code=r.block_code, region=r.region,
-                supply_code=str(r.supply_code), quantity=_safe_float(r.supply_quantity),
-            ) for r in usage.itertuples(index=False)
-        ])
         db.flush()
 
     # ── số ca mức NHÓM: dùng số nguồn cấp thay cho phép cộng dồn ──
@@ -463,16 +419,13 @@ class DataPipeline:
         if inv is None or inv.empty:
             return
         today = date.today()
-        db.execute(delete(m.FactInventorySnapshot).where(m.FactInventorySnapshot.snapshot_date == today))
         db.execute(delete(m.MartInventory))
-        snaps, marts = [], []
+        marts = []
         for _, r in inv.iterrows():
             sc = str(r.get("supply_code") or "").strip()
             if not sc:
                 continue
             qty = _safe_int(r.get("stock_quantity"))
-            snaps.append(m.FactInventorySnapshot(
-                snapshot_date=today, supply_code=sc[:60], stock_quantity=qty))
             marts.append(m.MartInventory(
                 supply_code=sc[:60], name=str(r.get("ten_hoat_chat") or "")[:400],
                 drug_code=str(r.get("drug_code") or "")[:60], unit=str(r.get("unit") or "")[:40],
@@ -480,7 +433,6 @@ class DataPipeline:
                 stock_quantity=qty, snapshot_date=today,
             ))
         # bulk thay cho add() từng dòng — danh mục vật tư bệnh viện có thể vài chục nghìn dòng
-        db.bulk_save_objects(snaps)
         db.bulk_save_objects(marts)
         db.flush()
 

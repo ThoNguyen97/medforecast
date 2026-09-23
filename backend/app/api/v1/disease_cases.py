@@ -510,11 +510,9 @@ async def import_disease_cases_csv(
     
     if has_simple_format:
         # Simple template format → 1 row = 1 record
-        # Cột supply_name / supply_quantity / supply_unit / supply_category là tuỳ chọn:
-        #   khi xuất hiện, các dòng cùng (month+disease+region) được gộp thành 1 ca
-        #   bệnh kèm nhiều dòng chi tiết thuốc đã dùng.
-        from app.models.medical_supply import MedicalSupply
-        from app.models.case_supply_usage import CaseSupplyUsage
+        # Cột supply_* (nếu file cũ còn) chỉ dùng để GỘP các dòng cùng
+        # (month+disease+region) thành 1 ca bệnh — chi tiết thuốc theo ca KHÔNG
+        # còn được lưu (nhu cầu vật tư lấy từ định mức thực nghiệm HIS, Tầng 2).
 
         has_supply_col = (
             "supply_name" in headers
@@ -643,62 +641,7 @@ async def import_disease_cases_csv(
                     "category": supply_category or "Khác",
                 })
 
-        # Bước 2: persist từng group thành DiseaseCase + CaseSupplyUsage
-        # Cache supply lookup để tránh query lại nhiều lần
-        supply_cache: dict[str, MedicalSupply] = {}
-
-        def _get_or_create_supply(
-            name: str, unit: str, category: str,
-            supply_code: str = "", drug_code: str = "",
-        ) -> MedicalSupply:
-            # Ưu tiên match theo mã (supply_code → drug_code) vì chính xác hơn tên.
-            cache_key = (supply_code or drug_code or name).lower().strip()
-            if cache_key in supply_cache:
-                return supply_cache[cache_key]
-
-            existing_sup = None
-            if supply_code:
-                existing_sup = (
-                    db.query(MedicalSupply)
-                    .filter(func.lower(MedicalSupply.supply_code) == supply_code.lower())
-                    .first()
-                )
-            if existing_sup is None and drug_code:
-                existing_sup = (
-                    db.query(MedicalSupply)
-                    .filter(func.lower(MedicalSupply.drug_code) == drug_code.lower())
-                    .first()
-                )
-            if existing_sup is None and name:
-                key = name.lower().strip()
-                existing_sup = (
-                    db.query(MedicalSupply)
-                    .filter(
-                        (func.lower(MedicalSupply.ten_hoat_chat) == key)
-                        | (func.lower(MedicalSupply.supply_code) == key)
-                    )
-                    .first()
-                )
-            if existing_sup is None:
-                # Không tìm thấy → tạo placeholder (chỉ điền tối thiểu)
-                logger.warning(
-                    "Supply code=%s name='%s' không khớp 15 thuốc, tạo placeholder.",
-                    supply_code or drug_code, name,
-                )
-                next_code = supply_code or f"VT_AUTO_{int(datetime.now().timestamp())}"
-                existing_sup = MedicalSupply(
-                    supply_code=next_code,
-                    drug_code=drug_code or next_code,
-                    ten_hoat_chat=name or next_code,
-                    unit=unit,
-                    group_name=category or "Khác",
-                    category=category,
-                )
-                db.add(existing_sup)
-                db.flush()
-            supply_cache[cache_key] = existing_sup
-            return existing_sup
-
+        # Bước 2: persist từng group thành DiseaseCase
         for entry in grouped.values():
             recorded_at = entry["recorded_at"]
             disease_key = entry["disease_key"]
@@ -743,32 +686,6 @@ async def import_disease_cases_csv(
 
             new_regions_to_register.add(region)
 
-            # Persist supply usage details (nếu CSV có)
-            if entry["supplies"]:
-                # Xoá usage cũ của ca này để cập nhật lại từ CSV mới
-                db.query(CaseSupplyUsage).filter(
-                    CaseSupplyUsage.case_id == case_obj.id
-                ).delete(synchronize_session=False)
-                db.flush()
-                # Gom số lượng theo supply_id TRƯỚC (cộng dồn nếu 1 thuốc xuất
-                # hiện nhiều dòng trong cùng ca) rồi mới insert 1 lần/thuốc —
-                # tránh vi phạm UNIQUE(case_id, supply_id).
-                qty_by_supply: dict[int, int] = {}
-                for sup in entry["supplies"]:
-                    supply_obj = _get_or_create_supply(
-                        sup["name"], sup["unit"], sup["category"],
-                        supply_code=sup.get("supply_code", ""),
-                        drug_code=sup.get("drug_code", ""),
-                    )
-                    qty_by_supply[supply_obj.id] = (
-                        qty_by_supply.get(supply_obj.id, 0) + sup["qty"]
-                    )
-                for supply_id, qty in qty_by_supply.items():
-                    db.add(CaseSupplyUsage(
-                        case_id=case_obj.id,
-                        supply_id=supply_id,
-                        quantity=qty,
-                    ))
     else:
         # Hospital CSV format
         aggregate: dict[tuple, set[str]] = {}
@@ -957,17 +874,15 @@ def get_case_supply_usage(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    """Chi tiết sử dụng thuốc cho 1 ca bệnh.
+    """Nhu cầu thuốc/vật tư ước tính cho 1 ca bệnh (bản ghi nhập tay).
 
-    Logic mới (theo yêu cầu mục 4-6):
-    - Phân bổ tổng số ca theo severity_rate (Nhẹ/Trung bình/Nặng)
-    - Với mỗi thuốc: số lượng = Σ(số ca theo mức × định mức theo mức) từ disease_supply_norm
-    - Fallback: nếu chưa có severity_rate / norm → dùng case_supply_usage thực tế hoặc conversion_ratios
+    Số lượng = case_count × norm_hieu_dung(i, g) với g là khối ICD của ca,
+    norm_hieu_dung = Σ_ro p̂(g,ro)·Norm(i,g,ro) — cùng engine định mức thực
+    nghiệm (dss_demand) dùng cho Tổng quan/Cảnh báo. Khối chưa có định mức
+    thực nghiệm → danh sách rỗng (không còn đường tính thay thế nào khác).
     """
     from app.models.disease_case import DiseaseCase
     from app.models.medical_supply import MedicalSupply
-    from app.models.conversion_ratio import ConversionRatio
-    from app.models.case_supply_usage import CaseSupplyUsage
     from app.utils.icd_groups import nhom_cua_ma
     from app.services import dss_demand
     from sqlalchemy import extract
@@ -1030,60 +945,6 @@ def get_case_supply_usage(
                 "source": "norm",
             })
 
-    # Bước 2: Fallback — actual data từ case_supply_usage (nếu đã import chi tiết)
-    if not supplies:
-        actual_usages = (
-            db.query(CaseSupplyUsage, MedicalSupply)
-            .join(MedicalSupply, MedicalSupply.id == CaseSupplyUsage.supply_id)
-            .filter(CaseSupplyUsage.case_id == case_id)
-            .all()
-        )
-        if actual_usages:
-            for usage, supply in actual_usages:
-                supplies.append({
-                    "supply_id": supply.id,
-                    "code": supply.supply_code or f"VT{supply.id:03d}",
-                    "drug_code": supply.drug_code,
-                    "name": supply.ten_hoat_chat,
-                    "category": supply.group_name or supply.category or "Khác",
-                    "unit": supply.unit,
-                    "description": supply.description,
-                    "ratio": (
-                        round(float(usage.quantity) / case.case_count, 4)
-                        if case.case_count > 0 else 0.0
-                    ),
-                    "used_quantity": int(usage.quantity),
-                    "disease_label": case.disease_name,
-                    "source": "actual",
-                })
-
-    # Bước 3: Fallback cuối — conversion_ratios cũ
-    if not supplies:
-        ratios = (
-            db.query(ConversionRatio, MedicalSupply)
-            .join(MedicalSupply, MedicalSupply.id == ConversionRatio.supply_id)
-            .filter(ConversionRatio.disease_type == case.icd_code)
-            .all()
-        )
-        for ratio, supply in ratios:
-            ratio_val = float(ratio.ratio) if ratio.ratio is not None else 0.0
-            used_qty = int(round(case.case_count * ratio_val))
-            if used_qty <= 0:
-                continue
-            supplies.append({
-                "supply_id": supply.id,
-                "code": supply.supply_code or f"VT{supply.id:03d}",
-                "drug_code": supply.drug_code,
-                "name": supply.ten_hoat_chat,
-                "category": supply.group_name or supply.category or "Khác",
-                "unit": supply.unit,
-                "description": supply.description,
-                "ratio": ratio_val,
-                "used_quantity": used_qty,
-                "disease_label": case.disease_name,
-                "source": "estimated",
-            })
-
     # Sort theo used_quantity giảm dần
     supplies.sort(key=lambda s: s["used_quantity"], reverse=True)
 
@@ -1142,12 +1003,11 @@ async def download_template():
     from fastapi.responses import StreamingResponse
 
     sample = (
-        "month,disease_name,region,cases,supply_name,supply_quantity,supply_unit,supply_category,note\n"
-        "10/2024,Viêm phế quản cấp,TP. Hồ Chí Minh,145,Paracetamol,1450,Viên,Thuốc hạ sốt giảm đau,\n"
-        "10/2024,Viêm phế quản cấp,TP. Hồ Chí Minh,145,N-acetylcysteine,1015,Gói,Thuốc long đờm,\n"
-        "10/2024,Nhiễm trùng đường hô hấp trên cấp,TP. Hồ Chí Minh,89,Paracetamol,890,Viên,Thuốc hạ sốt giảm đau,\n"
-        "09/2024,Viêm họng cấp,Hà Nội,67,Fexofenadin,335,Viên,Kháng histamin,\n"
-        "09/2024,Viêm xoang cấp,Hà Nội,42,,,,,Có thể bỏ trống supply để chỉ ghi số ca\n"
+        "month,disease_name,region,cases,note\n"
+        "10/2024,Viêm phế quản cấp,TP. Hồ Chí Minh,145,\n"
+        "10/2024,Nhiễm trùng đường hô hấp trên cấp,TP. Hồ Chí Minh,89,\n"
+        "09/2024,Viêm họng cấp,Hà Nội,67,\n"
+        "09/2024,Viêm xoang cấp,Hà Nội,42,Ghi chú tuỳ chọn\n"
     )
     return StreamingResponse(
         iter([sample]),

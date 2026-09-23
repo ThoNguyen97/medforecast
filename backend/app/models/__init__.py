@@ -1,20 +1,19 @@
-"""SQLAlchemy models."""
+"""SQLAlchemy models.
+
+23/09/2026: gỡ 7 model của phân hệ mua sắm / định mức nhập tay / cảnh báo
+lưu bảng (SupplyRequirement, SupplyRecommendation, ConversionRatio,
+CaseSupplyUsage, SeverityRate, DiseaseSupplyNorm, Alert) — xem
+_archive/bang_thua/. Bảng tương ứng đã DROP bằng scripts/don_bang_thua.py.
+"""
 from app.models.user import User
 from app.models.medical_supply import MedicalSupply
 from app.models.inventory import Inventory
 from app.models.environmental_data import EnvironmentalData
 from app.models.disease_case import DiseaseCase
 from app.models.disease_forecast import DiseaseForecast
-from app.models.supply_requirement import SupplyRequirement
-from app.models.alert import Alert
-from app.models.conversion_ratio import ConversionRatio
-from app.models.case_supply_usage import CaseSupplyUsage
 from app.models.system_config import SystemConfig
 from app.models.audit_log import AuditLog
 from app.models.system_log import SystemLog
-from app.models.severity_rate import SeverityRate
-from app.models.disease_supply_norm import DiseaseSupplyNorm
-from app.models.supply_recommendation import SupplyRecommendation
 
 __all__ = [
     "User",
@@ -23,14 +22,7 @@ __all__ = [
     "EnvironmentalData",
     "DiseaseCase",
     "DiseaseForecast",
-    "SupplyRequirement",
-    "Alert",
-    "ConversionRatio",
-    "CaseSupplyUsage",
     "SystemConfig",
     "AuditLog",
     "SystemLog",
-    "SeverityRate",
-    "DiseaseSupplyNorm",
-    "SupplyRecommendation",
 ]

@@ -437,7 +437,7 @@ function buildForecastPreview(
         value: filtered.length,
       },
       {
-        label: 'Mức nguy cơ cao trở lên',
+        label: 'Mức cảnh báo dịch tễ Cao trở lên',
         value: high,
         tone: high > 0 ? 'danger' : 'default',
       },
@@ -452,7 +452,7 @@ function buildForecastPreview(
           { key: 'predicted_cases', label: 'Số ca dự báo', align: 'right' },
           { key: 'actual_cases', label: 'Số ca thực tế', align: 'right' },
           { key: 'deviation_pct', label: 'Độ lệch', align: 'right' },
-          { key: 'risk_level', label: 'Mức nguy cơ' },
+          { key: 'risk_level', label: 'Mức cảnh báo dịch tễ' },
         ],
         rows: filtered.map((r) => ({
           month: `Tháng ${r.month}`,

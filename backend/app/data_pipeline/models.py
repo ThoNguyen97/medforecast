@@ -22,43 +22,6 @@ from .db import Base
 PK = Integer
 
 
-# ───────────────────────── STAGING ─────────────────────────
-class StgCaseSupply(Base):
-    """Landing: mỗi dòng = tháng × bệnh × địa bàn × vật tư (denormalized từ nguồn)."""
-    __tablename__ = "stg_case_supply"
-    id = Column(PK, primary_key=True, autoincrement=True)
-    month = Column(String(7), index=True)          # 'MM/YYYY' nguyên trạng
-    disease_code = Column(String(20))
-    disease_name = Column(String(255))
-    region = Column(String(120))
-    cases = Column(Integer)
-    supply_code = Column(String(60))
-    supply_name = Column(String(400))
-    supply_quantity = Column(Float)
-    supply_unit = Column(String(40))
-    supply_category = Column(String(255))
-    note = Column(String(255))
-    row_hash = Column(String(64), index=True)       # khử trùng
-    source = Column(String(40))
-    loaded_at = Column(DateTime(timezone=True), server_default=func.now())
-
-
-class StgInventory(Base):
-    """Landing: snapshot tồn kho."""
-    __tablename__ = "stg_inventory"
-    id = Column(PK, primary_key=True, autoincrement=True)
-    supply_code = Column(String(60), index=True)
-    drug_code = Column(String(60))
-    ten_hoat_chat = Column(String(255))
-    unit = Column(String(40))
-    group_name = Column(String(255))
-    category = Column(String(80))
-    stock_quantity = Column(Integer)
-    description = Column(Text)
-    source = Column(String(40))
-    loaded_at = Column(DateTime(timezone=True), server_default=func.now())
-
-
 # ───────────────────────── DIMENSIONS ─────────────────────────
 class DimIcd(Base):
     """Danh mục ICD phân cấp Mã → Nhóm → Chương (từ TM_ICD)."""
@@ -105,34 +68,6 @@ class FactDiseaseCase(Base):
     is_complete = Column(Boolean, default=True)     # tháng đã trọn vẹn
     __table_args__ = (
         UniqueConstraint("period", "icd_code", "region", name="uq_fact_case"),
-    )
-
-
-class FactSupplyUsage(Base):
-    """Tiêu thụ vật tư theo tháng × mã ICD × địa bàn × vật tư."""
-    __tablename__ = "fact_supply_usage"
-    id = Column(PK, primary_key=True, autoincrement=True)
-    period = Column(String(7), index=True)
-    year = Column(Integer, index=True)
-    month = Column(Integer, index=True)
-    icd_code = Column(String(20), index=True)
-    block_code = Column(String(20), index=True)
-    region = Column(String(120), index=True)
-    supply_code = Column(String(60), index=True)
-    quantity = Column(Float)
-    __table_args__ = (
-        UniqueConstraint("period", "icd_code", "region", "supply_code", name="uq_fact_usage"),
-    )
-
-
-class FactInventorySnapshot(Base):
-    __tablename__ = "fact_inventory_snapshot"
-    id = Column(PK, primary_key=True, autoincrement=True)
-    snapshot_date = Column(Date, index=True)
-    supply_code = Column(String(60), index=True)
-    stock_quantity = Column(Integer)
-    __table_args__ = (
-        UniqueConstraint("snapshot_date", "supply_code", name="uq_inv_snapshot"),
     )
 
 

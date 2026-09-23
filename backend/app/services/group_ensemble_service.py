@@ -3,7 +3,7 @@
 Phân tích & Dự báo.
 
 VÌ SAO CẦN SERVICE NÀY
-Trang Phân tích trước đây tính bằng heuristic "trung bình cùng kỳ 5 năm × hệ
+Trang Phân tích trước đây tính bằng công thức cố định "trung bình cùng kỳ 5 năm × hệ
 số" rồi ghi đè bằng MonthlyForecaster — cả hai đều tựa vào mức trung bình
 nhiều năm, nên với chuỗi có DỊCH CHUYỂN MỨC NỀN (J09-J18 tăng 3,66×) chúng bị
 kéo tụt về quá khứ. Đo trên tháng đã có kết quả: dự báo 65 ca cho tháng thực tế

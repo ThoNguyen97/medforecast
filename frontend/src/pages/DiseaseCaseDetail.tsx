@@ -27,7 +27,9 @@ interface SupplyItem {
   ratio: number;
   used_quantity: number;
   disease_label: string;
-  source?: 'actual' | 'estimated';
+  /** 'norm' = tính từ định mức thực nghiệm theo khối ICD (dss_demand). */
+  source?: 'norm';
+  khoi?: string | null;
 }
 
 interface CaseDetailResponse {
@@ -362,14 +364,12 @@ export default function DiseaseCaseDetail() {
                           {s.description}
                         </p>
                       )}
-                      {s.source === 'estimated' && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-medium">
-                          quy đổi
-                        </span>
-                      )}
-                      {s.source === 'actual' && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 font-medium">
-                          số liệu thực
+                      {s.source === 'norm' && (
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 font-medium"
+                          title={`Định mức thực nghiệm theo khối ${s.khoi ?? ''} (Σ p̂·Norm)`}
+                        >
+                          định mức thực nghiệm
                         </span>
                       )}
                     </div>

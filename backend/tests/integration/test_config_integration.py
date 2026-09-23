@@ -23,7 +23,6 @@ from app.database import Base, get_db
 from app.models.user import User
 from app.models.system_config import SystemConfig
 from app.models.medical_supply import MedicalSupply
-from app.models.conversion_ratio import ConversionRatio
 from app.core.security import hash_password, create_access_token
 
 
@@ -128,21 +127,6 @@ def sample_supply(db_session):
     db_session.commit()
     db_session.refresh(supply)
     return supply
-
-
-@pytest.fixture
-def sample_conversion_ratio(db_session, sample_supply, admin_user):
-    ratio = ConversionRatio(
-        disease_type="dengue_fever",
-        supply_id=sample_supply.id,
-        ratio=2.0,
-        unit="box",
-        updated_by=admin_user.id,
-    )
-    db_session.add(ratio)
-    db_session.commit()
-    db_session.refresh(ratio)
-    return ratio
 
 
 # ── List Configs Tests ────────────────────────────────────────────────────────

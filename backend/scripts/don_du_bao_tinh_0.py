@@ -2,7 +2,7 @@
 
 Trước 17/09/2026, "Ghi nhận dự báo" ở mục Toàn quốc ghi kèm một bản cho MỌI
 tỉnh có ca của nhóm bệnh — kể cả tỉnh chuỗi quá ngắn (ensemble không chạy) và
-không có ca cùng kỳ 5 năm trước (heuristic = 0). Kết quả là các dòng
+không có ca cùng kỳ 5 năm trước (phương án cùng kỳ = 0). Kết quả là các dòng
 `predicted_cases = 0, baseline_cases = 0` không phải đầu ra mô hình, chỉ sinh
 dòng "0 ca" ở Lịch sử và "0/0" ở bảng Dữ liệu ca bệnh gần đây.
 
@@ -52,16 +52,12 @@ def main() -> int:
             return 0
 
         ids = [r[0] for r in rows]
-        # supply_requirements trỏ tới forecast_id — gỡ trước cho khỏi treo FK.
         ds_id = ",".join(str(i) for i in ids)  # id nội bộ, không phải input người dùng
-        n_sr = db.execute(
-            text(f"DELETE FROM supply_requirements WHERE forecast_id IN ({ds_id})")
-        ).rowcount
         n_fc = db.execute(
             text(f"DELETE FROM disease_forecasts WHERE id IN ({ds_id})")
         ).rowcount
         db.commit()
-        print(f"Đã xoá {n_fc} dòng disease_forecasts (+{n_sr} supply_requirements liên kết).")
+        print(f"Đã xoá {n_fc} dòng disease_forecasts.")
         return 0
     finally:
         db.close()

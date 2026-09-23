@@ -41,7 +41,7 @@ type TabKey =
 const TABS: { key: TabKey; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { key: 'users', label: 'Quản lý tài khoản', icon: Users },
   { key: 'roles', label: 'Phân quyền', icon: ShieldCheck },
-  { key: 'his-connection', label: 'Kết nối HIS', icon: Database },
+  { key: 'his-connection', label: 'Nguồn dữ liệu (CSDL DW)', icon: Database },
   { key: 'configurations', label: 'Cấu hình bệnh & khu vực', icon: Boxes },
   { key: 'dss-params', label: 'Tham số DSS', icon: SlidersHorizontal },
   { key: 'dss-norms', label: 'Định mức thực nghiệm', icon: Scale },
@@ -77,7 +77,7 @@ export default function Settings() {
             </span>
           </div>
           <p className="text-sm text-neutral-500 mt-1">
-            Tài khoản, phân quyền, kết nối HIS, cấu hình bệnh/khu vực và tham số của bộ máy DSS.
+            Tài khoản, phân quyền, nguồn dữ liệu (CSDL DW), cấu hình bệnh/khu vực và tham số của bộ máy DSS.
           </p>
         </div>
         <div className="inline-flex items-center gap-2 text-xs text-neutral-500">

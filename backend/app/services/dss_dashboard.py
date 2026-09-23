@@ -866,7 +866,10 @@ def overview_payload(db: Session, focus: bool = True,
         "quality": quality,
         "data_status": {"dss_tables": dss_tables, "last_sync": last_sync,
                         "fefo": {"codes": dem_all.get("fefo_codes", 0), "total": dem_all["total"]},
-                        "nguon_ton_kho": (al_all.get("tong_hop") or {}).get("nguon_ton_kho")},
+                        "nguon_ton_kho": (al_all.get("tong_hop") or {}).get("nguon_ton_kho"),
+                        # Ngày đánh giá FEFO — neo vào ảnh chụp lô, không vào đồng hồ
+                        "as_of": (al_all.get("tong_hop") or {}).get("as_of"),
+                        "as_of_nguon": (al_all.get("tong_hop") or {}).get("as_of_nguon")},
         "insights": _insights(anchor, cases_last, cases_prev, trend, fc, sig,
                               dem["total"], doi_cat, dem.get("ly_do_xam", {})),
     }

@@ -28,12 +28,6 @@ class SeverityLevel(str, Enum):
     SEVERE = "severe"  # Nặng
 
 
-class AlertSeverity(str, Enum):
-    CRITICAL = "critical"
-    HIGH = "high"
-    MEDIUM = "medium"
-
-
 class LogLevel(str, Enum):
     ERROR = "ERROR"
     WARNING = "WARNING"
@@ -274,19 +268,6 @@ class DiseaseForecastResponse(ORMBase):
 
 # ── Supply Requirement schemas ────────────────────────────────────────────────
 
-class SupplyRequirementResponse(ORMBase):
-    id: int
-    forecast_id: Optional[int] = None
-    supply_id: int
-    supply_name: Optional[str] = None
-    required_quantity: int
-    requirement_date: date
-    disease_type: Optional[str] = None
-    current_stock: Optional[int] = None
-    shortage_amount: Optional[int] = None
-    created_at: Optional[datetime] = None
-
-
 class SupplyRequirementSummaryItem(BaseModel):
     """Summary of requirements aggregated by supply type."""
     supply_id: int
@@ -305,23 +286,6 @@ class SupplyRequirementSummaryResponse(BaseModel):
     total_supplies: int
     supplies_with_shortage: int
     items: List[SupplyRequirementSummaryItem]
-
-
-# ── Alert schemas ─────────────────────────────────────────────────────────────
-
-class AlertResponse(ORMBase):
-    id: int
-    supply_id: int
-    supply_name: Optional[str] = None
-    alert_type: str
-    severity: AlertSeverity
-    current_stock: Optional[int] = None
-    required_stock: Optional[int] = None
-    shortage_date: Optional[date] = None
-    message: Optional[str] = None
-    is_resolved: bool
-    resolved_at: Optional[datetime] = None
-    created_at: datetime
 
 
 # ── Dashboard schemas ─────────────────────────────────────────────────────────
@@ -364,30 +328,6 @@ class SystemConfigResponse(ORMBase):
 class SystemConfigUpdate(BaseModel):
     config_value: str = Field(..., min_length=1)
     description: Optional[str] = None
-
-
-# ── Conversion Ratio schemas ──────────────────────────────────────────────────
-
-class ConversionRatioResponse(ORMBase):
-    id: int
-    disease_type: str
-    supply_id: int
-    supply_name: Optional[str] = None
-    ratio: float
-    unit: Optional[str] = None
-    updated_by: Optional[int] = None
-    updated_at: Optional[datetime] = None
-
-
-class ConversionRatioUpdate(BaseModel):
-    disease_type: str = Field(..., description="Mã ICD bệnh (J20, J06, J02, J01)")
-    supply_id: int = Field(..., gt=0, description="ID of the medical supply")
-    ratio: float = Field(..., gt=0, description="Conversion ratio (units per case)")
-    unit: Optional[str] = None
-
-
-class ConversionRatiosBulkUpdate(BaseModel):
-    ratios: List[ConversionRatioUpdate]
 
 
 # ── Threshold schemas ─────────────────────────────────────────────────────────

@@ -114,7 +114,7 @@ WHERE  config_key = 'admin.safety_rate';
 
    Nếu dashboard xếp hạng theo khối lượng hay giá trị, nó sẽ bị lấp đầy bởi
    nhóm thứ nhất, và phần dự báo dịch tễ — đóng góp chính của đề tài — trở nên
-   vô hình. Người dùng sẽ hỏi đúng câu hội đồng sẽ hỏi: "mô hình AI ảnh hưởng
+   vô hình. Người dùng sẽ hỏi đúng câu hội đồng sẽ hỏi: "mô hình dự báo ảnh hưởng
    gì tới mấy con số này?"
 
    Cách xử lý: KHÔNG bỏ các mã kia (chúng vẫn cần cảnh báo tồn kho), nhưng

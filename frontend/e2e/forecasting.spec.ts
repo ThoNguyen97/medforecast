@@ -102,7 +102,7 @@ test.describe('Forecasting', () => {
   });
 
   // ------------------------------------------------------------------
-  test('AI info panel is visible', async ({ page }) => {
-    await expect(page.getByText(/thông tin về dự báo ai/i)).toBeVisible();
+  test('Influencing-factors panel is visible', async ({ page }) => {
+    await expect(page.getByText(/yếu tố ảnh hưởng/i)).toBeVisible();
   });
 });

@@ -12,7 +12,6 @@ import TrendChart from '../components/dashboard/TrendChart';
 import DoiCategoryChart from '../components/dashboard/DoiCategoryChart';
 import AlertsTable from '../components/dashboard/AlertsTable';
 import CareLevelChart from '../components/dashboard/CareLevelChart';
-import DataStatusCard from '../components/dashboard/DataStatusCard';
 import InsightsCard from '../components/dashboard/InsightsCard';
 import DashboardFilters, { type DashboardFilterState } from '../components/dashboard/DashboardFilters';
 import {
@@ -225,9 +224,6 @@ export default function Dashboard() {
         <div className="lg:col-span-5 grid grid-cols-1 gap-5">
           <Card title="Phân cấp chăm sóc theo nhóm bệnh" subtitle="Tỷ trọng p̂(g, rổ) — đầu vào định mức thực nghiệm Tầng 2">
             {data ? <CareLevelChart data={data.care_level} block={filters.block} /> : <Skeleton className="h-40" />}
-          </Card>
-          <Card title="Trạng thái dữ liệu" subtitle="Kho dữ liệu trung gian → ứng dụng">
-            {data ? <DataStatusCard status={data.data_status} /> : <Skeleton className="h-40" />}
           </Card>
         </div>
       </div>

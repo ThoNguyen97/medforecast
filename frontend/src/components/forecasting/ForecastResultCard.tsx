@@ -89,7 +89,7 @@ export default function ForecastResultCard({
         )}
       >
         <span className="text-xs font-semibold uppercase tracking-wide">
-          Mức nguy cơ
+          Mức cảnh báo dịch tễ
         </span>
         <span
           className={cn(
