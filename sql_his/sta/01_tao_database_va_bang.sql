@@ -1,6 +1,6 @@
 /* sta/01_tao_database_va_bang.sql
    Chạy trên: STA, cần quyền tạo database.
-   Mục đích: tạo CSDL riêng MEDFORECAST_DW (không phụ thuộc DB eHospital hay bị restore),
+   Mục đích: tạo CSDL riêng MEDFORECAST_DW (không phụ thuộc CSDL HIS hay bị restore),
    các bảng lõi đã tổng hợp theo tháng (không có dữ liệu định danh bệnh nhân), view và tài khoản.
    Điều kiện: chạy đầu tiên, sau đó sta/02..05 theo thứ tự. */
 

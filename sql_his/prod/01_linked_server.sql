@@ -5,7 +5,7 @@
 
 /* Tham số cần chỉnh; các script prod/ sau dùng lại đúng @LinkedName */
 DECLARE @LinkedName sysname       = N'MEDFORECAST_STA';
-DECLARE @StaHost    nvarchar(200) = N'10.0.0.20\STA';
+DECLARE @StaHost    nvarchar(200) = N'<<may-chu-sta>>';
 DECLARE @PushUser   sysname       = N'medforecast_push';
 DECLARE @PushPass   nvarchar(200) = N'<<mat-khau>>';
 

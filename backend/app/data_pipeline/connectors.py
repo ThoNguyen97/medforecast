@@ -133,8 +133,8 @@ class FileConnector(SourceConnector):
     name = "file"
 
     def __init__(self, data_dir: str | Path,
-                 case_file: str = "data_GIAAN_6_2019_2026.csv",
-                 inventory_file: str = "data_TonKho_GiaAn_2019-2026.csv",
+                 case_file: str = "data_CaBenh.csv",
+                 inventory_file: str = "data_TonKho.csv",
                  case_group_file: str = "data_CaBenh_Nhom.csv"):
         self.data_dir = Path(data_dir)
         self.case_file = case_file

@@ -13,7 +13,7 @@ Hệ hỗ trợ quyết định (DSS) dự báo số ca bệnh hô hấp và c�
 ## Kiến trúc dữ liệu
 
 ```
-HIS eHospital (PROD, SQL Server)
+HIS bệnh viện (PROD, SQL Server)
    │  usp_MedForecast_* — tổng hợp theo tháng, khử định danh (k = 5)      sql_his/prod/
    ▼
 MEDFORECAST_DW trên STA — 12 bảng MF_*, 7 view vw_MedForecast_*        sql_his/sta/

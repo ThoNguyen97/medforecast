@@ -1,8 +1,5 @@
-﻿USE GIAAN115_HIS
-GO
-
-/* prod/03_usp_MedForecast_DayTieuHaoToanVien.sql
-   Chạy trên: HIS PROD (GIAAN115_HIS). Điều kiện: prod/01, sta/03.
+﻿/* prod/03_usp_MedForecast_DayTieuHaoToanVien.sql
+   Chạy trên: HIS PROD, trong ngữ cảnh CSDL HIS. Điều kiện: prod/01, sta/03.
    Mục đích: gom tiêu hao tháng × vật tư toàn viện, tách phần thuộc lượt có chẩn đoán hô hấp,
    đẩy xuống STA MF_TieuHao_Tong (mẫu số DOI và D_baseline); nạp lại cả cửa sổ @SoThang mỗi lần.
    @GomVTYT giữ 1 để còn số liệu đối chứng; view SQLite lọc is_vtyt = 0, không đổi DOI của thuốc. */

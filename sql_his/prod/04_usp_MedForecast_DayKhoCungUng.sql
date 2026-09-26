@@ -1,10 +1,7 @@
 /* prod/04_usp_MedForecast_DayKhoCungUng.sql
-   Chạy trên: HIS PROD (GIAAN115_HIS). Điều kiện: prod/01, sta/02; triển khai xong mới chạy sta/05.
+   Chạy trên: HIS PROD, trong ngữ cảnh CSDL HIS. Điều kiện: prod/01, sta/02; triển khai xong mới chạy sta/05.
    Mục đích: chụp tồn kho theo lô kèm hạn dùng, đẩy xuống STA MF_TonKho_Lo cho T3 (FEFO + DOI).
    Chạy: EXEC dbo.usp_MedForecast_DayKhoCungUng [@ChiXem = 1]; */
-USE GIAAN115_HIS
-GO
-
 CREATE OR ALTER PROCEDURE dbo.usp_MedForecast_DayKhoCungUng
     @BENHVIEN_ID  VARCHAR(8) = NULL,   -- khi DB chứa nhiều bệnh viện
     @GomVTYT      BIT        = 0,      -- 0 = chỉ thuốc
