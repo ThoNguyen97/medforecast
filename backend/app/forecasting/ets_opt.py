@@ -1,15 +1,10 @@
-"""ETS Holt–Winters (tuỳ chọn, cần statsmodels) — thành viên thứ năm của ensemble.
+"""ETS Holt–Winters (tuỳ chọn, cần statsmodels), thành viên làm mượt hàm mũ của ensemble.
 
-Vì sao thêm (11/09/2026): ba thành viên numpy đều là hồi quy có mùa trên
-log1p; SARIMAX là ARIMA. Chưa có thành viên làm mượt hàm mũ — họ mô hình mà
-với chuỗi tháng có mùa vụ mạnh và mức nền trôi (COVID 2020–2021, dịch chuyển
-chế độ ghi nhận 2025) thường bám mức nền gần đây tốt hơn hồi quy toàn lịch
-sử. Thêm với tư cách ứng viên; trọng số thích ứng (combine.py) sẽ tự hạ nếu
-nó không giúp, và bảng thanhvien.csv/ket_hop.csv ghi lại bằng chứng.
+Bổ sung cho các thành viên hồi quy mùa và SARIMAX: bám mức nền gần đây tốt hơn khi
+mức nền trôi (COVID 2020–2021). Trọng số thích ứng (combine.py) tự hạ nếu không giúp.
 
-Cấu hình: xu hướng cộng có giảm chấn (damped) + mùa cộng 12 tháng, khớp trên
-log1p(cases) để phương sai ổn định và không âm; bỏ tháng COVID khỏi ước lượng
-bằng cách nội suy (ETS cần chuỗi liên tục, không bỏ hàng được).
+Cấu hình: xu hướng cộng giảm chấn + mùa cộng 12 tháng, khớp trên log1p(cases) để ổn
+định phương sai và không âm; tháng COVID được nội suy vì ETS cần chuỗi liên tục.
 """
 from __future__ import annotations
 

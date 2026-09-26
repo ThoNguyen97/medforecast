@@ -33,17 +33,13 @@ const ngayHet = (doi: number | null | undefined) => {
 };
 
 /**
- * Cảnh báo thiếu hụt — 12/09/2026.
+ * Cảnh báo thiếu hụt.
  *
- * Trang này và Tổng quan đọc CÙNG một chuỗi Tầng 1 → 2 → 3
- * (/dashboard/v2/alerts): cùng dự báo Ŷ_g, cùng định mức thực nghiệm, cùng
- * ngưỡng `dss.thresholds`. Khác biệt duy nhất: ở đây trả mọi dòng, phân trang
- * server, có tìm kiếm và lọc danh mục. Không có cột "đề xuất nhập" — phạm vi
- * dừng ở cảnh báo; Δ_need = max(0, nhu cầu horizon − tồn hữu dụng) là mức
- * thiếu hụt dự kiến, không phải lượng mua.
- *
- * Trước 12/09 trang này gọi supply_recommendation_service (định mức nhập tay
- * × tỷ lệ Nhẹ/TB/Nặng, ngưỡng 3/7/14) nên ra con số khác Dashboard.
+ * Dùng cùng chuỗi Tầng 1 → 2 → 3 với Tổng quan (/dashboard/v2/alerts): cùng dự
+ * báo Ŷ_g, định mức thực nghiệm và ngưỡng `dss.thresholds`; khác ở chỗ trả mọi
+ * dòng, phân trang server, có tìm kiếm và lọc danh mục. Phạm vi dừng ở cảnh báo:
+ * Δ_need = max(0, nhu cầu horizon − tồn hữu dụng) là mức thiếu hụt dự kiến,
+ * không phải lượng mua.
  */
 export default function Alerts() {
   const { setPageTitle } = useUIStore();
@@ -104,7 +100,7 @@ export default function Alerts() {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
+      {/* Tiêu đề trang */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-3xl font-extrabold text-neutral-900">Cảnh báo thiếu hụt</h2>
@@ -141,8 +137,7 @@ export default function Alerts() {
         </div>
       )}
 
-      {/* KPI — Dự báo kỳ tới đứng đầu: đó là đầu vào sinh ra bốn con số màu
-          phía sau, đọc trái sang phải là đúng chiều nhân quả. */}
+      {/* KPI: Dự báo kỳ tới đứng đầu vì là đầu vào của bốn chỉ số màu phía sau. */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <KpiTile
           label="Dự báo kỳ tới"

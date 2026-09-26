@@ -1,11 +1,11 @@
-"""User model."""
+"""Model người dùng."""
 from sqlalchemy import Column, Integer, String, Boolean, DateTime
 from sqlalchemy.sql import func
 from app.database import Base
 
 
 class User(Base):
-    """User model for authentication and authorization."""
+    """Tài khoản người dùng phục vụ xác thực và phân quyền."""
     
     __tablename__ = "users"
     

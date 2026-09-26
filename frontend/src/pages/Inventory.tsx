@@ -20,21 +20,15 @@ import InventoryTable, {
 const PAGE_SIZE = 10;
 
 /**
- * Module 6 — Danh mục & tồn kho (đổi tên 20/09/2026; trước đó "Quản lý thuốc",
- * trước nữa "Vật tư y tế & Kho vận"). Tên cũ quá bao trùm nên người dùng tưởng
- * mọi việc về thuốc đều nằm ở đây, kể cả danh sách cần xử lý — vốn là trang
- * Cảnh báo thiếu hụt.
+ * Module 6 — Danh mục & tồn kho (chỉ gồm thuốc: `TM_DUOC` loại 'T').
  *
- * Danh mục app chỉ có THUỐC (`TM_DUOC` loại 'T', phương án A) nên trang đổi
- * tên cho đúng nội dung. Nhãn trên mỗi dòng là nhãn DOI từ
- * `/dashboard/v2/alerts?focus=false` — CÙNG chuỗi Tầng 1→2→3 với Tổng quan và
- * Cảnh báo; hệ nhãn "Ngưỡng an toàn / Nguy cấp" theo `safety_stock` (cột chỉ
- * có giá trị ở 34/5.051 dòng) đã bỏ hẳn.
+ * Nhãn mỗi dòng là nhãn DOI từ `/dashboard/v2/alerts?focus=false`, cùng chuỗi
+ * Tầng 1→2→3 với Tổng quan và Cảnh báo; không xếp loại theo `safety_stock` vì
+ * cột này hầu như không có giá trị. Danh sách cần xử lý nằm ở trang Cảnh báo.
  *
- * Nguồn dữ liệu: `/inventory` cho danh mục + id để sửa/xoá; `/dashboard/v2/alerts`
- * cho DOI. Ghép theo `supply_code` ở client. Mã không có tiêu hao trong 12 kỳ
- * đã chốt (không có mẫu số) ẩn mặc định — bật lại bằng ô "Hiện cả mã không
- * tiêu hao".
+ * Nguồn: `/inventory` cho danh mục và id sửa/xoá, `/dashboard/v2/alerts` cho DOI,
+ * ghép theo `supply_code` ở client. Mã không có tiêu hao trong 12 kỳ đã chốt
+ * (không có mẫu số DOI) ẩn mặc định, bật bằng ô "Hiện cả mã không tiêu hao".
  */
 export default function Inventory() {
   const { setPageTitle } = useUIStore();
@@ -47,18 +41,14 @@ export default function Inventory() {
 }
 
 function InventoryContent() {
-  // Import / thêm mới đi qua POST /inventory/import — endpoint đòi
-  // get_inventory_manager_or_admin; không có quyền mà vẫn hiện nút thì bấm
-  // vào chỉ nhận 403.
-  // PHẢI khai ở ĐÂY chứ không phải ở Inventory(): các nút dùng biến này nằm
-  // trong InventoryContent — khai nhầm chỗ thì lúc chạy ném ReferenceError và
-  // React gỡ toàn bộ cây (trắng cả trang).
+  // Import / thêm mới qua POST /inventory/import yêu cầu quyền
+  // get_inventory_manager_or_admin; ẩn nút khi không có quyền để tránh 403.
+  // Khai báo trong InventoryContent vì các nút dùng biến này nằm ở đây.
   const { user } = useAuthStore();
   const duocSuaKho =
     user?.role === 'Administrator' || user?.role === 'Inventory_Manager';
 
-  // ?q=<mã> — trang Cảnh báo mở sang đây bằng đường dẫn này, điền sẵn ô tìm
-  // kiếm để không phải gõ lại mã.
+  // ?q=<mã>: trang Cảnh báo mở sang đây kèm mã để điền sẵn ô tìm kiếm.
   const [searchParams] = useSearchParams();
   const [filters, setFilters] = useState<InventoryFilters>({
     search: searchParams.get('q') ?? '',
@@ -83,7 +73,7 @@ function InventoryContent() {
 
   const { data: inventory = [], isLoading, refetch } = useInventory({ limit: 5000 });
 
-  // Toàn danh mục DOI, một lần (limit 2000 > 1.476 mã có tiêu hao 12 kỳ).
+  // Nạp DOI toàn danh mục một lần; limit 2000 đủ phủ mọi mã có tiêu hao trong 12 kỳ.
   const doiQuery = useQuery({
     queryKey: ['dss', 'alerts', 'inventory-page'],
     queryFn: () => dssService.getAlerts({ focus: false, level: null, limit: 2000, offset: 0 }),
@@ -162,7 +152,7 @@ function InventoryContent() {
     setPage(1);
   }, [filters.search, filters.category, filters.status, filters.showUnmeasured]);
 
-  // ── Handlers ─────────────────────────────────────────────────────────────────
+  // ── Xử lý sự kiện ──────────────────────────────────────────────────────────
   const handleDownloadTemplate = () => {
     window.open(`${api.defaults.baseURL}/inventory/template`, '_blank');
   };
@@ -416,16 +406,16 @@ function InventoryContent() {
   );
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Hàm hỗ trợ ───────────────────────────────────────────────────────────────
 
-/** `category` từ HIS đã là nhãn tiếng Việt; chỉ dữ liệu import tay đời trước
- * mới còn khoá kiểu `medicine`. */
+/** `category` từ HIS đã là nhãn tiếng Việt; chỉ dữ liệu nhập tay mới dùng khoá
+ * kiểu `medicine`. */
 function nhanDanhMuc(category: string | null | undefined): string {
   if (!category) return 'Khác';
   return SUPPLY_CATEGORY_LABELS[category] ?? category;
 }
 
-/** 8 nhãn danh mục thuốc cho hộp thoại Thêm (không gồm khoá VTYT/legacy). */
+/** 8 nhãn danh mục thuốc cho hộp thoại Thêm (không gồm khoá VTYT). */
 const DANH_MUC_THUOC = Object.keys(SUPPLY_CATEGORY_LABELS).filter(
   (k) => SUPPLY_CATEGORY_LABELS[k] === k,
 );
@@ -468,7 +458,7 @@ function ActionButton({
 }
 
 
-// ── Add Supply Dialog (spec 6.2 #2) ──────────────────────────────────────────
+// ── Hộp thoại thêm thuốc ──────────────────────────────────────────
 
 function AddSupplyDialog({
   onClose,
@@ -500,13 +490,10 @@ function AddSupplyDialog({
     }
     try {
       setSubmitting(true);
-      // MỘT lệnh duy nhất: POST /inventory/import tự tạo MedicalSupply nếu chưa
-      // có (sinh supply_code dạng VT_AUTO_... khi để trống) rồi tạo luôn dòng
-      // tồn kho kèm hạn dùng.
-      // KHÔNG gọi POST /supplies/ nữa: schema MedicalSupplyCreate bắt buộc
-      // supply_code, drug_code, ten_hoat_chat, group_name và không có trường
-      // 'name', nên lệnh cũ luôn 422; endpoint đó còn đòi quyền Administrator
-      // trong khi màn hình này mở cho cả Inventory_Manager.
+      // Một lệnh POST /inventory/import: tự tạo MedicalSupply nếu chưa có (sinh
+      // supply_code dạng VT_AUTO_... khi để trống) rồi tạo dòng tồn kho kèm hạn dùng.
+      // Không dùng POST /supplies/ vì schema MedicalSupplyCreate đòi các trường
+      // form không có và endpoint đó chỉ mở cho Administrator.
       const oCsv = (v: string | number) => {
         const t = String(v ?? '');
         return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
@@ -531,8 +518,8 @@ function AddSupplyDialog({
       const res = await api.post('/inventory/import', fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      // Endpoint trả 200 kèm danh sách dòng bị bỏ qua chứ không ném lỗi — nếu
-      // không kiểm thì hộp thoại đóng lại như thể đã thêm xong.
+      // Endpoint trả 200 kèm danh sách dòng bị bỏ qua thay vì báo lỗi, nên phải
+      // kiểm tra trước khi đóng hộp thoại.
       const kq = res?.data ?? {};
       if (((kq.imported ?? 0) + (kq.updated ?? 0)) === 0) {
         setError(
@@ -673,7 +660,7 @@ function Field({
 }
 
 
-// ── Edit Supply Dialog ──────────────────────────────────────────
+// ── Hộp thoại sửa thuốc ──────────────────────────────────────────
 
 function EditSupplyDialog({
   item,
@@ -771,7 +758,7 @@ function EditSupplyDialog({
 }
 
 
-// ── Confirm Delete Dialog ──────────────────────────────────────────
+// ── Hộp thoại xác nhận xoá ──────────────────────────────────────────
 
 function ConfirmDeleteDialog({
   item,

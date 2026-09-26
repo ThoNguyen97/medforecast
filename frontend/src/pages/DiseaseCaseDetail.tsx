@@ -63,11 +63,10 @@ export default function DiseaseCaseDetail() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string>('');
 
-  // Filters trong trang chi tiết
+  // Bộ lọc trong trang chi tiết
   const [supplyKeyword, setSupplyKeyword] = useState('');
   const [diseaseFilter, setDiseaseFilter] = useState<string>('all');
   
-  // Phân trang
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
@@ -113,12 +112,11 @@ export default function DiseaseCaseDetail() {
     });
   }, [data, diseaseFilter, supplyKeyword]);
 
-  // Reset trang về 1 khi filter thay đổi
+  // Đổi bộ lọc thì quay về trang 1
   useEffect(() => {
     setCurrentPage(1);
   }, [diseaseFilter, supplyKeyword]);
 
-  // Phân trang
   const totalPages = Math.ceil(filteredSupplies.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
@@ -185,7 +183,7 @@ export default function DiseaseCaseDetail() {
         <span className="text-neutral-700">Chi tiết sử dụng thuốc</span>
       </div>
 
-      {/* Page header */}
+      {/* Tiêu đề trang */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <div className="flex items-center gap-3 flex-wrap">
@@ -398,7 +396,7 @@ export default function DiseaseCaseDetail() {
           </tbody>
         </table>
 
-        {/* Footer với phân trang */}
+        {/* Phân trang */}
         {filteredSupplies.length > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-t border-neutral-100 text-sm text-neutral-500">
             <span className="text-xs">
@@ -417,7 +415,6 @@ export default function DiseaseCaseDetail() {
                 
                 <div className="flex items-center gap-1">
                   {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                    // Hiển thị tối đa 5 trang
                     let pageNum;
                     if (totalPages <= 5) {
                       pageNum = i + 1;

@@ -17,7 +17,7 @@ describe('formatNumber', () => {
 
   it('formats a large number with thousand separators (vi-VN locale)', () => {
     const result = formatNumber(1000000);
-    // vi-VN uses dots for thousands
+    // vi-VN dùng dấu chấm phân tách hàng nghìn
     expect(result).toMatch(/1[.,\u202F]000[.,\u202F]?000/);
   });
 
@@ -48,7 +48,7 @@ describe('formatCurrency', () => {
 
 describe('formatDate', () => {
   it('formats a date string to dd/mm/yyyy', () => {
-    // Use a fixed date that won't depend on timezone offset for the year/month/day
+    // Mốc cố định để ngày/tháng/năm không phụ thuộc múi giờ
     const result = formatDate('2024-01-15');
     expect(result).toMatch(/15/);
     expect(result).toMatch(/01|1/);
@@ -65,7 +65,7 @@ describe('formatDateTime', () => {
   it('includes both date and time parts', () => {
     const result = formatDateTime('2024-01-15T10:30:00');
     expect(result).toMatch(/2024/);
-    // Time parts - colon separator is universal
+    // Phần giờ luôn dùng dấu hai chấm
     expect(result).toMatch(/:/);
   });
 });
@@ -87,25 +87,25 @@ describe('formatRelativeTime', () => {
   });
 
   it('returns minutes ago for recent times', () => {
-    const past = new Date('2024-06-01T11:45:00'); // 15 min ago
+    const past = new Date('2024-06-01T11:45:00'); // 15 phút trước
     const result = formatRelativeTime(past.toISOString());
     expect(result).toBe('15 phút trước');
   });
 
   it('returns hours ago for times within 24 hours', () => {
-    const past = new Date('2024-06-01T10:00:00'); // 2 hours ago
+    const past = new Date('2024-06-01T10:00:00'); // 2 giờ trước
     const result = formatRelativeTime(past.toISOString());
     expect(result).toBe('2 giờ trước');
   });
 
   it('returns days ago for times within a week', () => {
-    const past = new Date('2024-05-29T12:00:00'); // 3 days ago
+    const past = new Date('2024-05-29T12:00:00'); // 3 ngày trước
     const result = formatRelativeTime(past.toISOString());
     expect(result).toBe('3 ngày trước');
   });
 
   it('returns formatted date for times more than a week ago', () => {
-    const past = new Date('2024-05-01T12:00:00'); // > 7 days ago
+    const past = new Date('2024-05-01T12:00:00'); // hơn 7 ngày trước
     const result = formatRelativeTime(past.toISOString());
     expect(result).toMatch(/2024/);
   });

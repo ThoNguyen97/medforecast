@@ -7,7 +7,7 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Stitch Design System - Medical/Healthcare UI
+        // Bảng màu giao diện (Stitch Design System)
         primary: {
           50: '#eff6ff',
           100: '#dbeafe',
@@ -15,7 +15,7 @@ export default {
           300: '#93c5fd',
           400: '#60a5fa',
           500: '#3b82f6',
-          600: '#2563EB',  // Primary blue
+          600: '#2563EB',
           700: '#1d4ed8',
           800: '#1e40af',
           900: '#1e3a8a',
@@ -27,7 +27,7 @@ export default {
           300: '#86efac',
           400: '#4ade80',
           500: '#22c55e',
-          600: '#16A34A',  // Success green
+          600: '#16A34A',
           700: '#15803d',
           800: '#166534',
           900: '#14532d',
@@ -39,7 +39,7 @@ export default {
           300: '#fdba74',
           400: '#fb923c',
           500: '#f97316',
-          600: '#EA580C',  // Warning orange
+          600: '#EA580C',
           700: '#c2410c',
           800: '#9a3412',
           900: '#7c2d12',
@@ -51,7 +51,7 @@ export default {
           300: '#fca5a5',
           400: '#f87171',
           500: '#ef4444',
-          600: '#DC2626',  // Danger red
+          600: '#DC2626',
           700: '#b91c1c',
           800: '#991b1b',
           900: '#7f1d1d',

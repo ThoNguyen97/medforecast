@@ -1,1 +1,1 @@
-# MedForecast AI Backend Application
+# Backend MedForecast AI

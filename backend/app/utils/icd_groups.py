@@ -1,19 +1,15 @@
 # -*- coding: utf-8 -*-
-"""Ba nhóm ICD của đề tài — nguồn danh mục DUY NHẤT cho backend.
+"""Danh mục ba nhóm ICD hô hấp, nguồn duy nhất cho backend.
 
-Vì sao mọi combobox/bộ lọc phải theo NHÓM chứ không theo mã lẻ:
-  - Đề cương chốt phạm vi ba nhóm, dự báo cấp nhóm rồi phân bổ về mã.
-  - Backtest 09/08/2026 trên dữ liệu HIS thật: chuỗi nhóm ổn định
-    (MASE 0,51–0,65), chuỗi mã lẻ thưa làm mô hình nổ (bottom-up
-    MASE 483 ở cửa sổ 2022/J09-J18).
-Mức MÃ vẫn tồn tại trong dữ liệu (cần cho phân bổ top-down và ánh xạ
-vật tư) — chỉ tầng hiển thị/lọc là theo nhóm.
+Bộ lọc và combobox theo nhóm vì dự báo ở cấp nhóm rồi phân bổ top-down về mã:
+chuỗi nhóm ổn định, còn chuỗi mã lẻ thưa làm mô hình mất ổn định. Mức mã vẫn
+có trong dữ liệu để phân bổ và ánh xạ vật tư; chỉ tầng hiển thị/lọc theo nhóm.
 """
 from __future__ import annotations
 
 from typing import List, Optional
 
-# Thứ tự cố định — cũng là thứ tự hiển thị trên UI
+# Thứ tự cố định, cũng là thứ tự hiển thị trên UI
 NHOM_ICD: dict[str, str] = {
     "J00-J06": "Nhiễm khuẩn cấp đường hô hấp trên",
     "J09-J18": "Cúm và viêm phổi",
@@ -42,8 +38,8 @@ def nhom_cua_ma(icd_code: str) -> Optional[str]:
 def dieu_kien_nhom(DiseaseCase, nhom: str):
     """Điều kiện SQLAlchemy lọc DiseaseCase theo nhóm.
 
-    Ưu tiên cột disease_group (do cầu nối đồng bộ điền); OR thêm dải mã để
-    không bỏ sót bản ghi cũ nhập trước khi cột tồn tại (giá trị NULL).
+    Dùng cột disease_group (do đồng bộ điền), OR thêm dải mã để không bỏ sót
+    bản ghi có disease_group NULL.
     """
     from sqlalchemy import or_
     return or_(DiseaseCase.disease_group == nhom,
@@ -51,8 +47,7 @@ def dieu_kien_nhom(DiseaseCase, nhom: str):
 
 
 def dieu_kien_benh(DiseaseCase, khoa: str):
-    """Bộ lọc 'bệnh' dùng chung: nhận KHOÁ NHÓM ('J09-J18') là chính,
-    vẫn nhận mã lẻ ('J20') để tương thích API cũ / drill-down."""
+    """Bộ lọc 'bệnh' dùng chung: nhận khoá nhóm ('J09-J18') hoặc mã lẻ ('J20') khi drill-down."""
     if khoa in NHOM_ICD:
         return dieu_kien_nhom(DiseaseCase, khoa)
     return DiseaseCase.icd_code == khoa

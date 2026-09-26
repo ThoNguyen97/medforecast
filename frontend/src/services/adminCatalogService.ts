@@ -13,14 +13,14 @@ export interface DiseaseGroupItem {
   icd_codes: string[];
 }
 
-export interface RegionItem {
+interface RegionItem {
   name: string;
   province?: string | null;
   description?: string | null;
 }
 
 export const adminCatalogService = {
-  // ── Diseases ──────────────────────────────────────────────────────────
+  // ── Danh mục bệnh ──────────────────────────────────────────────────────────
   async listDiseases(): Promise<DiseaseItem[]> {
     const res = await api.get<DiseaseItem[]>('/admin/diseases');
     return res.data;
@@ -37,7 +37,7 @@ export const adminCatalogService = {
     await api.delete(`/admin/diseases/${encodeURIComponent(key)}`);
   },
 
-  // ── Disease groups ────────────────────────────────────────────────────
+  // ── Nhóm bệnh ────────────────────────────────────────────────────
   async listDiseaseGroups(): Promise<DiseaseGroupItem[]> {
     const res = await api.get<DiseaseGroupItem[]>('/admin/disease-groups');
     return res.data;
@@ -54,16 +54,9 @@ export const adminCatalogService = {
     await api.delete(`/admin/disease-groups/${encodeURIComponent(key)}`);
   },
 
-  // ── Regions ───────────────────────────────────────────────────────────
+  // ── Khu vực ───────────────────────────────────────────────────────────
   async listRegions(): Promise<RegionItem[]> {
     const res = await api.get<RegionItem[]>('/admin/regions');
     return res.data;
-  },
-  async createRegion(payload: RegionItem): Promise<RegionItem> {
-    const res = await api.post<RegionItem>('/admin/regions', payload);
-    return res.data;
-  },
-  async deleteRegion(name: string): Promise<void> {
-    await api.delete(`/admin/regions/${encodeURIComponent(name)}`);
   },
 };

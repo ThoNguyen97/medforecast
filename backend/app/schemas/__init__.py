@@ -1,63 +1,48 @@
-"""Pydantic schemas for request/response validation."""
+"""Schema Pydantic cho kiểm tra dữ liệu request/response."""
 from app.schemas.base import (
     # Enums
     UserRole,
-    DiseaseType,
-    LogLevel,
-    # Base helpers
+    # Lớp nền
     ORMBase,
     PaginatedResponse,
     # Auth
     Token,
-    TokenData,
-    # Users
+    # Người dùng
     UserBase,
     UserCreate,
     UserUpdate,
     UserResponse,
     UserLogin,
-    # Medical Supplies
+    # Thuốc/vật tư
     MedicalSupplyBase,
-    MedicalSupplyCreate,
-    MedicalSupplyUpdate,
     MedicalSupplyResponse,
-    # Inventory
+    # Tồn kho
     InventoryBase,
     InventoryUpdate,
     InventoryResponse,
-    # Environmental Data
+    # Dữ liệu môi trường
     EnvironmentalDataBase,
     EnvironmentalDataCreate,
     EnvironmentalDataResponse,
-    # Disease Cases
+    # Ca bệnh
     DiseaseCaseBase,
     DiseaseCaseCreate,
     DiseaseCaseResponse,
-    # Forecasts
-    ForecastRequest,
-    DiseaseForecastResponse,
+    # Dự báo
     # Dashboard
-    DashboardOverview,
-    SupplyDemandPoint,
-    SupplyDemandForecast,
 )
 
 __all__ = [
     "UserRole",
-    "DiseaseType",
-    "LogLevel",
     "ORMBase",
     "PaginatedResponse",
     "Token",
-    "TokenData",
     "UserBase",
     "UserCreate",
     "UserUpdate",
     "UserResponse",
     "UserLogin",
     "MedicalSupplyBase",
-    "MedicalSupplyCreate",
-    "MedicalSupplyUpdate",
     "MedicalSupplyResponse",
     "InventoryBase",
     "InventoryUpdate",
@@ -68,9 +53,4 @@ __all__ = [
     "DiseaseCaseBase",
     "DiseaseCaseCreate",
     "DiseaseCaseResponse",
-    "ForecastRequest",
-    "DiseaseForecastResponse",
-    "DashboardOverview",
-    "SupplyDemandPoint",
-    "SupplyDemandForecast",
 ]

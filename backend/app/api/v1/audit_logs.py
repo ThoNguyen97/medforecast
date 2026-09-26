@@ -1,14 +1,11 @@
-"""
-Audit & Logs API endpoints.
-
-All endpoints are restricted to Administrator users (Requirement 10, 12.5).
+"""API nhật ký kiểm toán (audit_logs) và nhật ký hệ thống; mọi endpoint chỉ dành cho Administrator.
 
 Routes
 ------
-GET  /api/v1/audit-logs              – Paginated audit log entries (Admin only)
-GET  /api/v1/system-logs             – Paginated system log entries (Admin only)
-GET  /api/v1/system-logs/errors      – Shortcut: ERROR-level logs only (Admin only)
-POST /api/v1/system-logs/cleanup     – Manually trigger log retention cleanup (Admin only)
+GET  /api/v1/audit-logs              – Nhật ký kiểm toán, phân trang
+GET  /api/v1/system-logs             – Nhật ký hệ thống, phân trang
+GET  /api/v1/system-logs/errors      – Chỉ các dòng mức ERROR
+POST /api/v1/system-logs/cleanup     – Chạy dọn nhật ký theo hạn lưu giữ
 """
 
 import logging
@@ -33,7 +30,7 @@ router = APIRouter(tags=["audit-logs"])
 logger = logging.getLogger(__name__)
 
 
-# ── Audit Logs ─────────────────────────────────────────────────────────────────
+# ── Nhật ký kiểm toán ──
 
 @router.get("/audit-logs", response_model=AuditLogListResponse)
 def list_audit_logs(
@@ -57,15 +54,8 @@ def list_audit_logs(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_admin_user),
 ) -> AuditLogListResponse:
-    """
-    Return a paginated list of audit log entries.
-
-    Shows all data modification events logged by the system (creates, updates,
-    deletes across all modules).  Supports filtering by date range, user, action
-    type, and affected table.
-
-    **Requires Administrator role.**
-    """
+    """Danh sách thao tác thay đổi dữ liệu (tạo/sửa/xoá) có phân trang, lọc theo
+    khoảng thời gian, người dùng, loại thao tác và bảng. Yêu cầu Administrator."""
     logger.info(
         "Audit logs requested by admin=%s page=%d page_size=%d "
         "start=%s end=%s user_id=%s action=%s table=%s",
@@ -97,12 +87,7 @@ def list_audit_logs(
     )
 
 
-# ── System Logs ────────────────────────────────────────────────────────────────
-
-# NOTE: The /errors fixed-path route MUST be declared before the generic
-# /system-logs route is registered in main.py.  Because both are on the same
-# router prefix, FastAPI sees the exact path "/system-logs/errors" before it
-# could match a wildcard, so declaration order in this file is fine.
+# ── Nhật ký hệ thống ──
 
 @router.get("/system-logs/errors", response_model=SystemLogListResponse)
 def list_error_logs(
@@ -122,14 +107,8 @@ def list_error_logs(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_admin_user),
 ) -> SystemLogListResponse:
-    """
-    Return a paginated list of ERROR-level system log entries.
-
-    Convenience shortcut equivalent to `GET /system-logs?log_level=ERROR`.
-    Supports filtering by date range and module name.
-
-    **Requires Administrator role.**
-    """
+    """Nhật ký hệ thống mức ERROR, tương đương `GET /system-logs?log_level=ERROR`;
+    lọc theo khoảng thời gian và module. Yêu cầu Administrator."""
     logger.info(
         "Error logs requested by admin=%s page=%d page_size=%d "
         "start=%s end=%s module=%s",
@@ -179,15 +158,8 @@ def list_system_logs(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_admin_user),
 ) -> SystemLogListResponse:
-    """
-    Return a paginated list of system log entries.
-
-    Shows errors, warnings, and informational messages recorded by the system.
-    Supports filtering by date range, log level (ERROR / WARNING / INFO), and
-    module name.
-
-    **Requires Administrator role.**
-    """
+    """Nhật ký hệ thống có phân trang, lọc theo khoảng thời gian, mức
+    (ERROR / WARNING / INFO) và module. Yêu cầu Administrator."""
     logger.info(
         "System logs requested by admin=%s page=%d page_size=%d "
         "start=%s end=%s level=%s module=%s",
@@ -216,7 +188,7 @@ def list_system_logs(
     )
 
 
-# ── Log Retention Cleanup ──────────────────────────────────────────────────────
+# ── Dọn nhật ký ──
 
 @router.post("/system-logs/cleanup", status_code=200)
 def trigger_log_cleanup(
@@ -227,17 +199,8 @@ def trigger_log_cleanup(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_admin_user),
 ) -> dict:
-    """
-    Manually trigger the log retention cleanup.
-
-    Deletes audit log and system log entries older than *retention_days* days
-    (default: 90 days, per Requirement 12.4).
-
-    The deletion runs as a **background task** so the response is returned
-    immediately.  Check server logs for the completion message.
-
-    **Requires Administrator role.**
-    """
+    """Xoá nhật ký kiểm toán và nhật ký hệ thống cũ hơn `retention_days` ngày
+    (mặc định 90). Chạy nền nên phản hồi trả ngay; yêu cầu Administrator."""
     logger.info(
         "Log cleanup triggered by admin=%s retention_days=%d",
         current_user.username,

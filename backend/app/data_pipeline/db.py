@@ -3,8 +3,8 @@
 Tách khỏi app.database để pipeline chạy độc lập (CLI, cron) và dễ test.
 Ưu tiên PIPELINE_DB_URL, sau đó DATABASE_URL, cuối cùng SQLite mặc định.
 
-Ví dụ Postgres (triển khai):  postgresql+psycopg2://user:pass@host:5432/medforecast
-Ví dụ SQLite  (đồ án/dev):    sqlite:///./data/medforecast_dw.db
+Ví dụ SQLite:   sqlite:///./data/medforecast.db
+Ví dụ Postgres: postgresql+psycopg2://user:pass@host:5432/medforecast
 """
 from __future__ import annotations
 
@@ -18,14 +18,10 @@ Base = declarative_base()
 
 
 def get_db_url() -> str:
-    """URL của DB tầng dữ liệu, theo thứ tự ưu tiên.
+    """URL của DB tầng dữ liệu: PIPELINE_DB_URL → DATABASE_URL → app.config → SQLite mặc định.
 
-    11/09/2026 — thêm bậc 3 (app.config): khi chạy TRONG app mà `.env` không có
-    (clone sạch), hai bậc đầu đều rỗng nên bảng mart/fact rơi vào
-    `medforecast_dw.db` — một FILE KHÁC với DB của app. Hậu quả im lặng: app tạo
-    bảng xong, đồng bộ xong, mà Dashboard không thấy dòng nào. Đọc thêm cấu hình
-    của app (nếu import được) giữ mọi thứ trong CÙNG một file; chạy CLI độc lập
-    không có app vẫn rơi về mặc định cũ.
+    Bậc app.config giữ bảng mart/fact trong cùng file DB với app khi không có `.env`;
+    nếu thiếu, pipeline ghi vào `medforecast_dw.db` riêng và Dashboard không thấy dữ liệu.
     """
     url = os.environ.get("PIPELINE_DB_URL") or os.environ.get("DATABASE_URL")
     if url:
@@ -46,7 +42,6 @@ def make_engine(url: str | None = None):
         if db_path not in (":memory:", ""):
             Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         return create_engine(url, connect_args={"check_same_thread": False})
-    # Postgres / others
     return create_engine(url, pool_pre_ping=True)
 
 

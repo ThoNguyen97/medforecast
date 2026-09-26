@@ -1,27 +1,12 @@
-"""KẾT HỢP THÍCH ỨNG các thành viên ensemble + HIỆU CHỈNH LỆCH HỆ THỐNG (M12, 11/09/2026).
+"""Kết hợp thích ứng các thành viên ensemble và hiệu chỉnh lệch hệ thống.
 
-Vì sao cần
-----------
-`Ensemble.predict()` lấy TRUNG BÌNH ĐỀU. Walk-forward 11/09/2026 (bench cloud,
-đủ SARIMAX) cho thấy chỉ cần bỏ một thành viên yếu (poisson_trend) là RelMAE
-mức mã đi từ 0,659 xuống 0,617 — tức trung bình đều đang để một mô hình tồi
-kéo cả tổ hợp. Nhưng "bỏ hẳn" là quyết định cứng của người, đúng hôm nay sai
-ngày mai. Cách đúng: để DỮ LIỆU quyết định trọng số, và quyết định lại mỗi
-bước theo sai số gần đây của từng thành viên — Bates & Granger (1969),
-Timmermann (2006): trọng số nghịch đảo sai số trên cửa sổ trượt.
+- Trọng số nghịch đảo MAE trên cửa sổ trượt (Bates & Granger 1969; Timmermann 2006),
+  tính lại mỗi bước, để thành viên yếu không kéo cả tổ hợp như trung bình đều.
+- Hệ số nhân từ trung vị tỷ số thực tế/dự báo gần đây (co về 1, có chặn) để sửa
+  lệch một chiều theo nhóm mà trung bình đều không tự sửa.
 
-Thứ hai, ba khối có LỆCH HỆ THỐNG một chiều: J09-J18 hụt ~−15 %, J20-J22 thừa
-~+13 %, kỳ này qua kỳ khác. Trung bình đều không tự sửa. Một hệ số nhân ước
-lượng từ tỷ số thực tế/dự báo của các bước gần đây (co về 1 để không chạy
-theo nhiễu) sửa được phần đó — và vì ước lượng CHỈ từ quá khứ nên vẫn là
-walk-forward trung thực.
-
-Cả hai đều là "lớp trên" của ensemble như docstring cũ của `Ensemble` đã hẹn:
-"Nếu cần trọng số nghịch đảo MSE thì làm ở lớp trên với kết quả backtest,
-không giấu vào đây."
-
-Trạng thái được cập nhật TUẦN TỰ: gọi `combine()` cho bước t bằng lịch sử
-tới t−1, rồi `update()` với thực tế của t. Không bao giờ nhìn thấy tương lai.
+Trạng thái cập nhật tuần tự: `combine()` cho bước t dùng lịch sử tới t−1, rồi
+`update()` với thực tế của t, nên walk-forward không nhìn thấy tương lai.
 """
 from __future__ import annotations
 
@@ -35,7 +20,7 @@ class AdaptiveCombiner:
 
     Tham số
     -------
-    mode          'mean' (trung bình đều, hành vi cũ) | 'inv_mae'
+    mode          'mean' (trung bình đều) | 'inv_mae'
     window        số bước gần nhất để tính MAE từng thành viên (12 = 1 mùa)
     power         w_i ∝ MAE_i^(−power); 1 = nghịch đảo, 2 = nghịch đảo bình phương
     min_hist      dưới ngưỡng này (chưa đủ lịch sử) → trung bình đều
@@ -62,12 +47,12 @@ class AdaptiveCombiner:
         self.bias_clip = float(bias_clip)
         # lịch sử sai số tuyệt đối theo thành viên (chỉ các bước thành viên có mặt)
         self._abs_err: Dict[str, List[float]] = {}
-        # tỷ số thực tế / dự báo-đã-kết-hợp (TRƯỚC hiệu chỉnh lệch)
+        # tỷ số thực tế / dự báo đã kết hợp (trước hiệu chỉnh lệch)
         self._ratio: List[float] = []
         self.last_weights: Dict[str, float] = {}
         self.last_bias: float = 1.0
 
-    # ── trọng số ────────────────────────────────────────────────────────
+    # ── Trọng số ──
     def weights(self, names: List[str]) -> Dict[str, float]:
         if not names:
             return {}
@@ -84,14 +69,13 @@ class AdaptiveCombiner:
         known = {n: v for n, v in raw.items() if v is not None}
         if not known:
             return {n: 1.0 / len(names) for n in names}
-        # thành viên chưa có lịch sử nhận trọng số bằng TRUNG BÌNH của các
-        # thành viên đã có — không bị loại, cũng không được ưu ái
+        # Thành viên chưa có lịch sử nhận trọng số bằng trung bình của các thành viên đã có.
         fill = float(np.mean(list(known.values())))
         full = {n: (v if v is not None else fill) for n, v in raw.items()}
         s = sum(full.values())
         return {n: v / s for n, v in full.items()}
 
-    # ── hệ số lệch ──────────────────────────────────────────────────────
+    # ── Hệ số lệch ──
     def bias(self) -> float:
         if not self.bias_correct or len(self._ratio) < self.min_hist:
             return 1.0
@@ -103,7 +87,7 @@ class AdaptiveCombiner:
         f = 1.0 + self.bias_shrink * (med - 1.0)
         return float(np.clip(f, 1.0 / self.bias_clip, self.bias_clip))
 
-    # ── kết hợp ─────────────────────────────────────────────────────────
+    # ── Kết hợp ──
     def combine(self, member_preds: Dict[str, float]) -> Tuple[float, float, Dict[str, float], float]:
         """Trả (dự báo cuối, dự báo trước hiệu chỉnh, trọng số, hệ số lệch)."""
         names = list(member_preds.keys())
@@ -117,9 +101,11 @@ class AdaptiveCombiner:
         return max(0.0, raw * b), raw, w, b
 
     def update(self, member_preds: Dict[str, float], actual: float, raw_combined: float) -> None:
-        """Ghi nhận thực tế của bước vừa dự báo. `raw_combined` là dự báo TRƯỚC
-        hiệu chỉnh lệch — hệ số lệch phải đo trên phần chưa hiệu chỉnh, nếu
-        không nó tự "học" chính mình."""
+        """Ghi nhận thực tế của bước vừa dự báo.
+
+        `raw_combined` là dự báo trước hiệu chỉnh lệch; hệ số lệch phải đo trên phần
+        chưa hiệu chỉnh, nếu không sẽ tự học lại chính nó.
+        """
         for n, p in member_preds.items():
             self._abs_err.setdefault(n, []).append(abs(float(actual) - float(p)))
         if raw_combined > 0:
@@ -137,7 +123,7 @@ class AdaptiveCombiner:
 
 
 def combiner_from_config(cfg) -> AdaptiveCombiner:
-    """Dựng combiner từ ForecastConfig — một chỗ đọc tham số, mọi nơi dùng."""
+    """Dựng combiner từ ForecastConfig."""
     return AdaptiveCombiner(
         mode=getattr(cfg, "combine", "mean"),
         window=getattr(cfg, "combine_window", 12),

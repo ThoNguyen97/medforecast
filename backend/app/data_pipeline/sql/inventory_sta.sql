@@ -1,4 +1,4 @@
--- Đọc tồn kho từ DB trung chuyển MEDFORECAST_DW (máy chủ STAGING).
+-- Tồn kho từ MEDFORECAST_DW trên STA.
 -- View đã gộp theo mã vật tư và áp bảng ánh xạ MF_MapVatTu (nếu có).
 --
 -- Dùng: PIPELINE_INVENTORY_SQL_FILE=inventory_sta.sql

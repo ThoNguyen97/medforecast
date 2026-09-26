@@ -68,7 +68,7 @@ def test_ensemble_weather_flag_runs():
     assert build_default_ensemble(use_weather=True).fit(df).predict(6) >= 0
 
 
-# ── M12: kết hợp thích ứng + hiệu chỉnh lệch ─────────────────────────────
+# ── Kết hợp thích ứng và hiệu chỉnh lệch ──
 
 def test_combiner_mean_equals_plain_average():
     from app.forecasting.combine import AdaptiveCombiner

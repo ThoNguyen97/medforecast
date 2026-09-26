@@ -1,4 +1,4 @@
-"""User management API endpoints."""
+"""API quản lý người dùng (tạo, xem, sửa, vô hiệu hoá); thao tác ghi được ghi audit."""
 import logging
 from typing import List, Any
 from fastapi import APIRouter, Depends, HTTPException, status, Request
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_client_ip(request: Request) -> str:
-    """Extract client IP address from request."""
+    """Lấy IP client, ưu tiên X-Forwarded-For khi chạy sau proxy."""
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
         return forwarded.split(",")[0].strip()
@@ -29,11 +29,7 @@ def create_user(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_admin_user)
 ) -> Any:
-    """
-    Create a new user.
-    
-    Only administrators can create users.
-    """
+    """Tạo người dùng mới (chỉ Administrator)."""
     user_service = UserService(db)
     client_ip = get_client_ip(request)
     
@@ -56,11 +52,7 @@ def list_users(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_admin_user)
 ) -> Any:
-    """
-    List all users.
-    
-    Only administrators can list users.
-    """
+    """Liệt kê người dùng, phân trang skip/limit (chỉ Administrator)."""
     user_service = UserService(db)
     users = user_service.get_users(skip=skip, limit=limit)
     return users
@@ -72,14 +64,9 @@ def get_user(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> Any:
-    """
-    Get user by ID.
-    
-    Users can view their own profile or administrators can view any user.
-    """
+    """Xem một người dùng; người dùng thường chỉ xem được hồ sơ của mình."""
     user_service = UserService(db)
     
-    # Allow users to view their own profile or admins to view any profile
     if current_user.role != "Administrator" and current_user.id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -104,23 +91,17 @@ def update_user(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> Any:
-    """
-    Update user information.
-    
-    Users can update their own profile (except role).
-    Administrators can update any user including role.
-    """
+    """Cập nhật người dùng; người dùng thường chỉ sửa hồ sơ của mình và không đổi
+    được vai trò hay trạng thái kích hoạt."""
     user_service = UserService(db)
     client_ip = get_client_ip(request)
     
-    # Check permissions
     if current_user.role != "Administrator" and current_user.id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions to update this user"
         )
     
-    # Non-admin users cannot change role or is_active status
     if current_user.role != "Administrator":
         if user_data.role is not None:
             raise HTTPException(
@@ -153,12 +134,7 @@ def delete_user(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_admin_user)
 ):
-    """
-    Delete user (soft delete).
-    
-    Only administrators can delete users.
-    Users cannot delete themselves.
-    """
+    """Xoá mềm người dùng (chỉ Administrator, không tự xoá chính mình)."""
     user_service = UserService(db)
     client_ip = get_client_ip(request)
     

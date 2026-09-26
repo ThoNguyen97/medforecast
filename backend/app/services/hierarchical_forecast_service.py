@@ -1,10 +1,8 @@
 """Dự báo mức nhóm từ tầng MART (`mart_monthly_cases_by_block`, kỳ đã chốt).
 
-Hai việc: `forecast_group()` — Ŷ_g + khoảng thực nghiệm cho một khối bằng
-`group_forecast.forecast_group_next` (cùng engine với backtest), và
-`group_series_fingerprint()` — khoá cache theo chuỗi ca + thời tiết + cấu hình.
-Đường phân rã về từng mã (`forecast()`, `inventory_report()`) và router
-/forecast-hier đã archive 13/09/2026 — giao diện không gọi.
+`forecast_group()`: Ŷ_g + khoảng thực nghiệm cho một khối bằng
+`group_forecast.forecast_group_next` (cùng engine với backtest).
+`group_series_fingerprint()`: khoá cache theo chuỗi ca + thời tiết + cấu hình.
 """
 from __future__ import annotations
 from typing import List, Optional
@@ -34,8 +32,7 @@ class HierarchicalForecastService:
         self.db = db
 
     def _rows(self, sql: str, params: dict | None = None):
-        """SELECT trả [] khi bảng chưa tồn tại (chưa đồng bộ); lỗi SQL khác
-        vẫn được ghi log để không bị hiểu nhầm thành "chưa có dữ liệu"."""
+        """Chạy SELECT; lỗi SQL (vd bảng chưa tồn tại) → ghi log cảnh báo và trả []."""
         try:
             return self.db.execute(text(sql), params or {}).fetchall()
         except SQLAlchemyError as exc:
@@ -43,7 +40,7 @@ class HierarchicalForecastService:
             logger.warning("Truy vấn MART lỗi: %s", str(exc)[:200])
             return []
 
-    # ── đọc dữ liệu từ MART / FACT ─────────────────────────────
+    # ── Đọc dữ liệu MART ──
     def list_blocks(self, region: str = TOAN_QUOC) -> List[str]:
         rows = self._rows(
             "SELECT DISTINCT block_code FROM mart_monthly_cases_by_block "
@@ -69,23 +66,16 @@ class HierarchicalForecastService:
             "WHERE region=:r ORDER BY period", {"r": region})
         return pd.DataFrame(rows, columns=["period", "temp", "humidity", "rainfall"])
 
-    # ── dự báo phân cấp ────────────────────────────────────────
-    # ── dự báo MỨC NHÓM, không chia mã (Dashboard) ─────────────
+    # ── Dự báo mức nhóm ──
     def forecast_group(self, block: str, region: str = TOAN_QUOC,
                        target_year: Optional[int] = None,
                        target_month: Optional[int] = None) -> dict:
-        """Ŷ_g + khoảng tin cậy cho MỘT nhóm, bỏ qua bước chia về từng mã.
+        """Ŷ_g + khoảng tin cậy cho một nhóm (không phân rã về từng mã).
 
-        Dashboard chỉ cần con số mức nhóm; `forecast()` đầy đủ còn khớp thêm
-        một ensemble cho MỖI mã (hàng chục mã × 4 thành viên) — tốn gấp nhiều
-        lần mà Dashboard không dùng đến. Cùng ensemble, cùng PRODUCTION_CONFIG,
-        cùng cách dựng khoảng với `forecast()`, nên hai màn hình không lệch số.
-
-        `target_year`/`target_month` — CÙNG một hàm này phục vụ luôn trang
-        Phân tích (kỳ tuỳ chọn, kể cả quá khứ để đối chiếu) thay vì để trang
-        đó tự cộng dự báo từng tỉnh (khác công thức, sinh lệch số 392/424).
-        Bỏ trống = hành vi cũ, luôn là "kỳ tới" ngay sau dữ liệu đã chốt mới
-        nhất (dùng cho Tầng 1 / /dashboard/v2/forecast).
+        Args:
+            target_year, target_month: kỳ đích tuỳ chọn (trang Phân tích, kể cả quá khứ
+                để đối chiếu; chỉ học trên các tháng trước kỳ đích). Bỏ trống → kỳ ngay
+                sau kỳ đã chốt mới nhất (Tầng 1, /dashboard/v2/forecast).
         """
         group = self._group_df(block, region)
         if group.empty:
@@ -109,9 +99,8 @@ class HierarchicalForecastService:
         wdf = self._weather_df(region)
         group_w = group.merge(wdf, on="period", how="left") if not wdf.empty else group
 
-        # Ensemble chỉ dự báo 1 bước sau điểm neo. Kỳ đích xa hơn vẫn tính
-        # (theo mùa `tm`) nhưng phải ghi rõ là ngoại suy nhiều bước, khoảng
-        # thực nghiệm 1 bước không còn đúng nghĩa.
+        # Ensemble dự báo 1 bước sau điểm neo; kỳ đích xa hơn vẫn tính theo mùa `tm`
+        # nhưng được đánh dấu ngoại suy nhiều bước (khoảng 1 bước không còn đúng nghĩa).
         horizon = (ty - int(last["year"])) * 12 + (tm - int(last["month"]))
         gf = forecast_group_next(group_w, tm, cfg)
         base_group, lo, hi, n_resid = float(gf["point"]), gf["lower"], gf["upper"], gf["n_resid"]
@@ -140,16 +129,12 @@ class HierarchicalForecastService:
             "model": {"members_used": gf["members_used"], "members_failed": gf["members_failed"],
                       "weights": gf["weights"], "bias_factor": gf["bias_factor"],
                       "point_raw": round(gf["point_raw"], 1), "config": cfg.as_record()},
-            # Cho phép caller (vd. trang Phân tích khi chọn Toàn quốc) tự tính
-            # "độ chính xác tại chỗ" giống hệt cách du_bao_nhom() đang làm,
-            # thay vì phải fit lại lần hai.
+            # Để nơi gọi tính "độ chính xác tại chỗ" như du_bao_nhom() mà không khớp lại.
             "walk_forward": gf.get("walk_forward"),
         }
 
     def group_series_fingerprint(self, block: str, region: str = TOAN_QUOC) -> str:
-        """Dấu vân tay của đầu vào dự báo nhóm: đổi khi chuỗi ca, thời tiết
-        hoặc cấu hình đổi. Dùng làm khoá cache — không cần xoá cache tay sau
-        mỗi lần đồng bộ, khoá tự khác đi."""
+        """Dấu vân tay đầu vào dự báo nhóm (chuỗi ca, thời tiết, cấu hình), dùng làm khoá cache."""
         import hashlib, json
         g = self._group_df(block, region)
         w = self._weather_df(region)
@@ -160,5 +145,3 @@ class HierarchicalForecastService:
             "cfg": PRODUCTION_CONFIG.as_record(),
         }, sort_keys=True)
         return hashlib.sha1(raw.encode("utf-8")).hexdigest()
-
-    # ── báo cáo tồn kho từ MART ────────────────────────────────

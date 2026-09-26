@@ -1,9 +1,4 @@
-"""GET /api/v1/supply-requirements/summary — tóm tắt thiếu hụt cho trang Báo cáo.
-
-Chỉ còn một endpoint. Ba endpoint cũ (list, /forecast/{id}, /generate/{id})
-thuộc "đường thứ ba" tính nhu cầu qua bảng supply_requirements — đã archive
-13/09/2026 (_archive/duong_thu_ba/), giao diện không còn gọi.
-"""
+"""GET /api/v1/supply-requirements/summary — tóm tắt thiếu hụt cho trang Báo cáo."""
 import logging
 from datetime import date
 from typing import Optional
@@ -33,7 +28,7 @@ async def get_supply_requirements_summary(
     """Một dòng mỗi mã: nhu cầu dự báo `horizon_days` ngày tới, tồn hữu dụng
     FEFO và thiếu hụt = max(0, nhu cầu − tồn). Đi đúng chuỗi
     dss_dashboard.tang1_tang2 → dss_alerts.alert_rows nên không lệch trang
-    Cảnh báo. `disease_types`/`requirement_count` giữ để hợp đồng cũ không vỡ.
+    Cảnh báo. `disease_types`/`requirement_count` giữ để tương thích schema phản hồi.
     """
 
     try:

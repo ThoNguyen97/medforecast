@@ -120,13 +120,11 @@ export default function ForecastHistoryTable({
 
   /** Cây 3 cấp: tháng → nhóm bệnh → (Toàn quốc chính thức + chi tiết theo tỉnh).
    *
-   *  Từ 12/09/2026 bản Toàn quốc (location=NULL) dùng công thức top-down
-   *  riêng (Tầng 1) — KHÔNG còn là tổng của các tỉnh. Vì vậy số "chính thức"
-   *  của tháng/nhóm bệnh LUÔN lấy từ bản Toàn quốc mới nhất (đúng số nuôi
-   *  Tổng quan/Cảnh báo), không phải cộng các tỉnh — cộng các tỉnh sẽ ra một
-   *  tổng khác, lặp lại đúng kiểu lệch 392/424 cũ ở một màn hình khác. Các
-   *  bản theo tỉnh vẫn hiện đầy đủ (kể cả xoá được) nhưng chỉ để tham khảo
-   *  dịch tễ, tách hẳn khỏi con số chính thức.
+   *  Bản Toàn quốc (location=NULL) dùng công thức top-down riêng của Tầng 1,
+   *  không phải tổng các tỉnh. Vì vậy số chính thức của tháng/nhóm bệnh luôn
+   *  lấy từ bản Toàn quốc mới nhất (khớp Tổng quan/Cảnh báo); cộng các tỉnh sẽ
+   *  ra một tổng khác. Các bản theo tỉnh vẫn hiện đầy đủ (xoá được) nhưng chỉ
+   *  để tham khảo dịch tễ, tách khỏi con số chính thức.
    */
   const cay = useMemo(() => {
     type Xo = { toanQuoc: ForecastHistoryItem[]; tinh: ForecastHistoryItem[] };
@@ -172,9 +170,9 @@ export default function ForecastHistoryTable({
 
   const bat = (khoa: string) =>
     setDangMo((m) => ({ ...m, [khoa]: !(m[khoa] ?? false) }));
-  // Mặc định THU GỌN theo tháng: mỗi tháng một dòng tổng (số chính thức từ bản
+  // Mặc định thu gọn theo tháng: mỗi tháng một dòng tổng (số chính thức từ bản
   // Toàn quốc). Bấm tháng → hiện 3 nhóm bệnh; bấm nhóm → hiện chi tiết tỉnh
-  // (tham khảo dịch tễ). Mở dần từng cấp thay vì đổ hết ~30 dòng ra ngay.
+  // (tham khảo dịch tễ).
   const moThang = (k: string) => dangMo[k] ?? false;
   const moNhom = (k: string) => dangMo[k] ?? false;
 
@@ -308,7 +306,7 @@ export default function ForecastHistoryTable({
                 const mo = moThang(khoaThang);
                 return (
                   <Fragment key={khoaThang}>
-                    {/* CẤP 1 — tháng: số CHÍNH THỨC = tổng các bản Toàn quốc (nuôi
+                    {/* CẤP 1 — tháng: số chính thức = tổng các bản Toàn quốc (nuôi
                         Tổng quan/Cảnh báo), không phải cộng các tỉnh. */}
                     <tr
                       onClick={() => bat(khoaThang)}
@@ -412,7 +410,7 @@ export default function ForecastHistoryTable({
                                 />
                               ))}
 
-                            {/* CẤP 3 — theo tỉnh: CHỈ tham khảo dịch tễ, không
+                            {/* CẤP 3 — theo tỉnh: chỉ tham khảo dịch tễ, không
                                 cộng vào số chính thức ở trên. */}
                             {moN && nhomNode.tinh.length > 0 && (
                               <tr className="border-t border-neutral-100">

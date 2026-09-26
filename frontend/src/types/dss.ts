@@ -1,7 +1,6 @@
 /**
- * Hợp đồng dữ liệu — /api/v1/dashboard/v2/alerts · /api/v1/dss/params · /api/v1/dss/norms
- * ---------------------------------------------------------------------------
- * 12/09/2026 — một công thức, một bộ tham số. Nguồn sự thật:
+ * Hợp đồng dữ liệu /api/v1/dashboard/v2/alerts · /api/v1/dss/params · /api/v1/dss/norms
+ * (một công thức, một bộ tham số). Nguồn sự thật:
  *   backend/app/services/dss_dashboard.py (alerts_payload)
  *   backend/app/api/v1/dss_config.py
  *   backend/app/services/dss_demand.py (norms_payload)
@@ -59,7 +58,7 @@ export interface AlertsPayload {
   };
   demand: {
     ready: boolean;
-    /** số mã có nhu cầu dự báo TRONG phạm vi đang xem */
+    /** số mã có nhu cầu dự báo trong phạm vi đang xem */
     so_ma?: number;
     so_ma_toan_danh_muc?: number;
     horizon_days?: number;
@@ -120,7 +119,7 @@ export interface DssParamsUpdate {
 
 // ─── /dss/norms ──────────────────────────────────────────────────────────────
 
-export interface NormRoCell {
+interface NormRoCell {
   tieu_hao: number;
   ca: number;
   norm: number;
@@ -135,7 +134,7 @@ export interface NormRow {
   nhom: string | null;
   tieu_hao_tong: number;
   norm_gop: number;
-  /** Σ_ro p̂ · Norm — lượng cần cho MỘT ca dự báo của nhóm */
+  /** Σ_ro p̂ · Norm — lượng cần cho một ca dự báo của nhóm */
   norm_hieu_dung: number;
   theo_ro: Partial<Record<CareBucket, NormRoCell>>;
 }

@@ -1,4 +1,4 @@
-"""Audit Log model."""
+"""Model nhật ký kiểm toán."""
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, JSON
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -6,7 +6,7 @@ from app.database import Base
 
 
 class AuditLog(Base):
-    """Audit logs for tracking data modifications."""
+    """Nhật ký kiểm toán các thao tác thay đổi dữ liệu."""
     
     __tablename__ = "audit_logs"
     
@@ -20,5 +20,4 @@ class AuditLog(Base):
     ip_address = Column(String(45))
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     
-    # Relationships
     user = relationship("User")

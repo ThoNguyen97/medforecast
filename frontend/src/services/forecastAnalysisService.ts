@@ -1,6 +1,6 @@
 import api from './api';
 
-export interface DiseaseOption {
+interface DiseaseOption {
   key: string;
   label: string;
 }
@@ -10,7 +10,7 @@ export interface AnalyzeRequest {
   region?: string | null;
   target_month: number;
   target_year: number;
-  /** true = GHI NHẬN kết quả vào DB (nút "Ghi nhận dự báo"). */
+  /** true = ghi nhận kết quả vào DB (nút "Ghi nhận dự báo"). */
   save?: boolean;
   /** Chỉ dùng khi save=true: cho phép ghi đè bản đã ghi nhận của cùng khóa. */
   overwrite?: boolean;
@@ -47,8 +47,8 @@ export interface AnalyzeResponse {
     is_recorded?: boolean;
     /** Thời điểm ghi nhận (ISO) — null khi chưa ghi nhận. */
     recorded_at?: string | null;
-    /** Bấm Ghi nhận nhưng khoá này không có căn cứ dự báo (chuỗi quá ngắn,
-     *  không có ca cùng kỳ) → backend KHÔNG ghi và trả lý do ở đây. */
+    /** Lý do backend từ chối ghi nhận khi khoá không có căn cứ dự báo
+     *  (chuỗi quá ngắn, không có ca cùng kỳ). */
     khong_ghi_nhan?: string | null;
   };
   explanation_bullets: string[];
@@ -125,20 +125,17 @@ export const forecastAnalysisService = {
   },
 
   /**
-   * Nạp lại bản dự báo ĐÃ GHI NHẬN theo khóa (nhóm bệnh, khu vực, tháng).
-   * Chỉ đọc — không chạy mô hình, không ghi DB. Trả null nếu kỳ đó chưa ghi nhận.
+   * Nạp bản dự báo đã ghi nhận theo khóa (nhóm bệnh, khu vực, tháng).
+   * Chỉ đọc, không chạy mô hình; trả null nếu kỳ đó chưa ghi nhận.
    */
   async loadSaved(payload: AnalyzeRequest): Promise<AnalyzeResponse | null> {
-    // Đây chỉ là truy vấn đọc, phải nhanh. Đặt timeout ngắn hơn mặc định 60s
-    // để nếu backend chưa chạy/chưa restart thì báo lỗi sớm, không quay mãi.
+    // Truy vấn đọc: timeout ngắn hơn mặc định 60s để báo lỗi sớm khi backend
+    // không phản hồi.
     const res = await api.post<AnalyzeResponse>('/forecast/saved', payload, {
       timeout: 20000,
     });
     return res.data?.found === false ? null : res.data;
   },
-
-  // Đã gỡ trainModels() và mlAnalyze() ngày 09/09/2026 — hai endpoint
-  // /forecast/train và /forecast/ml-analyze không còn ở backend.
 
   async getHistory(params?: {
     limit?: number;
@@ -151,22 +148,15 @@ export const forecastAnalysisService = {
     return res.data;
   },
 
-  /** Xoá MỘT lần dự báo đã ghi nhận (chủ sở hữu hoặc Quản trị viên). */
+  /** Xoá một bản dự báo đã ghi nhận (chủ sở hữu hoặc Quản trị viên). */
   async deleteForecast(forecastId: number): Promise<{ deleted: number; id: number }> {
     const res = await api.delete(`/forecast/${forecastId}`);
     return res.data;
   },
 
-  /** Xoá TOÀN BỘ lịch sử dự báo — chỉ Quản trị viên. */
+  /** Xoá toàn bộ lịch sử dự báo (chỉ Quản trị viên). */
   async deleteAllForecasts(): Promise<{ deleted: number }> {
     const res = await api.delete('/forecast/history');
-    return res.data;
-  },
-
-  async updateActual(forecastId: number, actualCases: number) {
-    const res = await api.post(`/forecast/${forecastId}/actual`, {
-      actual_cases: actualCases,
-    });
     return res.data;
   },
 

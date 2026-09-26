@@ -1,25 +1,20 @@
-"""
-Configuration API endpoints.
+"""API cấu hình hệ thống (bảng system_config, khoá → giá trị).
 
-Provides access to system-wide configuration (bảng system_config, key → value).
-All write operations are restricted to users with the Administrator role and
-are recorded in audit_logs.
+Thao tác ghi chỉ dành cho Administrator và được ghi vào audit_logs.
+Ngưỡng DSS (`dss.thresholds`) và tham số Tầng 2 (`dss.care_level`) sửa qua
+/api/v1/dss/params, nơi có kiểm tra miền giá trị.
 
 Routes
 ------
-GET  /api/v1/config                        – List all config entries
-GET  /api/v1/config/{key}                  – Get a single config entry by key
-PUT  /api/v1/config/{key}                  – Update a config entry (Admin)
-
-12/09/2026: /conversion-ratios và /thresholds (3/7/14 ngày) đã gỡ. Ngưỡng
-thật của DSS là `dss.thresholds`, tham số Tầng 2 là `dss.care_level` — hai
-bản ghi này sửa qua /api/v1/dss/params (có kiểm khoảng và mô tả hệ quả).
+GET  /api/v1/config                        – Liệt kê mọi cấu hình
+GET  /api/v1/config/{key}                  – Lấy một cấu hình theo khoá
+PUT  /api/v1/config/{key}                  – Cập nhật một cấu hình (Admin)
 """
 
 import logging
 from typing import Any, List
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -32,17 +27,17 @@ router = APIRouter(tags=["configuration"])
 logger = logging.getLogger(__name__)
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── Helpers ──
 
 def _get_client_ip(request: Request) -> str:
-    """Extract client IP address from request."""
+    """Lấy IP client, ưu tiên X-Forwarded-For khi chạy sau proxy."""
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
         return forwarded.split(",")[0].strip()
     return request.client.host if request.client else "unknown"
 
 
-# ── Endpoints ─────────────────────────────────────────────────────────────────
+# ── Endpoints ──
 
 @router.get("", response_model=List[SystemConfigResponse])
 def list_configs(
@@ -75,8 +70,8 @@ def update_config_by_key(
 ) -> Any:
     """Tạo/sửa một dòng cấu hình (Admin), ghi audit_logs.
 
-    Ba khoá có endpoint riêng kèm kiểm tra dữ liệu bị chặn ở đây, để không
-    ai ghi đè ngưỡng DSS hay mật khẩu HIS bằng chuỗi tự do:
+    Ba khoá có endpoint riêng kèm kiểm tra dữ liệu bị chặn ở đây, tránh ghi
+    đè ngưỡng DSS hay mật khẩu HIS bằng chuỗi tự do:
     `dss.thresholds`, `dss.care_level` → PUT /dss/params;
     `his_sync.connection` → PUT /sync/config.
     """

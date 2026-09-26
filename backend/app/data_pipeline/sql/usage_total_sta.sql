@@ -1,9 +1,8 @@
-/* Tiêu hao TOÀN VIỆN theo tháng × vật tư — mẫu số của DOI.
-   Nguồn: STA · MEDFORECAST_DW · vw_MedForecast_TieuHaoTong
-   Do usp_MedForecast_DayTieuHaoToanVien (HIS PROD) nạp lên.
+/* Tiêu hao toàn viện theo tháng × vật tư, là mẫu số của DOI.
+   Nguồn: STA · MEDFORECAST_DW · vw_MedForecast_TieuHaoTong (do usp_MedForecast_DayTieuHaoToanVien nạp).
 
-   KHÔNG lọc theo nhóm bệnh. Tồn kho là của toàn viện nên mẫu số cũng phải là
-   toàn viện — đây chính là chỗ bản trước sai, làm DOI bị thổi lên ~7 lần.
+   Không lọc theo nhóm bệnh: tồn kho là của toàn viện nên mẫu số cũng phải toàn viện,
+   nếu chỉ lấy tiêu hao nhóm hô hấp thì DOI bị thổi phồng.
 
    :since_date  ngày 01 của kỳ bắt đầu nạp lại (pipeline tự truyền vào). */
 SELECT  Period,

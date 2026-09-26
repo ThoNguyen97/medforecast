@@ -1,4 +1,4 @@
-"""Database configuration and session management."""
+"""Khởi tạo engine SQLAlchemy và quản lý phiên CSDL."""
 from pathlib import Path
 from typing import Generator
 
@@ -15,11 +15,8 @@ _BACKEND_ROOT = Path(__file__).resolve().parent.parent
 def _neo_duong_dan_sqlite() -> None:
     """Biến đường dẫn SQLite tương đối thành tuyệt đối theo backend/.
 
-    "sqlite:///./data/medforecast.db" được resolve theo THƯ MỤC LÀM VIỆC của
-    tiến trình. Chạy uvicorn từ chỗ khác backend/ là âm thầm dùng một file DB
-    khác — _ensure_db_dir() còn mkdir hộ nên không có lỗi nào để mà thấy; mọi
-    truy vấn vẫn chạy, chỉ là trên dữ liệu khác. Đã mất một buổi vì chuyện này:
-    UI đọc một DB, DB Browser mở một DB khác.
+    Đường dẫn tương đối được resolve theo thư mục làm việc của tiến trình; chạy
+    uvicorn ngoài backend/ sẽ âm thầm tạo và dùng một file DB khác.
     """
     url = settings.DATABASE_URL
     if not url.startswith("sqlite:///"):
@@ -33,8 +30,7 @@ def _neo_duong_dan_sqlite() -> None:
 
 _neo_duong_dan_sqlite()
 
-# check_same_thread=False chỉ dành cho SQLite + FastAPI; Postgres/MySQL không nhận
-# tham số này nên phải đặt connect_args theo loại DB.
+# check_same_thread=False chỉ áp dụng cho SQLite; Postgres/MySQL không nhận tham số này.
 _is_sqlite = settings.DATABASE_URL.startswith("sqlite")
 engine = create_engine(
     settings.DATABASE_URL,
@@ -43,17 +39,16 @@ engine = create_engine(
     echo=settings.SQL_ECHO,
 )
 
-# Session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 class Base(DeclarativeBase):
-    """Declarative base for all SQLAlchemy models."""
+    """Lớp cơ sở khai báo cho mọi model SQLAlchemy."""
     pass
 
 
 def get_db() -> Generator:
-    """FastAPI dependency that yields a database session and closes it afterwards."""
+    """Dependency FastAPI: cấp một phiên CSDL và đóng sau khi xử lý xong."""
     db = SessionLocal()
     try:
         yield db

@@ -52,7 +52,7 @@ export default function Login() {
       <div aria-hidden className="pointer-events-none absolute -top-32 -right-32 w-96 h-96 rounded-full bg-primary-200/40 blur-3xl" />
       <div aria-hidden className="pointer-events-none absolute -bottom-40 -left-24 w-[28rem] h-[28rem] rounded-full bg-blue-100/60 blur-3xl" />
       <div className="relative w-full max-w-md">
-        {/* Logo & Title */}
+        {/* Logo và tiêu đề */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-primary-600 rounded-2xl mb-4 shadow-lg">
             <Stethoscope size={32} className="text-white" />
@@ -61,7 +61,7 @@ export default function Login() {
           <p className="text-sm text-neutral-500 mt-1">{APP_DESCRIPTION}</p>
         </div>
 
-        {/* Login card */}
+        {/* Khung đăng nhập */}
         <div className="bg-white rounded-2xl shadow-xl border border-neutral-200 p-8">
           <h2 className="text-xl font-semibold text-neutral-900 mb-6">Đăng nhập</h2>
 
@@ -72,7 +72,7 @@ export default function Login() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Username */}
+            {/* Tên đăng nhập */}
             <div>
               <label htmlFor="username" className="label">
                 Tên đăng nhập
@@ -95,7 +95,7 @@ export default function Login() {
               </div>
             </div>
 
-            {/* Password */}
+            {/* Mật khẩu */}
             <div>
               <label htmlFor="password" className="label">
                 Mật khẩu
@@ -125,7 +125,7 @@ export default function Login() {
               </div>
             </div>
 
-            {/* Submit */}
+            {/* Nút đăng nhập */}
             <button
               type="submit"
               disabled={isLoading}

@@ -1,18 +1,14 @@
-"""Tham số DSS và bảng tra định mức thực nghiệm — màn Quản trị (12/09/2026).
+"""API tham số DSS và bảng tra định mức thực nghiệm cho màn Quản trị.
+
+Hai bản ghi system_config được quản lý ở đây là nguồn tham số duy nhất của DSS:
+`dss.care_level` (Tầng 2, định mức thực nghiệm từ fact_usage/cases_by_care_level)
+và `dss.thresholds` (Tầng 3, ngưỡng DOI).
 
 Routes
 ------
-GET  /api/v1/dss/params     – Toàn bộ núm vặn của Tầng 2 + Tầng 3 (mọi người đọc được)
+GET  /api/v1/dss/params     – Tham số Tầng 2 + Tầng 3 kèm mô tả (mọi người đọc được)
 PUT  /api/v1/dss/params     – Sửa (Admin), ghi audit_logs qua ConfigService
 GET  /api/v1/dss/norms      – Định mức thực nghiệm theo nhóm × rổ × mã (chỉ đọc)
-
-Vì sao có file này
-------------------
-Trước 12/09 màn Quản trị có ba tab (Tỷ lệ Nhẹ/TB/Nặng, Định mức thuốc/vật
-tư, Ngưỡng cảnh báo) sửa ba bảng mà DSS thật không đọc: Tầng 2 dùng định mức
-THỰC NGHIỆM từ fact_usage/cases_by_care_level, Tầng 3 đọc `dss.thresholds`.
-Bấm "Lưu" ở ba tab đó không đổi gì trên Dashboard. Ba tab được thay bằng
-hai tab nối thẳng vào hai bản ghi `system_config` mà DSS thật sự đọc.
 """
 from __future__ import annotations
 
@@ -35,13 +31,13 @@ router = APIRouter(tags=["dss-config"])
 logger = logging.getLogger(__name__)
 
 
-# ── Mô tả từng tham số — hiện ngay dưới ô nhập để người sửa biết hệ quả ──────
+# ── Mô tả tham số: hiển thị dưới ô nhập để người sửa biết hệ quả ──
 
 MO_TA: Dict[str, Dict[str, Dict[str, Any]]] = {
     "thresholds": {
         "doi_red_days": {
             "ten": "Ngưỡng Đỏ (ngày tồn kho)",
-            "y_nghia": "DOI ≤ giá trị này → Đỏ. Mặc định 18 = trung vị chu kỳ nhập kho đo ở Đ9.",
+            "y_nghia": "DOI ≤ giá trị này → Đỏ. Mặc định 18 = trung vị chu kỳ nhập kho thực tế của bệnh viện.",
             "min": 1, "max": 365},
         "doi_amber_days": {
             "ten": "Ngưỡng Vàng (ngày tồn kho)",
@@ -68,7 +64,7 @@ MO_TA: Dict[str, Dict[str, Dict[str, Any]]] = {
             "min": 3, "max": 36},
         "min_period": {
             "ten": "Kỳ sớm nhất được dùng",
-            "y_nghia": "Không lấy dữ liệu trước kỳ này (Đ11: chế độ ghi nhận phân cấp đứt gãy đầu 2025). Định dạng YYYY-MM.",
+            "y_nghia": "Không lấy dữ liệu trước kỳ này (cách ghi nhận phân cấp chăm sóc trong HIS thay đổi từ đầu 2025). Định dạng YYYY-MM.",
             "kieu": "ky"},
         "min_cases_per_bucket": {
             "ten": "Ngưỡng mẫu nhỏ (ca / rổ)",
@@ -106,7 +102,7 @@ def _doc_hien_tai(db: Session) -> Dict[str, Any]:
             "config_key": "dss.care_level",
         },
         "cong_thuc": [
-            "Tầng 1  Ŷ_g — ensemble M12 theo nhóm ICD (J00-J06 / J09-J18 / J20-J22)",
+            "Tầng 1  Ŷ_g — ensemble thống kê theo nhóm ICD (J00-J06 / J09-J18 / J20-J22)",
             "Tầng 2  D_i = Σ_ro Ŷ_g · p̂(g,ro) · Norm(i,g,ro) + D_nền,i",
             "        p̂(g,ro) = ca(g,ro)/ca(g); Norm(i,g,ro) = Σ tiêu hao / Σ ca — cùng cửa sổ window_periods",
             "Tầng 3  DOI_i = tồn hữu dụng FEFO_i / (D_i / horizon_days); Đỏ ≤ doi_red_days, Vàng ≤ doi_amber_days",
@@ -119,12 +115,12 @@ def _doc_hien_tai(db: Session) -> Dict[str, Any]:
 @router.get("/params")
 def get_params(db: Session = Depends(get_db),
                current_user: User = Depends(get_current_user)) -> Dict[str, Any]:
-    """Hai bản ghi system_config mà Tầng 2 / Tầng 3 thật sự đọc, kèm mô tả."""
+    """Giá trị hiện hành, mặc định và mô tả của tham số Tầng 2 / Tầng 3, kèm công thức."""
     return _doc_hien_tai(db)
 
 
 def _kiem(nhom: str, gia_tri: Dict[str, Any]) -> Dict[str, Any]:
-    """Ép kiểu + kiểm khoảng. Trả dict đã làm sạch; sai thì 422."""
+    """Ép kiểu và kiểm tra miền giá trị; trả dict đã làm sạch, sai thì 422."""
     out: Dict[str, Any] = {}
     for k, v in gia_tri.items():
         mt = MO_TA[nhom].get(k)
@@ -151,8 +147,8 @@ def _kiem(nhom: str, gia_tri: Dict[str, Any]) -> Dict[str, Any]:
 def update_params(body: DssParamsUpdate, request: Request,
                   db: Session = Depends(get_db),
                   current_user: User = Depends(get_admin_user)) -> Dict[str, Any]:
-    """Sửa một phần hoặc toàn bộ. Khoá không gửi giữ nguyên; ghi chú `nguon`
-    trong JSON được giữ. Mỗi lần lưu là một dòng audit_logs (UPDATE_CONFIG)."""
+    """Sửa một phần hoặc toàn bộ tham số (Admin). Khoá không gửi giữ nguyên, ghi
+    chú `nguon` trong JSON được giữ; mỗi lần lưu ghi một dòng audit_logs (UPDATE_CONFIG)."""
     svc = ConfigService(db)
     ip = request.client.host if request.client else "unknown"
     da_doi: Dict[str, Any] = {}
@@ -192,9 +188,8 @@ def get_norms(block: str = Query("J00-J06", description="J00-J06 | J09-J18 | J20
               offset: int = Query(0, ge=0),
               db: Session = Depends(get_db),
               current_user: User = Depends(get_current_user)) -> Dict[str, Any]:
-    """Định mức thực nghiệm đang được Tầng 2 dùng — đúng con số nhân với
-    Ŷ_g × p̂ — để kiểm chứng tại chỗ. Chỉ đọc: định mức tự cập nhật mỗi lần
-    đồng bộ HIS, không có ô nhập tay."""
+    """Định mức thực nghiệm Tầng 2 đang dùng (hệ số nhân với Ŷ_g × p̂) để đối chiếu.
+    Chỉ đọc: định mức tự cập nhật sau mỗi lần đồng bộ HIS."""
     try:
         return dss_demand.norms_payload(db, block=block, q=q, limit=limit, offset=offset)
     except ValueError as exc:

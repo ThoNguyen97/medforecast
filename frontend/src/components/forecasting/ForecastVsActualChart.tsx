@@ -17,15 +17,10 @@ interface Props {
   targetMonth: number;
 }
 
-// Chiến lược màu: năm hiện tại và năm liền trước — 2 năm cần SO SÁNH TRỰC TIẾP
-// nhất — dùng xanh/cam đậm, nét dày, luôn nổi bật. Các năm cũ hơn (2+ năm
-// trước) mỗi năm có 1 màu RIÊNG BIỆT (không dùng chung 1 màu xám nữa — xám
-// đơn sắc khiến các năm cũ gần như vô hình/khó nhìn). Bộ màu lấy theo đúng
-// thứ tự categorical đã kiểm định chống mù màu (xem dataviz skill —
-// color-formula.md): 1 xanh dương, 2 cam đã dùng cho target/prev; các năm cũ
-// nối tiếp slot 3-8 (ngọc lam, vàng, hồng cánh sen, lục, tím, đỏ) theo đúng
-// thứ tự cố định đó, không đảo lộn. Rê chuột / bấm vào chú thích vẫn cô lập
-// được 1 năm cụ thể để xem rõ hơn khi các đường chồng lên nhau.
+// Chiến lược màu: năm hiện tại và năm liền trước (cặp cần so sánh trực tiếp)
+// dùng xanh dương/cam, nét dày. Mỗi năm cũ hơn có một màu riêng, lấy theo thứ
+// tự categorical an toàn cho người mù màu (slot 3-8), thứ tự cố định. Rê chuột /
+// bấm chú thích để cô lập một năm khi các đường chồng lên nhau.
 const COLOR_TARGET = '#2a78d6'; // năm hiện tại — slot 1 (xanh dương)
 const COLOR_PREV = '#eb6834'; // năm liền trước — slot 2 (cam)
 // Slot 3-8: ngọc lam, vàng, hồng cánh sen, lục, tím, đỏ — mỗi năm cũ 1 màu.
@@ -43,14 +38,13 @@ const HISTORY_PALETTE = [
 const NAC_TRAN = [1, 1.1, 1.2, 1.25, 1.4, 1.5, 1.6, 1.8, 2, 2.2, 2.5, 3, 3.5, 4, 5, 6, 8, 10];
 
 /**
- * Trần trục Y: giá trị lớn nhất ĐANG VẼ + 10% khoảng thở, làm tròn lên nấc đẹp.
+ * Trần trục Y: giá trị lớn nhất đang vẽ + 10% khoảng thở, làm tròn lên nấc đẹp.
  *
- * Trần được tính từ mọi đường đang vẽ — gồm cả điểm dự báo nét đứt của tháng
- * tới — nên biểu đồ tự giãn theo dữ liệu: dự báo 250 ca cho trần 300, không có
- * mốc cố định nào chặn ở 140. Mặc định của recharts lấy đúng dataMax làm trần
- * khiến đỉnh cao nhất chạm mép trên và bị cắt.
+ * Tính từ mọi đường đang vẽ, kể cả điểm dự báo nét đứt của tháng tới, nên biểu
+ * đồ tự giãn theo dữ liệu (dự báo 250 ca → trần 300). Mặc định của recharts lấy
+ * đúng dataMax làm trần khiến đỉnh cao nhất chạm mép trên và bị cắt.
  */
-export function tranTrucY(dataMax: number): number {
+function tranTrucY(dataMax: number): number {
   const dinh = Math.max(dataMax || 0, 0);
   if (dinh <= 0) return 10;
   const can = dinh * 1.1;
@@ -105,10 +99,9 @@ export default function ForecastVsActualChart({
 
   const targetMonthKey = `T${targetMonth}`;
 
-  // Backend đã trả về 2 fields riêng: <year>_actual và <year>_forecast
-  // - <year>_actual: số ca thực tế (dùng cho tooltip và vẽ đường actual)
-  // - <year>_forecast: số ca dự báo đã lưu (dùng cho tooltip)
-  // - <year>_forecast_line: dùng để VẼ đường nét đứt (T5 lấy actual, T6 lấy forecast)
+  // Backend trả hai trường riêng <year>_actual và <year>_forecast (dùng cho tooltip);
+  // <year>_actual_line vẽ đường thực tế, <year>_forecast_line vẽ đoạn nét đứt từ
+  // tháng liền trước (lấy actual) sang tháng dự báo (lấy forecast).
   const targetKey = String(targetYear);
   const enriched = data.map((row, idx) => {
     const monthIdx = idx + 1; // T1 = idx 0
@@ -123,7 +116,7 @@ export default function ForecastVsActualChart({
       // Giữ nguyên actual và forecast cho tooltip
       [`${targetKey}_actual`]: actualValue,
       [`${targetKey}_forecast`]: forecastValue,
-      // Tạo riêng field để vẽ đường
+      // Trường riêng để vẽ đường
       [`${targetKey}_actual_line`]: isForecastMonth ? null : actualValue,
       [`${targetKey}_forecast_line`]:
         isLastActual ? actualValue : (isForecastMonth ? forecastValue : null),
@@ -131,8 +124,7 @@ export default function ForecastVsActualChart({
   });
 
   // Độ dày/độ mờ của 1 đường, tuỳ theo vai trò (target/prev/history) và việc
-  // có năm nào đang được cô lập (activeYear) hay không. Màu lấy từ yearColor —
-  // mỗi năm cũ giờ có màu riêng, không còn dùng chung 1 màu xám nữa.
+  // có năm nào đang được cô lập (activeYear) hay không. Màu lấy từ yearColor.
   const lineStyleOf = (year: number) => {
     const role = roleOfYear(year, targetYear, prevYear);
     const isDimmed = activeYear !== null && activeYear !== year;

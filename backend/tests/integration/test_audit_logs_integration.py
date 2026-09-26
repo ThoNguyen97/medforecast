@@ -1,17 +1,10 @@
-"""
-Integration tests for Audit & Logs API endpoints.
+"""Test tích hợp API nhật ký kiểm toán và log hệ thống.
 
-Covers:
-- GET  /api/v1/audit-logs
-- GET  /api/v1/system-logs
-- GET  /api/v1/system-logs/errors
-- POST /api/v1/system-logs/cleanup
-- Pagination and filtering
-- Admin-only access enforcement
+Phạm vi: GET /api/v1/audit-logs, GET /api/v1/system-logs, GET /api/v1/system-logs/errors,
+POST /api/v1/system-logs/cleanup; phân trang, bộ lọc và giới hạn quyền Administrator.
 """
 
 import pytest
-from datetime import datetime, timedelta
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -25,7 +18,7 @@ from app.models.system_log import SystemLog
 from app.core.security import hash_password, create_access_token
 
 
-# ── Test DB Setup ─────────────────────────────────────────────────────────────
+# ── CSDL test ──
 
 @pytest.fixture(scope="function")
 def db_session():
@@ -103,7 +96,7 @@ def pharmacist_headers(pharmacist_user):
 
 @pytest.fixture
 def seeded_audit_logs(db_session, admin_user):
-    """Create sample audit log entries."""
+    """Tạo các bản ghi nhật ký kiểm toán mẫu."""
     logs = [
         AuditLog(
             user_id=admin_user.id,
@@ -138,7 +131,7 @@ def seeded_audit_logs(db_session, admin_user):
 
 @pytest.fixture
 def seeded_system_logs(db_session):
-    """Create sample system log entries."""
+    """Tạo các bản ghi log hệ thống mẫu."""
     logs = [
         SystemLog(
             log_level="ERROR",
@@ -167,7 +160,7 @@ def seeded_system_logs(db_session):
     return logs
 
 
-# ── Audit Logs Tests ──────────────────────────────────────────────────────────
+# ── Nhật ký kiểm toán ──
 
 class TestAuditLogs:
     def test_audit_logs_requires_auth(self, client):
@@ -240,7 +233,7 @@ class TestAuditLogs:
         )
         assert resp.status_code == 200
         data = resp.json()
-        assert len(data["items"]) == 1  # 3 total, 2 on page 1, 1 on page 2
+        assert len(data["items"]) == 1  # 3 bản ghi: trang 1 có 2, trang 2 có 1
 
     def test_audit_logs_item_has_expected_fields(
         self, client, admin_headers, seeded_audit_logs
@@ -254,7 +247,7 @@ class TestAuditLogs:
         assert "created_at" in item
 
 
-# ── System Logs Tests ─────────────────────────────────────────────────────────
+# ── Log hệ thống ──
 
 class TestSystemLogs:
     def test_system_logs_requires_auth(self, client):
@@ -315,7 +308,7 @@ class TestSystemLogs:
         assert resp.status_code == 422
 
 
-# ── Error Logs Tests ──────────────────────────────────────────────────────────
+# ── Log lỗi ──
 
 class TestErrorLogs:
     def test_error_logs_requires_auth(self, client):
@@ -348,7 +341,7 @@ class TestErrorLogs:
         assert data["items"][0]["module_name"] == "database"
 
 
-# ── Log Cleanup Tests ─────────────────────────────────────────────────────────
+# ── Dọn log ──
 
 class TestLogCleanup:
     def test_cleanup_requires_auth(self, client):

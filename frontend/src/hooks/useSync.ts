@@ -1,26 +1,12 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { syncService } from '../services/syncService';
-import { useAuthStore } from '../store/authStore';
 
-/** Trạng thái đồng bộ gần nhất (đồng bộ lần cuối, số ca, số tồn kho). */
-export function useSyncStatus() {
-  const { isAuthenticated } = useAuthStore();
-  return useQuery({
-    queryKey: ['sync', 'status'],
-    queryFn: () => syncService.getStatus(),
-    enabled: isAuthenticated,
-    staleTime: 30_000,
-    retry: false,
-  });
-}
-
-/** Nạp dữ liệu từ snapshot MEDFORECAST_DW (SQL Server cục bộ); xong thì làm mới dashboard. */
+/** Chạy ETL từ view MEDFORECAST_DW (STA) vào SQLite; xong thì làm mới các truy vấn phụ thuộc. */
 export function useRunSync() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (full?: boolean) => syncService.run(full ?? false),
     onSuccess: () => {
-      // dữ liệu vừa cập nhật → làm mới dashboard, tồn kho, dự báo, trạng thái
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
       queryClient.invalidateQueries({ queryKey: ['sync'] });

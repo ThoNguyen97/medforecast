@@ -1,11 +1,8 @@
-"""
-data_pipeline — Tầng dữ liệu trung gian cho MedForecast.
+"""Tầng dữ liệu trung gian của MedForecast.
 
-Luồng: Nguồn (HIS SQL Server / file export) → STAGING → CLEAN (dim/fact) → MART.
-MART phục vụ cả huấn luyện mô hình lẫn báo cáo tồn kho.
-
-Thiết kế DB-agnostic: chạy SQLite khi làm đồ án, đổi sang PostgreSQL khi triển khai
-chỉ bằng cách đổi biến môi trường PIPELINE_DB_URL (hoặc DATABASE_URL).
+Luồng: nguồn (view STA qua SQL Server / file export) → làm sạch/validate → CLEAN (dim/fact) → MART.
+MART phục vụ cả huấn luyện mô hình lẫn báo cáo tồn kho. DB đích chọn qua
+PIPELINE_DB_URL (hoặc DATABASE_URL), mặc định SQLite.
 """
 
 from .icd_hierarchy import IcdHierarchy, TARGET_BLOCKS

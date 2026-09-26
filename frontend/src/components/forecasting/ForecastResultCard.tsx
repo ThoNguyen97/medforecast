@@ -67,7 +67,7 @@ export default function ForecastResultCard({
         cfg.ring,
       )}
     >
-      {/* Faded warning watermark */}
+      {/* Watermark cảnh báo mờ */}
       <AlertTriangle className="absolute right-4 top-1/2 -translate-y-1/2 w-24 h-24 text-red-200/40 pointer-events-none" />
 
       <div className="relative flex items-center gap-2 text-red-600 text-xs font-semibold uppercase tracking-wide">

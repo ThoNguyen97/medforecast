@@ -43,7 +43,7 @@ export default function ReportFilterPanel({
         {/* Thanh tìm kiếm hoặc bộ lọc tháng */}
         {(kind === 'epidemic' || kind === 'forecast') ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {/* Month range */}
+            {/* Khoảng tháng */}
             <div>
               <label className="block text-sm font-medium text-neutral-600 mb-1.5">
                 Khoảng thời gian
@@ -72,7 +72,7 @@ export default function ReportFilterPanel({
               </div>
             </div>
 
-            {/* Disease */}
+            {/* Bệnh */}
             {showDisease && (
               <div>
                 <label className="block text-sm font-medium text-neutral-600 mb-1.5">
@@ -97,7 +97,7 @@ export default function ReportFilterPanel({
               </div>
             )}
 
-            {/* Region (Tỉnh/Thành) */}
+            {/* Tỉnh/Thành */}
             {showRegion && (
               <div>
                 <label className="block text-sm font-medium text-neutral-600 mb-1.5">

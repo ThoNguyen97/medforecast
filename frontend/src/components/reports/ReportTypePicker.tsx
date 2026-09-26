@@ -12,12 +12,12 @@ export type ReportKind =
   | 'shortage'
   | 'accuracy';
 
-export interface ReportTypeMeta {
+interface ReportTypeMeta {
   key: ReportKind;
   title: string;
   description: string;
   icon: React.ComponentType<{ className?: string }>;
-  accent: string; // tailwind color base, e.g., 'blue', 'rose'
+  accent: string; // màu gốc Tailwind, vd 'blue', 'rose'
 }
 
 export const REPORT_TYPES: ReportTypeMeta[] = [

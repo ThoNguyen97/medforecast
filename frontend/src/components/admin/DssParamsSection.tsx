@@ -9,12 +9,9 @@ import { cn } from '../../utils/cn';
 type Draft = { thresholds: ThresholdParams; care_level: CareLevelParams };
 
 /**
- * Tham số DSS — toàn bộ núm vặn của Tầng 2 và Tầng 3, nối thẳng vào hai bản
- * ghi `system_config` mà DSS thật sự đọc (`dss.thresholds`, `dss.care_level`).
- * Sửa ở đây → Tổng quan và Cảnh báo thiếu hụt đổi ngay ở lần tải kế tiếp.
- *
- * Thay cho tab "Ngưỡng cảnh báo" (3/7/14 ngày) trước 12/09/2026 — tab đó ghi
- * vào ba key mà không service nào đọc.
+ * Tham số DSS của Tầng 2 và Tầng 3, ghi vào hai bản ghi `system_config` mà DSS
+ * đọc (`dss.thresholds`, `dss.care_level`). Thay đổi có hiệu lực ở lần tải kế tiếp
+ * của Tổng quan và Cảnh báo thiếu hụt.
  */
 export default function DssParamsSection() {
   const qc = useQueryClient();
@@ -67,8 +64,8 @@ export default function DssParamsSection() {
     return null;
   }, [draft]);
 
-  // Kiểm lỗi TRƯỚC: khi GET /dss/params lỗi thì data undefined, nếu để nhánh
-  // "đang tải" đứng trước sẽ quay spinner vĩnh viễn.
+  // Kiểm tra lỗi trước: khi GET /dss/params lỗi thì data là undefined, nếu nhánh
+  // "đang tải" đứng trước thì spinner sẽ quay mãi.
   if (error) {
     return <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">Không tải được tham số: {(error as Error).message}</div>;
   }

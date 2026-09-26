@@ -20,11 +20,7 @@ export const reportsService = {
     return response.data;
   },
 
-  /**
-   * POST /reports/export
-   * Generates and downloads a PDF or Excel report.
-   * Returns a Blob so the caller can trigger a file download.
-   */
+  /** POST /reports/export — sinh báo cáo PDF/Excel, trả Blob để bên gọi tải về. */
   async exportReport(payload: ExportReportRequest & { format?: 'pdf' | 'excel' }): Promise<Blob> {
     const response = await api.post('/reports/export', payload, {
       responseType: 'blob',

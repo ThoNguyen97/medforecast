@@ -3,13 +3,12 @@ import {
   adminCatalogService,
   type DiseaseGroupItem,
   type DiseaseItem,
-  type RegionItem,
 } from '../services/adminCatalogService';
 import { useAuthStore } from '../store/authStore';
 
 const ADMIN_ONLY = (role?: string) => role === 'Administrator';
 
-// ── Diseases ────────────────────────────────────────────────────────────
+// ── Danh mục bệnh ────────────────────────────────────────────────────────────
 export function useAdminDiseases() {
   const { user, isAuthenticated } = useAuthStore();
   return useQuery({
@@ -46,7 +45,7 @@ export function useDeleteDisease() {
   });
 }
 
-// ── Disease groups ──────────────────────────────────────────────────────
+// ── Nhóm bệnh ──────────────────────────────────────────────────────
 export function useAdminDiseaseGroups() {
   const { user, isAuthenticated } = useAuthStore();
   return useQuery({
@@ -83,30 +82,3 @@ export function useDeleteDiseaseGroup() {
   });
 }
 
-// ── Regions ─────────────────────────────────────────────────────────────
-export function useAdminRegions() {
-  const { user, isAuthenticated } = useAuthStore();
-  return useQuery({
-    queryKey: ['admin', 'regions'],
-    queryFn: () => adminCatalogService.listRegions(),
-    enabled: isAuthenticated && ADMIN_ONLY(user?.role),
-    retry: false,
-    refetchOnWindowFocus: false,
-  });
-}
-
-export function useCreateRegion() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (p: RegionItem) => adminCatalogService.createRegion(p),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'regions'] }),
-  });
-}
-
-export function useDeleteRegion() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (name: string) => adminCatalogService.deleteRegion(name),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'regions'] }),
-  });
-}

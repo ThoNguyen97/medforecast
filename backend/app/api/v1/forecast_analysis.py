@@ -1,17 +1,20 @@
-"""Trang Phân tích & Dự báo.
+"""API trang Phân tích & Dự báo.
 
 - GET  /api/v1/forecast/diseases         nhóm/mã bệnh có dữ liệu
 - GET  /api/v1/forecast/regions          khu vực có dữ liệu
 - POST /api/v1/forecast/analyze          phân tích + dự báo một (bệnh, khu vực, tháng); save=true ghi nhận
+- POST /api/v1/forecast/saved            nạp lại bản đã ghi nhận (không chạy mô hình)
 - GET  /api/v1/forecast/history          lịch sử bản ghi nhận kèm độ lệch
+- DELETE /api/v1/forecast/history        xoá toàn bộ lịch sử (Admin)
+- DELETE /api/v1/forecast/{id}           xoá một bản ghi nhận
 - POST /api/v1/forecast/{id}/actual      nhập số ca thực tế
-- GET  /api/v1/forecast/{id}/export      xuất một bản ghi nhận
+- POST /api/v1/forecast/{id}/export      xuất PDF một bản ghi nhận
 
 Hai quy tắc dữ liệu:
-  * Tháng lịch hiện tại là kỳ DỞ DANG — không được dùng làm "thực tế" hay
-    làm điểm cuối của hệ số xu hướng (`_thang_da_chot`).
-  * Bản Toàn quốc (location IS NULL) là số chính thức (top-down mức khối, nuôi
-    Tổng quan/Cảnh báo); các bản theo tỉnh chỉ tham khảo dịch tễ và KHÔNG được
+  * Tháng lịch hiện tại là kỳ dở dang, không dùng làm "thực tế" hay điểm cuối
+    của hệ số xu hướng (`_thang_da_chot`).
+  * Bản Toàn quốc (location IS NULL) là số chính thức (top-down mức nhóm, dùng
+    cho Tổng quan/Cảnh báo); bản theo tỉnh chỉ tham khảo dịch tễ, không được
     cộng lại để ghi đè bản Toàn quốc.
 """
 from __future__ import annotations
@@ -40,7 +43,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["forecast-analysis"])
 
 
-# ── Schemas ──────────────────────────────────────────────────────────────────
+# ── Schemas ──
 
 class AnalyzeRequest(BaseModel):
     disease_type: str = Field(..., description="Loại bệnh (key hoặc tiếng Việt)")
@@ -70,16 +73,16 @@ class AnalyzeRequest(BaseModel):
     )
 
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
+# ── Helpers ──
 
 def _norm_disease(d: str) -> str:
-    """Map Vietnamese disease name → ICD code if needed (4 bệnh hô hấp)."""
+    """Quy tên bệnh tiếng Việt về mã nhóm ICD hoặc mã ICD; chuỗi khác giữ nguyên."""
     map_vi = {
-        # NHÓM ICD — đơn vị phân tích chính từ 08/2026 (đề cương + backtest)
+        # Nhóm ICD: đơn vị phân tích chính.
         "Nhiễm khuẩn cấp đường hô hấp trên": "J00-J06",
         "Cúm và viêm phổi": "J09-J18",
         "Nhiễm khuẩn cấp đường hô hấp dưới khác": "J20-J22",
-        # Mã lẻ — tương thích dữ liệu/API cũ
+        # Mã lẻ, giữ để tương thích.
         "Viêm phế quản cấp": "J20",
         "Nhiễm trùng đường hô hấp trên cấp": "J06",
         "Nhiễm trùng hô hấp trên cấp": "J06",
@@ -102,7 +105,7 @@ def _disease_label(d: str) -> str:
 
 
 def _classify_risk(predicted: int, baseline: float) -> tuple[str, float]:
-    """Trả về (risk_level, increase_pct) theo spec 5.6."""
+    """Trả (risk_level, increase_pct) theo mức tăng so với nền: ≥10% trung bình, >25% cao, >50% rất cao."""
     if baseline <= 0:
         return "low", 0.0
     increase = (predicted - baseline) / baseline * 100
@@ -127,10 +130,9 @@ def _risk_label(level: str) -> str:
 def _dieu_kien_khu_vuc(region: Optional[str]):
     """Điều kiện lọc DiseaseForecast theo khu vực, nhận mọi biến thể tên.
 
-    So bằng (==) sẽ trượt những bản ghi lưu dưới tên khác ("Thành phố Hồ Chí
-    Minh" vs "TP. Hồ Chí Minh"), khiến trang Phân tích báo "chưa ghi nhận"
-    trong khi dữ liệu vẫn nằm đó — và lần ghi nhận sau sẽ đẻ thêm một dòng
-    thứ hai cho cùng một nơi.
+    So bằng (==) sẽ trượt bản ghi lưu dưới tên khác ("Thành phố Hồ Chí Minh"
+    vs "TP. Hồ Chí Minh"), dẫn tới báo "chưa ghi nhận" sai và sinh dòng trùng
+    ở lần ghi nhận sau.
     """
     if region is None:
         return DiseaseForecast.location.is_(None)
@@ -145,10 +147,7 @@ def _query_cases(
     year: int,
     month: int,
 ) -> int:
-    """Tổng ca bệnh trong tháng cho disease + region.
-
-    region là tỉnh/thành (DiseaseCase.location).
-    """
+    """Tổng số ca trong tháng của một bệnh/nhóm bệnh; `region` là tỉnh/thành (None = toàn bộ)."""
     q = db.query(func.coalesce(func.sum(DiseaseCase.case_count), 0)).filter(
         dieu_kien_benh(DiseaseCase, disease),
         extract("year", DiseaseCase.recorded_at) == year,
@@ -168,11 +167,8 @@ def _query_saved_forecast(
     year: int,
     month: int,
 ) -> Optional[int]:
-    """Lấy dự báo đã lưu từ bảng DiseaseForecast cho tháng/năm cụ thể.
-    
-    Trả về None nếu không tìm thấy dự báo đã lưu.
-    Nếu có nhiều dự báo cho cùng tháng, lấy dự báo mới nhất (forecast_date gần nhất).
-    """
+    """Số ca dự báo đã lưu cho tháng đích; nhiều bản thì lấy bản có forecast_date
+    mới nhất, không có thì trả None."""
     forecast_month_date = date(year, month, 1)
     
     q = db.query(DiseaseForecast.predicted_cases).filter(
@@ -185,13 +181,11 @@ def _query_saved_forecast(
         aliases = province_aliases(region)
         q = q.filter(DiseaseForecast.location.in_(aliases))
     else:
-        # Toàn quốc: location == None hoặc "Toàn quốc"
         q = q.filter(
             (DiseaseForecast.location.is_(None)) | 
             (DiseaseForecast.location == "Toàn quốc")
         )
     
-    # Lấy dự báo mới nhất nếu có nhiều
     q = q.order_by(DiseaseForecast.forecast_date.desc())
     result = q.first()
     
@@ -204,7 +198,7 @@ def _query_weather(
     year: int,
     month: int,
 ) -> Dict[str, Optional[float]]:
-    """Trung bình các yếu tố thời tiết tháng đó."""
+    """Trung bình các yếu tố thời tiết của tháng."""
     q = db.query(
         func.avg(EnvironmentalData.temperature),
         func.avg(EnvironmentalData.humidity),
@@ -240,9 +234,10 @@ def _weather_factor(
     forecast_w: Dict[str, Optional[float]],
     history_w: Dict[str, Optional[float]],
 ) -> tuple[float, list[str]]:
-    """Tính hệ số thời tiết và sinh các bullet giải thích.
+    """Hệ số thời tiết (heuristic) và các câu giải thích đi kèm.
 
-    Logic đơn giản: mỗi yếu tố lệch >10% so với lịch sử → ảnh hưởng ±5-15% lên hệ số.
+    Mưa lệch ≥10% so với cùng kỳ tác động tỷ lệ 0,15; nhiệt-ẩm trong vùng
+    26–30°C / 75–85% nhân 1,1; nhiệt >35°C nhân 0,9; AQI >100 nhân 1,05.
     """
     factor = 1.0
     bullets: list[str] = []
@@ -252,10 +247,7 @@ def _weather_factor(
             return None
         return (curr - hist) / hist * 100
 
-    # Các bullet dưới nói về BỆNH HÔ HẤP — bản trước là văn mẫu sốt xuất huyết
-    # (muỗi/lăng quăng), sai bệnh học với đề tài. Mốc mùa vụ trích từ dữ liệu
-    # thật 2019–2026: đáy T4–T6, đỉnh T10–T11, biên độ 1,7–2,2 lần
-    # (sql_his/06_danh_gia_du_lieu.sql mục 4b).
+    # Mốc mùa vụ bệnh hô hấp theo dữ liệu 2019–2026: đáy T4–T6, đỉnh T10–T11.
 
     # Mưa
     rain_d = diff_pct(forecast_w.get("rainfall"), history_w.get("rainfall"))
@@ -299,16 +291,15 @@ def _weather_factor(
 
 
 def _pearson_coefficients(correlation_rows: list[dict]) -> Dict[str, Optional[float]]:
-    """Tính hệ số tương quan Pearson giữa số ca và mỗi yếu tố thời tiết.
+    """Hệ số tương quan Pearson giữa số ca và từng yếu tố thời tiết.
 
-    Trả về dict có 5 key: temp, humidity, rainfall, aqi, pm25.
-    Mỗi value là số trong [-1, 1] (làm tròn 3 chữ số), hoặc None nếu thiếu data.
+    Trả dict {temp, humidity, rainfall, aqi, pm25} → giá trị trong [-1, 1] (3 chữ
+    số thập phân), None nếu dưới 2 điểm dữ liệu hoặc phương sai bằng 0.
     """
     factors = ("temp", "humidity", "rainfall", "aqi", "pm25")
     result: Dict[str, Optional[float]] = {}
 
     for f in factors:
-        # Cặp (cases, factor) — bỏ qua điểm thiếu dữ liệu
         pairs = [
             (float(r["cases"]), float(r[f]))
             for r in correlation_rows
@@ -341,8 +332,8 @@ def _thang_da_chot(y: int, m: int) -> bool:
 def _trend_factor(
     db: Session, disease: str, region: Optional[str], target_year: int, target_month: int
 ) -> tuple[float, Optional[str]]:
-    """Hệ số xu hướng = ca tháng ĐÃ CHỐT gần nhất / TB 3 tháng đã chốt trước đó.
-    Tháng dở dang bị bỏ qua: vài ngày dữ liệu của nó sẽ kéo hệ số về sàn 0,5."""
+    """Hệ số xu hướng = số ca tháng đã chốt gần nhất / TB 3 tháng đã chốt trước đó,
+    kẹp trong [0,5; 2,5]. Bỏ tháng dở dang vì dữ liệu vài ngày kéo hệ số về sàn."""
     months_back = []
     y, m = target_year, target_month
     while len(months_back) < 6:
@@ -360,10 +351,10 @@ def _trend_factor(
         return 1.0, None
 
     factor = last1 / avg_prev
-    factor = max(0.5, min(2.5, factor))  # clamp
+    factor = max(0.5, min(2.5, factor))
 
     explanation: Optional[str] = None
-    # Chuỗi 3 tháng tăng liên tiếp?
+    # Giải thích chỉ khi số ca tăng 3 tháng liên tiếp.
     if all(counts[i] > counts[i + 1] for i in range(3)):
         change = (counts[0] - counts[3]) / max(counts[3], 1) * 100
         explanation = (
@@ -374,19 +365,17 @@ def _trend_factor(
     return round(factor, 3), explanation
 
 
-# ── Endpoints ────────────────────────────────────────────────────────────────
+# ── Endpoints ──
 
 @router.get("/diseases")
 async def list_diseases(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> List[Dict[str, str]]:
-    """Danh sách BỆNH cho combobox = ba NHÓM ICD của đề tài.
+    """Danh sách bệnh để chọn: ba nhóm ICD của đề tài.
 
-    Vì sao không trả 20 mã lẻ nữa: đề cương chốt dự báo cấp nhóm, và backtest
-    trên dữ liệu thật cho thấy chuỗi mã lẻ thưa làm mô hình mất ổn định
-    (bottom-up MASE 483 trên mã thưa). Mã lẻ vẫn nằm trong dữ liệu — API này
-    chỉ quyết định NGƯỜI DÙNG chọn gì.
+    Dự báo ở cấp nhóm vì chuỗi mã lẻ thưa làm mô hình mất ổn định; mã lẻ vẫn
+    có trong dữ liệu nhưng không đưa ra để chọn.
     """
     return [{"key": k, "label": v} for k, v in NHOM_ICD.items()]
 
@@ -401,37 +390,30 @@ async def list_regions(
 
 
 @router.post("/analyze")
-# Cố ý dùng `def` thường, KHÔNG phải `async def`: thân hàm gọi mã đồng bộ
-# (fit ensemble cho từng tỉnh, truy vấn DB). Khai async mà không await thì
-# công việc nặng chạy thẳng trên event loop và chặn mọi request khác.
-# `def` thường được FastAPI đẩy sang threadpool — đúng cho tải nặng CPU.
+# Cố ý dùng `def` thay vì `async def`: thân hàm chạy đồng bộ và nặng CPU (fit
+# ensemble, truy vấn DB); FastAPI đẩy `def` sang threadpool nên không chặn event loop.
 def analyze_forecast(
     payload: AnalyzeRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
-    """Chạy pipeline dự báo theo công thức 5.5.
-
-    Output trả về đủ data cho 4 biểu đồ + giải thích.
-    """
+    """Phân tích và dự báo số ca cho một (nhóm bệnh, khu vực, tháng), trả dữ liệu
+    cho các biểu đồ kèm giải thích; `save=true` ghi nhận kết quả vào DB."""
     disease = _norm_disease(payload.disease_type)
     region = payload.region.strip() if payload.region and payload.region != "all" else None
     if region:
-        # Chuẩn hoá ngay tại cửa vào: mọi thứ ghi xuống DB và mọi phép tra cứu
-        # đều dùng một tên duy nhất cho mỗi tỉnh.
+        # Chuẩn hoá tên tỉnh ngay đầu vào để mọi phép ghi và tra cứu dùng một tên.
         from app.utils.province_alias import ten_chuan
         region = ten_chuan(region)
 
     chi_tai = payload.chi_tai_ban_da_luu
-    # Chế độ chỉ-nạp không bao giờ ghi DB (bảo vệ luôn cả trường hợp gọi API
-    # trực tiếp với cả hai cờ — khối ghi DB cần dữ liệu chỉ có khi đã tính).
+    # Chế độ chỉ nạp không bao giờ ghi DB, kể cả khi gọi API với cả hai cờ.
     luu_lai = payload.save and not chi_tai
     forecast_date = date(payload.target_year, payload.target_month, 1)
     disease_name_label = _disease_label(disease)
 
-    # ── Bản ĐÃ GHI NHẬN của đúng khóa (nhóm bệnh, khu vực, tháng) ──────────
-    # Ba tiêu chí này gộp thành MỘT khóa: mỗi khóa chỉ giữ tối đa 1 bản dự báo
-    # đã ghi nhận.
+    # ── Bản đã ghi nhận của khoá (nhóm bệnh, khu vực, tháng) ──
+    # Mỗi khoá giữ tối đa một bản dự báo đã ghi nhận.
     cached = (
         db.query(DiseaseForecast)
         .filter(
@@ -443,18 +425,14 @@ def analyze_forecast(
         .first()
     )
 
-    # Chế độ CHỈ NẠP (mở trang / đổi bộ lọc): lấy lại bản đã ghi nhận, tuyệt
-    # đối KHÔNG chạy mô hình. Chưa ghi nhận thì báo found=False để giao diện
-    # để trống, chờ người dùng bấm "Phân tích".
+    # Chế độ chỉ nạp (mở trang / đổi bộ lọc): chỉ lấy bản đã ghi nhận, không chạy
+    # mô hình; chưa có thì trả found=False.
     if chi_tai and cached is None:
         return {"found": False, "forecast": None}
 
-    # Ghi nhận nhưng kỳ này đã có bản trước đó → BÁO XUNG ĐỘT để giao diện hỏi
-    # "đã có dự báo trước đó, ghi đè không?" thay vì lặng lẽ ghi chồng.
-    # Cố ý trả 200 kèm cờ conflict (không dùng 409): interceptor axios phía
-    # frontend gộp mọi lỗi HTTP thành Error(message) và bỏ mất error.response,
-    # nên nhánh lỗi không đọc được status lẫn chi tiết.
-    # Trả về SỚM, trước khi chạy mô hình — không tốn công tính rồi mới hỏi.
+    # Ghi nhận khi kỳ đã có bản trước: báo xung đột để giao diện hỏi ghi đè, trả
+    # trước khi chạy mô hình. Dùng 200 + cờ conflict thay vì 409 vì interceptor
+    # axios phía frontend làm mất error.response.
     if luu_lai and cached is not None and not payload.overwrite:
         return {
             "found": True,
@@ -473,18 +451,17 @@ def analyze_forecast(
             "forecast": None,
         }
 
-    # Chỉ dùng lại số liệu đã lưu khi đang ở chế độ chỉ-nạp. Bấm "Phân tích"
-    # là luôn chạy lại mô hình, kể cả khi kỳ đó đã ghi nhận.
+    # Chỉ dùng lại số liệu đã lưu ở chế độ chỉ nạp; "Phân tích" luôn chạy lại mô hình.
     dung_ban_da_luu = chi_tai and cached is not None
 
     if not dung_ban_da_luu:
-        # ── Tính số ca dự báo ────────────────────────────────────────────────
-        # Khi chọn 1 khu vực cụ thể → tính trực tiếp.
-        # Khi "Toàn quốc" (region=None) → forecast RIÊNG từng tỉnh rồi CỘNG lại,
-        # để tổng toàn quốc luôn ≥ từng tỉnh (tránh nghịch lý weather pha loãng).
+        # ── Tính số ca dự báo ──
+        # Phương án cùng kỳ (seasonal baseline) × hệ số thời tiết × hệ số xu hướng,
+        # dùng làm dự báo thay thế khi ensemble không chạy được. Với Toàn quốc,
+        # giá trị thay thế là tổng các tỉnh.
         def _compute_one_region(reg: Optional[str]):
-            """Trả về (predicted, baseline, weather_factor, trend_factor,
-            forecast_w, history_w_avg, weather_bullets, trend_bullet, baseline_years)."""
+            """Trả (predicted, baseline, weather_factor, trend_factor, forecast_w,
+            history_w_avg, weather_bullets, trend_bullet, baseline_years)."""
             b_years: list[int] = []
             b_counts: list[int] = []
             for back in range(1, 6):
@@ -509,11 +486,8 @@ def analyze_forecast(
             return pred, base, wf, tf, fw, hw_avg, wb, tb, b_years
 
         if region is None:
-            # Toàn quốc = Σ forecast từng tỉnh có data
-            # Chuẩn hoá + khử trùng: disease_cases có thể chứa nhiều cách
-            # viết của cùng một tỉnh. Không gộp thì mỗi biến thể thành một
-            # "tỉnh" riêng và bị CỘNG HAI LẦN vào tổng toàn quốc (mọi truy vấn
-            # đều dùng alias nên hai biến thể trả về cùng một con số).
+            # Chuẩn hoá và khử trùng tên tỉnh: các biến thể tên cùng một tỉnh trả về
+            # cùng số liệu (truy vấn dùng alias), không gộp sẽ bị cộng hai lần.
             from app.utils.province_alias import ten_chuan
             provinces = sorted({
                 ten_chuan(r[0]) for r in db.query(DiseaseCase.location)
@@ -524,9 +498,9 @@ def analyze_forecast(
             predicted = 0
             baseline = 0.0
             baseline_years_set: set[int] = set()
-            # Lưu dự báo từng tỉnh để hiển thị bảng "Dữ liệu ca bệnh gần đây"
+            # Dự báo từng tỉnh cho bảng "Dữ liệu ca bệnh gần đây".
             per_province: list[dict] = []
-            # Dùng weather/trend của tỉnh có nhiều ca nhất để hiển thị giải thích
+            # Giải thích lấy theo hệ số thời tiết/xu hướng của tỉnh có baseline lớn nhất.
             rep = None
             rep_cases = -1
             for prov in provinces:
@@ -540,7 +514,7 @@ def analyze_forecast(
                     "baseline": b,
                     "weather_factor": wf,
                     "trend_factor": tf,
-                    # Điền ở bước ensemble bên dưới; None = tỉnh không đủ chuỗi.
+                    # Điền ở bước ensemble; None = tỉnh không đủ chuỗi.
                     "ensemble": None,
                 })
                 if b > rep_cases:
@@ -561,18 +535,17 @@ def analyze_forecast(
 
         model_used = "multivariate_v1"
         ml_accuracy: Dict[str, Any] | None = None
-        # Khoảng dự báo thực nghiệm (walk-forward) từ ensemble — ghi đè khoảng ±15%
-        # mặc định khi có. None = chưa có ensemble, dùng lại ±15% lúc lưu.
+        # Khoảng dự báo thực nghiệm (walk-forward) từ ensemble; None thì lúc lưu
+        # dùng khoảng mặc định ±15%.
         ci_interval: Dict[str, Any] | None = None
-        # Ensemble có chạy được cho khoá đang phân tích không (True = số dự báo
-        # là đầu ra mô hình; False = phương án cùng kỳ (seasonal baseline), có thể là 0 vì không
-        # có ca cùng kỳ nào trong 5 năm — tức KHÔNG có căn cứ để ghi nhận).
+        # True: số dự báo là đầu ra ensemble. False: phương án cùng kỳ, có thể bằng 0
+        # khi 5 năm trước không có ca cùng kỳ (không có căn cứ để ghi nhận).
         co_ensemble = False
 
-        # Engine chính: ensemble mức nhóm đã kiểm walk-forward (group_forecast).
-        # Phương án cùng kỳ (seasonal baseline) phía trên chỉ dùng thay thế khi chuỗi quá ngắn.
+        # Engine chính: ensemble mức nhóm đã kiểm định walk-forward; phương án cùng
+        # kỳ phía trên chỉ dùng khi chuỗi quá ngắn.
         def _accuracy_tu_ensemble(a):
-            # Backtest nhanh chỉ đo MAE/WAPE; không bịa RMSE = MAE.
+            # Backtest nhanh chỉ đo MAE/WAPE; RMSE và R² để None.
             return {
                 "mae": a["mae"], "rmse": None,
                 "mape": a["wape"], "r2": None,
@@ -584,17 +557,10 @@ def analyze_forecast(
             from app.services.group_ensemble_service import du_bao_nhom
 
             if region is None:
-                # ── TOÀN QUỐC ──────────────────────────────────────────────
-                # 12/09/2026: bỏ hẳn cách "cộng dự báo từng tỉnh" (bottom-up).
-                # Ensemble phi tuyến nên tổng-các-dự-báo-tỉnh KHÔNG bằng
-                # dự-báo-của-tổng (đo thật T9/2026 J09-J18: cộng tỉnh ra 424,
-                # trong khi Tầng 1/Dashboard fit thẳng trên chuỗi toàn viện
-                # theo khối ra 392 — số đã walk-forward validate cho luận
-                # văn). Hai màn hình từng vì vậy ra hai con số khác nhau cho
-                # cùng một kỳ. Nay Toàn quốc dùng ĐÚNG MỘT hàm với Tầng 1:
-                # HierarchicalForecastService.forecast_group(), chỉ khác là
-                # cho chọn kỳ tuỳ ý (tham số target_year/target_month) thay vì
-                # luôn cố định "kỳ tới" như Dashboard.
+                # ── Toàn quốc ──
+                # Dùng cùng hàm với Tầng 1 (HierarchicalForecastService.forecast_group)
+                # để khớp số với Tổng quan, chỉ khác là cho chọn kỳ tuỳ ý. Không cộng
+                # dự báo từng tỉnh: ensemble phi tuyến nên tổng các dự báo ≠ dự báo của tổng.
                 if disease in BLOCKS:
                     try:
                         from app.services.hierarchical_forecast_service import (
@@ -628,9 +594,8 @@ def analyze_forecast(
                             "dùng phương án cùng kỳ (seasonal baseline) làm dự báo thay thế.",
                             disease, payload.target_year, payload.target_month,
                         )
-                # Vẫn tính dự báo riêng cho TỪNG TỈNH để hiển thị bảng chi
-                # tiết theo tỉnh (giá trị dịch tễ — nơi bệnh nhân cư trú) —
-                # nhưng KHÔNG cộng lại thành dòng Toàn quốc nữa (xem trên).
+                # Dự báo từng tỉnh chỉ để hiển thị bảng chi tiết (nơi bệnh nhân cư
+                # trú), không cộng lại thành dòng Toàn quốc.
                 for pp in per_province:
                     kq_t = du_bao_nhom(db, disease, pp["location"],
                                        payload.target_year, payload.target_month)
@@ -652,8 +617,8 @@ def analyze_forecast(
         except Exception:
             logger.exception("Ensemble nhóm lỗi — dùng phương án cùng kỳ (seasonal baseline)")
     else:
-        # Dùng lại kết quả mô hình đã lưu — không tính toán lại.
-        co_ensemble = True  # bản đã ghi nhận — không xét lại căn cứ ở đây
+        # Dùng lại kết quả đã lưu, không tính lại mô hình.
+        co_ensemble = True  # bản đã ghi nhận, không xét lại căn cứ
         predicted = cached.predicted_cases
         baseline = float(cached.baseline_cases or 0)
         weather_factor = float(cached.weather_factor or 1.0)
@@ -694,9 +659,9 @@ def analyze_forecast(
 
     risk_level, increase_pct = _classify_risk(predicted, baseline)
 
-    # 5. Build các series cho biểu đồ
-    # 5a. Forecast vs actual qua các năm: data theo từng tháng (T1..T_target) cho mỗi năm
-    # Với năm target, trả về CẢ HAI: actual và forecast để frontend hiển thị 2 đường riêng
+    # ── Dữ liệu biểu đồ ──
+    # Số ca theo tháng T1..T_target cho từng năm; năm đích có hai đường riêng
+    # (thực tế và dự báo).
     years_to_show = sorted(set(baseline_years + [payload.target_year]))
     chart_main: list[dict] = []
     for m in range(1, payload.target_month + 1):
@@ -714,7 +679,7 @@ def analyze_forecast(
                 row[str(y)] = _query_cases(db, disease, region, y, m)
         chart_main.append(row)
 
-    # 5b. So sánh cùng kỳ (bar chart) — số ca tháng target qua các năm
+    # So sánh cùng kỳ: số ca tháng đích qua các năm.
     comparison: list[dict] = []
     for y in years_to_show:
         if y == payload.target_year:
@@ -728,7 +693,7 @@ def analyze_forecast(
                 }
             )
 
-    # 5c. Xu hướng năm hiện tại đến tháng trước (tháng dở dang → None)
+    # Xu hướng năm đích đến tháng trước tháng đích (tháng dở dang → None).
     trend_curr_year: list[dict] = []
     for m in range(1, payload.target_month):
         trend_curr_year.append(
@@ -739,7 +704,7 @@ def analyze_forecast(
             }
         )
 
-    # 5d. Tương quan thời tiết & dịch bệnh — qua các năm cho cùng tháng
+    # Tương quan thời tiết – số ca của cùng tháng qua các năm.
     correlation: list[dict] = []
     for y in years_to_show:
         cases = (
@@ -763,12 +728,11 @@ def analyze_forecast(
             }
         )
 
-    # 5e. Pearson giữa số ca và từng yếu tố thời tiết — chỉ trên các năm có
-    # thực tế; điểm dự báo là đầu ra mô hình, đưa vào là tự tương quan với mình.
+    # Pearson chỉ tính trên các năm có thực tế: điểm dự báo là đầu ra mô hình,
+    # đưa vào sẽ tạo tự tương quan.
     correlation_coefficients = _pearson_coefficients(
         [r for r in correlation if not r["is_forecast"]])
 
-    # 6. Giải thích mô hình (bullets)
     explanation_bullets = list(weather_bullets)
     if trend_bullet:
         explanation_bullets.append(trend_bullet)
@@ -779,11 +743,8 @@ def analyze_forecast(
 
     explanation_text = " | ".join(explanation_bullets)[:1000]
 
-    # Một khoá (nhóm bệnh × khu vực × tháng) KHÔNG có căn cứ dự báo khi ensemble
-    # không chạy được (chuỗi < SO_THANG_TOI_THIEU tháng) VÀ phương án cùng kỳ (seasonal baseline)
-    # cũng bằng 0 (5 năm trước không có ca nào tháng này). Con số 0 khi đó không
-    # phải đầu ra mô hình — ghi xuống DB chỉ đẻ ra dòng "0 ca" ở Lịch sử và dòng
-    # "0/0" ở bảng Dữ liệu ca bệnh gần đây. Không ghi.
+    # Khoá không có căn cứ dự báo khi ensemble không chạy được (chuỗi quá ngắn) và
+    # phương án cùng kỳ bằng 0; con số 0 đó không phải đầu ra mô hình nên không ghi nhận.
     def _khong_co_can_cu(pred: int, base: float, ens: bool) -> bool:
         return (not ens) and int(pred) == 0 and float(base or 0) == 0.0
 
@@ -797,14 +758,11 @@ def analyze_forecast(
         luu_lai = False
 
     if luu_lai:
-        # 7. GHI NHẬN dự báo — chỉ chạy khi người dùng bấm "Ghi nhận dự báo".
-        #    Bấm "Phân tích" chỉ tính để xem, không đụng gì tới DB.
+        # ── Ghi nhận dự báo (chỉ khi save=true) ──
         forecast_date = date(payload.target_year, payload.target_month, 1)
         disease_name_label = _disease_label(disease)
 
-        # Xóa các forecast cũ cho cùng (bệnh, tháng, khu vực) để tránh cộng dồn
-        # khi user bấm "Phân tích" nhiều lần — mỗi tháng × bệnh × khu vực chỉ giữ
-        # 1 forecast mới nhất.
+        # Xoá bản cũ cùng (bệnh, tháng, khu vực) để mỗi khoá chỉ giữ một bản mới nhất.
         old_forecasts = (
             db.query(DiseaseForecast)
             .filter(
@@ -831,8 +789,7 @@ def analyze_forecast(
             disease_type="respiratory",
             location=region,
             predicted_cases=predicted,
-            # Khoảng thực nghiệm (walk-forward) khi có ensemble; ±15% chỉ còn
-            # là khoảng mặc định khi chưa đủ dữ liệu chạy ensemble (12/09/2026).
+            # Khoảng thực nghiệm (walk-forward) khi có ensemble; ±15% khi không có.
             confidence_lower=(ci_interval["lower"] if ci_interval else int(predicted * 0.85)),
             confidence_upper=(ci_interval["upper"] if ci_interval else int(predicted * 1.15)),
             model_used=model_used,
@@ -852,8 +809,7 @@ def analyze_forecast(
         db.commit()
         db.refresh(saved)
 
-        # Khi phân tích TOÀN QUỐC: lưu thêm dự báo của TỪNG TỈNH để bảng "Dữ liệu
-        # ca bệnh gần đây" hiển thị dự báo theo khu vực (không chỉ con số tổng).
+        # Phân tích Toàn quốc: lưu thêm dự báo từng tỉnh cho bảng "Dữ liệu ca bệnh gần đây".
         if region is None and per_province:
             so_bo_qua = 0
             for pp in per_province:
@@ -862,8 +818,7 @@ def analyze_forecast(
                 base_p = pp["baseline"]
                 ens_p = pp.get("ensemble")
                 if _khong_co_can_cu(pred_p, base_p, ens_p is not None):
-                    # Tỉnh không có căn cứ: xoá luôn bản cũ (nếu có) cho cùng
-                    # khoá để DB không giữ dòng 0 từ các lần ghi nhận trước.
+                    # Tỉnh không có căn cứ: xoá bản cũ cùng khoá, không ghi dòng mới.
                     so_bo_qua += 1
                     for fc in (
                         db.query(DiseaseForecast)
@@ -877,7 +832,6 @@ def analyze_forecast(
                 rl_p, _ = _classify_risk(pred_p, base_p)
                 iv_p = (ens_p or {}).get("interval") or {}
                 acc_p = (ens_p or {}).get("accuracy") or {}
-                # Xoá forecast cũ của tỉnh này cho cùng tháng/bệnh
                 old_p = (
                     db.query(DiseaseForecast)
                     .filter(
@@ -889,9 +843,8 @@ def analyze_forecast(
                 )
                 for fc in old_p:
                     db.delete(fc)
-                # Cùng bộ trường như khi ghi nhận trực tiếp một tỉnh: khoảng
-                # walk-forward + độ chính xác của CHÍNH tỉnh đó, model_used đúng
-                # nguồn (không kế thừa nhãn top-down của bản Toàn quốc).
+                # Khoảng walk-forward, độ chính xác và model_used lấy theo chính tỉnh
+                # đó, không kế thừa nhãn top-down của bản Toàn quốc.
                 db.add(DiseaseForecast(
                     forecast_month=forecast_date,
                     forecast_date=forecast_date,
@@ -920,13 +873,11 @@ def analyze_forecast(
                             so_bo_qua, disease, forecast_date)
 
 
-        # Bản theo tỉnh KHÔNG ghi đè bản Toàn quốc: hai con số khác phạm vi
-        # theo thiết kế (top-down mức khối vs bottom-up từng tỉnh). "Ghi nhận
-        # dự báo" chỉ lưu vết số ca; nhu cầu thuốc và cảnh báo luôn tính lại
+        # Bản theo tỉnh không ghi đè bản Toàn quốc (khác phạm vi theo thiết kế).
+        # Ghi nhận chỉ lưu vết số ca; nhu cầu thuốc và cảnh báo luôn tính lại
         # từ dss_demand + dss_alerts mỗi lần đọc.
     else:
-        # Không ghi nhận lần này: chế độ chỉ-nạp thì trả lại chính bản đã ghi
-        # nhận; còn vừa bấm "Phân tích" thì chưa có bản nào (saved = None).
+        # Chế độ chỉ nạp trả lại bản đã ghi nhận; chỉ phân tích thì saved = None.
         saved = cached if dung_ban_da_luu else None
 
     return {
@@ -946,10 +897,8 @@ def analyze_forecast(
             "target_month": payload.target_month,
             "target_year": payload.target_year,
             "model_used": model_used,
-            # Kết quả này đã được ghi nhận vào DB hay mới chỉ là bản xem trước.
             "is_recorded": saved is not None,
-            # Bấm Ghi nhận nhưng khoá này không có căn cứ dự báo → không ghi,
-            # trả lý do để giao diện hiện thay vì lặng lẽ báo "Chưa ghi nhận".
+            # Lý do không ghi nhận khi khoá không có căn cứ dự báo.
             "khong_ghi_nhan": khong_ghi_nhan,
             "recorded_at": (
                 saved.created_at.isoformat()
@@ -964,11 +913,11 @@ def analyze_forecast(
             "history_avg": history_w_avg,
         },
         "charts": {
-            "main": chart_main,            # T1..T_target qua các năm
-            "comparison": comparison,      # Bar chart — số ca tháng target qua các năm
-            "trend_current_year": trend_curr_year,  # Line — xu hướng tháng đầu năm
-            "correlation": correlation,    # Combo — số ca + thời tiết qua các năm
-            "correlation_coefficients": correlation_coefficients,  # Pearson r cho 5 yếu tố
+            "main": chart_main,
+            "comparison": comparison,
+            "trend_current_year": trend_curr_year,
+            "correlation": correlation,
+            "correlation_coefficients": correlation_coefficients,
             "years": years_to_show,
         },
     }
@@ -980,16 +929,15 @@ def load_saved_forecast(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
-    """Nạp lại bản dự báo ĐÃ GHI NHẬN theo khóa (nhóm bệnh, khu vực, tháng).
+    """Nạp lại bản dự báo đã ghi nhận theo khoá (nhóm bệnh, khu vực, tháng).
 
-    Dùng khi mở trang Phân tích & Dự báo hoặc khi đổi bộ lọc: chỉ đọc, KHÔNG
-    chạy mô hình và KHÔNG ghi gì vào DB. Chưa ghi nhận thì trả
-    ``{"found": false}`` để giao diện để trống, chờ bấm "Phân tích".
+    Chỉ đọc: không chạy mô hình, không ghi DB. Chưa ghi nhận thì trả
+    ``{"found": false}``.
     """
     payload.chi_tai_ban_da_luu = True
     payload.save = False
     payload.overwrite = False
-    # analyze_forecast là hàm đồng bộ (Tuần 1) — `await` một dict là TypeError → 500.
+    # analyze_forecast là hàm đồng bộ, gọi trực tiếp (không await).
     return analyze_forecast(payload, db, current_user)
 
 
@@ -999,8 +947,8 @@ _MUI_GIO_VN = timezone(timedelta(hours=7))
 def _gio_dia_phuong(dt: Optional[datetime]) -> str:
     """datetime của DB (UTC, naive) → chuỗi "dd/mm/YYYY HH:MM" giờ Việt Nam.
 
-    SQLite ghi ``CURRENT_TIMESTAMP`` theo UTC và SQLAlchemy trả về datetime
-    KHÔNG có tzinfo; ``strftime`` thẳng sẽ ra giờ UTC, lệch 7 tiếng.
+    SQLite ghi ``CURRENT_TIMESTAMP`` theo UTC và SQLAlchemy trả datetime không
+    có tzinfo, nên phải gắn UTC trước khi đổi múi giờ.
     """
     if dt is None:
         return "—"
@@ -1018,14 +966,14 @@ async def get_forecast_history(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> List[Dict[str, Any]]:
-    """Lịch sử dự báo gần đây kèm độ lệch (nếu đã có actual)."""
+    """Lịch sử dự báo đã ghi nhận, mới nhất trước, kèm số thực tế và độ lệch nếu có."""
     q = db.query(DiseaseForecast).order_by(DiseaseForecast.created_at.desc())
     if disease_type:
         q = q.filter(DiseaseForecast.icd_code == _norm_disease(disease_type))
     if region:
         from app.utils.province_alias import province_aliases
         q = q.filter(DiseaseForecast.location.in_(province_aliases(region)))
-    # Lọc theo khoảng thời gian dự báo (forecast_month = đầu tháng)
+    # forecast_month lưu ngày đầu tháng.
     if start_date:
         q = q.filter(DiseaseForecast.forecast_month >= start_date.replace(day=1))
     if end_date:
@@ -1036,8 +984,7 @@ async def get_forecast_history(
 
     out = []
     for r in rows:
-        # Ưu tiên số nhập tay; chưa nhập thì suy ra từ disease_cases để bảng
-        # Báo cáo có số thực tế thay vì luôn hiện "—".
+        # Ưu tiên số nhập tay; chưa nhập thì suy ra từ disease_cases.
         actual = r.actual_cases
         if actual is None and r.forecast_date is not None:
             actual = so_ca_thuc_te(db, r.icd_code, r.forecast_date, r.location)
@@ -1054,12 +1001,8 @@ async def get_forecast_history(
                 "icd_code": r.icd_code,
                 "disease_label": r.disease_name or _disease_label(r.icd_code),
                 "region": "Toàn quốc" if r.location is None else r.location,
-                # location=NULL = bản Toàn quốc, tính bằng công thức top-down
-                # riêng (Tầng 1) — KHÔNG còn là tổng của các tỉnh (đúng trước
-                # 12/09, sai từ khi gộp một công thức). FE dùng cờ này để lấy
-                # số "chính thức" từ bản Toàn quốc thay vì cộng các tỉnh —
-                # cộng các tỉnh lại sẽ ra một tổng khác Tổng quan/Cảnh báo,
-                # lặp lại đúng lỗi 392/424 cũ ở một màn hình khác.
+                # location = NULL là bản Toàn quốc (top-down Tầng 1), không phải tổng
+                # các tỉnh; frontend lấy số chính thức từ bản này thay vì cộng các tỉnh.
                 "is_nationwide": r.location is None,
                 "predicted_cases": r.predicted_cases,
                 "actual_cases": actual,
@@ -1081,11 +1024,7 @@ async def xoa_toan_bo_lich_su(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_admin_user),
 ) -> Dict[str, Any]:
-    """Xoá TOÀN BỘ lịch sử dự báo — chỉ Quản trị viên.
-
-    get_admin_user chặn ngay ở tầng phụ thuộc: tài khoản không phải
-    Administrator sẽ nhận 403 trước khi vào thân hàm.
-    """
+    """Xoá toàn bộ lịch sử dự báo (chỉ Administrator)."""
     so_dong = db.query(DiseaseForecast).delete(synchronize_session=False)
     db.commit()
     logger.warning(
@@ -1101,10 +1040,7 @@ async def xoa_mot_du_bao(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
-    """Xoá MỘT lần dự báo đã ghi nhận.
-
-    Quyền: người đã ghi nhận bản đó (created_by), hoặc Quản trị viên.
-    """
+    """Xoá một bản dự báo đã ghi nhận; chỉ người ghi nhận (created_by) hoặc Administrator."""
     fc = (
         db.query(DiseaseForecast)
         .filter(DiseaseForecast.id == forecast_id)
@@ -1168,7 +1104,7 @@ async def export_forecast_pdf(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Xuất PDF báo cáo dự báo cho 1 bản ghi đã lưu (spec 5.2 #10)."""
+    """Xuất PDF báo cáo cho một bản dự báo đã ghi nhận."""
     from datetime import datetime as _dt
     from fastapi.responses import Response
     import io
@@ -1177,7 +1113,7 @@ async def export_forecast_pdf(
     if not fc:
         raise HTTPException(status_code=404, detail="Forecast not found")
 
-    # Dùng helper từ reports module để có font Unicode
+    # Dùng helper của module reports để có font Unicode.
     from app.api.v1 import reports as _reports
 
     _reports._register_unicode_fonts()
@@ -1238,8 +1174,7 @@ async def export_forecast_pdf(
         repeatRows=1,
     )
     style_info = list(base_style)
-    # Highlight risk row
-    risk_row = 8  # 0=header, 1..7 above, risk = row 8
+    risk_row = 8  # chỉ số dòng "Mức cảnh báo dịch tễ" (0 = header)
     risk_color = {
         "low": colors.HexColor("#16A34A"),
         "medium": colors.HexColor("#D97706"),
@@ -1255,7 +1190,7 @@ async def export_forecast_pdf(
     # II. Giải thích mô hình
     story.append(Paragraph("<b>II. Giải thích mô hình</b>", styles["Heading2"]))
     explanation = fc.explanation or "Không có giải thích."
-    # Nếu có nhiều bullet ngăn cách " | " thì tách
+    # Các ý giải thích lưu nối bằng " | ".
     bullets = [b.strip() for b in (explanation or "").split("|") if b.strip()]
     if not bullets:
         bullets = [explanation]
@@ -1263,7 +1198,7 @@ async def export_forecast_pdf(
         story.append(Paragraph(f"• {b}", styles["Normal"]))
     story.append(Spacer(1, 0.4 * cm))
 
-    # III. So sánh thực tế (nếu đã có)
+    # III. Đánh giá độ chính xác
     story.append(Paragraph("<b>III. Đánh giá độ chính xác</b>", styles["Heading2"]))
     if fc.actual_cases is not None:
         cmp_table = Table(

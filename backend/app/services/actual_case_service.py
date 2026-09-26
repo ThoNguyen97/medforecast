@@ -1,13 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Số ca THỰC TẾ của một kỳ dự báo — một hàm dùng chung cho mọi màn hình.
+"""Số ca thực tế của một kỳ dự báo, dùng chung cho mọi màn hình.
 
-`disease_forecasts.actual_cases` chỉ có khi nhập tay nên hầu như rỗng; số thật
-đã nằm sẵn trong dữ liệu ca bệnh. Bản Toàn quốc (location IS NULL) đọc
-`mart_monthly_cases_by_block` (đếm DISTINCT lượt, cùng nguồn Tổng quan/Cảnh
-báo); bản theo tỉnh đọc `disease_cases` theo tỉnh.
-
-Kỳ chưa chốt (tháng lịch hiện tại) trả None — vài ngày dữ liệu không phải
-"thực tế" và không được đem tính độ lệch.
+Toàn quốc (location IS NULL) đọc `mart_monthly_cases_by_block` (đếm DISTINCT lượt);
+theo tỉnh đọc `disease_cases`. Kỳ chưa chốt (tháng lịch hiện tại) trả None.
 """
 from __future__ import annotations
 
@@ -22,7 +17,7 @@ from app.utils.icd_groups import NHOM_ICD, dieu_kien_benh
 
 
 def thang_da_chot(thang: date) -> bool:
-    """Cùng quy tắc với pipeline (`is_complete`): tháng lịch hiện tại chưa chốt."""
+    """Tháng đã chốt; cùng quy tắc `is_complete` của pipeline (tháng lịch hiện tại chưa chốt)."""
     h = date.today()
     return (thang.year, thang.month) < (h.year, h.month)
 
@@ -35,8 +30,8 @@ def so_ca_thuc_te(
 ) -> Optional[int]:
     """Tổng ca thực tế của (nhóm bệnh, tháng, khu vực).
 
-    None khi kỳ chưa chốt hoặc chưa có bản ghi nào cho kỳ đó — khác hẳn "có
-    dữ liệu và bằng 0", để giao diện hiện "—" thay vì độ lệch vô nghĩa.
+    None khi kỳ chưa chốt hoặc chưa có bản ghi (khác với "có dữ liệu và bằng 0"),
+    để giao diện hiện "—" thay vì độ lệch vô nghĩa.
     """
     if not thang_da_chot(thang):
         return None

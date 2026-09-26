@@ -1,0 +1,25 @@
+/* ═════════════════════════════════════════════════════════════════════════
+   sta/04_quyen_doc_trang_thai.sql
+   Chạy trên: STA, CSDL MEDFORECAST_DW, bằng tài khoản có quyền GRANT.
+   Mục đích: cấp SELECT trên MF_Watermark và MF_SyncLog cho medforecast_app để
+   backend hiển thị thẻ "Trạng thái dữ liệu" (lần đẩy PROD → STA gần nhất).
+   Điều kiện: đã tạo user medforecast_app (sta/01_tao_database_va_bang.sql,
+   mục 8). Idempotent.
+   ═════════════════════════════════════════════════════════════════════════ */
+USE MEDFORECAST_DW;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'medforecast_app')
+BEGIN
+    RAISERROR(N'Chưa có user medforecast_app trong MEDFORECAST_DW — chạy mục 8 của sta/01_tao_database_va_bang.sql trước.', 16, 1);
+    RETURN;
+END
+GRANT SELECT ON dbo.MF_Watermark TO medforecast_app;
+GRANT SELECT ON dbo.MF_SyncLog   TO medforecast_app;
+GO
+-- Kiểm tra: hai dòng, permission_name = SELECT
+SELECT o.name AS doi_tuong, p.permission_name, p.state_desc
+FROM   sys.database_permissions p
+JOIN   sys.objects o ON o.object_id = p.major_id
+JOIN   sys.database_principals u ON u.principal_id = p.grantee_principal_id
+WHERE  u.name = N'medforecast_app' AND o.name IN (N'MF_Watermark', N'MF_SyncLog');
+GO

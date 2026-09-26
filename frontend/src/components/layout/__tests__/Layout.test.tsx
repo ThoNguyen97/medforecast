@@ -6,7 +6,7 @@ import { useUIStore } from '../../../store/uiStore';
 import { useAuthStore } from '../../../store/authStore';
 import type { User } from '../../../types/auth';
 
-// Mock child components to keep tests focused
+// Mock các component con để test chỉ tập trung vào Layout
 vi.mock('../Sidebar', () => ({
   default: () => <aside data-testid="sidebar">Sidebar</aside>,
 }));

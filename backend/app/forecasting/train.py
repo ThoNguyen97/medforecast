@@ -1,22 +1,20 @@
-"""HUẤN LUYỆN từ bộ dữ liệu đóng gói → backtest + artifact mô hình (3.7, 11/09/2026).
+"""Huấn luyện từ bộ dữ liệu đóng gói, sinh kết quả backtest và artifact mô hình.
 
     python -m app.forecasting.train --data dataset/v1 --out models/v1
 
 Không đụng DB. Đọc dataset/v1/*.csv (xem dataset.py), với mỗi khối ICD:
 
-  1. Walk-forward mở rộng cửa sổ, 1 bước (đúng giao thức của run_eval) →
-     RelMAE / MPE / độ phủ ở mức nhóm và 4 hướng phân cấp mức mã. Đây là
-     "đánh giá trên tập kiểm định" — mỗi bước là một lần huấn luyện lại thật.
-  2. Huấn luyện LẦN CUỐI trên toàn bộ kỳ đã chốt, kết hợp bằng trọng số +
-     hệ số lệch vừa học ở bước 1 → dự báo kỳ kế tiếp + khoảng 90 %.
+  1. Walk-forward mở rộng cửa sổ, 1 bước (cùng giao thức run_eval) → RelMAE / MPE /
+     độ phủ ở mức nhóm và 4 hướng phân cấp mức mã; mỗi bước huấn luyện lại.
+  2. Huấn luyện lần cuối trên toàn bộ kỳ đã chốt, kết hợp bằng trọng số và
+     hệ số lệch vừa học → dự báo kỳ kế tiếp + khoảng 90 %.
   3. Ghi artifact:
         model_v1.json   cấu hình, thành viên, trọng số, hệ số lệch, dự báo,
                         chỉ số backtest, sha256 của dataset — đọc được bằng mắt
-        model_v1.pkl    các thành viên ĐÃ KHỚP + combiner, để predict.py dự báo
+        model_v1.pkl    các thành viên đã khớp + combiner, để predict.py dự báo
                         mà không cần khớp lại (joblib)
 
-Kết quả bảng số phải TRÙNG KetQua_Backtest_ChonCauHinh.md khi dataset xuất từ
-cùng DB — đó là cách chứng minh file dữ liệu này đúng là thứ mô hình đã học.
+Với dataset xuất từ cùng DB, kết quả phải trùng với run_eval (backend/ketqua_backtest/).
 """
 from __future__ import annotations
 
@@ -49,9 +47,9 @@ def train(data_dir: str, out_dir: str, cfg=PRODUCTION_CONFIG, quiet: bool = Fals
     d = ds.load(data_dir, complete_only=True, from_period=cfg.from_period)
     out = Path(out_dir); out.mkdir(parents=True, exist_ok=True)
     manifest = d["manifest"]
-    fitted = {}                       # để pickle
+    fitted = {}                       # thành viên đã khớp, để pickle
     record = {
-        "model": "MedForecast ensemble M12 — top-down động",
+        "model": "MedForecast ensemble — top-down động",
         "version": "1",
         "trained_at": datetime.now().isoformat(timespec="seconds"),
         "dataset": {"dir": str(data_dir), "version": manifest.get("version"),
@@ -123,8 +121,7 @@ def train(data_dir: str, out_dir: str, cfg=PRODUCTION_CONFIG, quiet: bool = Fals
 
 
 def main(argv=None):
-    # Cùng cách với run_eval: ConvergenceWarning của SARIMAX trên chuỗi thưa đã
-    # được ĐẾM vào members_failed/thanhvien — không cần in hàng trăm dòng.
+    # Như run_eval: tắt ConvergenceWarning của SARIMAX, lỗi đã được đếm vào members_failed.
     from .run_eval import _tat_canh_bao
     _tat_canh_bao()
     warnings.simplefilter("ignore")

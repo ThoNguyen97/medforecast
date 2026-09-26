@@ -1,8 +1,7 @@
 """Danh mục quản trị: bệnh, nhóm bệnh, khu vực — lưu JSON trong system_config.
 
 Đọc: mọi người dùng đã đăng nhập; ghi: Administrator. GET không ghi DB.
-`admin.safety_rate` (hệ số dự phòng) gỡ 13/09/2026: không service nào đọc,
-núm vặn DSS chỉ nằm ở /dss/params.
+Tham số DSS không nằm ở đây mà ở /dss/params.
 
 Routes
 ------
@@ -20,11 +19,9 @@ GET    /api/v1/admin/regions                – Lấy danh sách khu vực
 POST   /api/v1/admin/regions                – Thêm khu vực
 DELETE /api/v1/admin/regions/{name}         – Xoá khu vực
 
-Lưu ý về "Danh mục nhóm bệnh" (admin.disease_groups): đây là danh mục THAM
-KHẢO/hiển thị (giống admin.diseases) — sửa ở đây KHÔNG tự động đổi 3 nhóm ICD
-mà mô hình dự báo đang dùng thật (NHOM_ICD cố định trong app/utils/icd_groups.py,
-đã được backtest trên dữ liệu thật). Muốn đổi phạm vi nhóm dự báo phải sửa
-icd_groups.py và huấn luyện/backtest lại — không nên chỉ đổi ở danh mục này.
+`admin.disease_groups` chỉ là danh mục tham khảo/hiển thị: sửa ở đây không đổi
+3 nhóm ICD của mô hình dự báo (NHOM_ICD trong app/utils/icd_groups.py). Đổi phạm
+vi nhóm dự báo phải sửa icd_groups.py và backtest lại.
 """
 from __future__ import annotations
 
@@ -45,18 +42,17 @@ from app.utils.icd_groups import NHOM_ICD, ma_thuoc_nhom
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["admin-catalog"])
 
-# Config keys
 DISEASES_KEY = "admin.diseases"
 DISEASE_GROUPS_KEY = "admin.disease_groups"
 REGIONS_KEY = "admin.regions"
 
-# ── Helpers ─────────────────────────────────────────────────────────────────
+# ── Helpers ──
 
 
 def _get_or_init(db: Session, key: str, default: str) -> SystemConfig:
-    """Dòng cấu hình theo khoá; chưa có thì trả bản mặc định CHƯA GHI DB.
-    Endpoint GET vì thế không có tác dụng phụ; dòng chỉ được persist khi một
-    endpoint PUT/POST/DELETE gọi `_save_list` (add + commit)."""
+    """Dòng cấu hình theo khoá; chưa có thì trả bản mặc định chưa ghi DB.
+    Nhờ vậy GET không có tác dụng phụ; dòng chỉ được persist khi endpoint
+    ghi gọi `_save_list` (add + commit)."""
     cfg = db.query(SystemConfig).filter(SystemConfig.config_key == key).first()
     if cfg:
         return cfg
@@ -80,7 +76,7 @@ def _save_list(db: Session, cfg: SystemConfig, items: List[Dict[str, Any]], user
     db.commit()
 
 
-# ── Diseases ────────────────────────────────────────────────────────────────
+# ── Danh mục bệnh ──
 
 
 class DiseaseItem(BaseModel):
@@ -145,9 +141,7 @@ def delete_disease(
 
 
 def _seed_diseases() -> List[Dict[str, Any]]:
-    # 20 mã ICD lẻ thực tế đang có trong dữ liệu ca bệnh (disease_cases),
-    # trải trong 3 nhóm đề tài J00-J06 / J09-J18 / J20-J22 — không còn chỉ
-    # 4 mã cũ (J20/J06/J02/J01) như bản đầu.
+    # 20 mã ICD lẻ có trong disease_cases, thuộc 3 nhóm J00-J06 / J09-J18 / J20-J22.
     return [
         {"key": "J00", "label": "Viêm mũi họng cấp tính [cảm thường]", "description": ""},
         {"key": "J01", "label": "Viêm xoang cấp tính", "description": "Acute sinusitis"},
@@ -172,13 +166,13 @@ def _seed_diseases() -> List[Dict[str, Any]]:
     ]
 
 
-# ── Disease groups ──────────────────────────────────────────────────────────
+# ── Nhóm bệnh ──
 
 
 class DiseaseGroupItem(BaseModel):
     key: str = Field(..., min_length=2, max_length=64)
     name: str = Field(..., min_length=1, max_length=120)
-    # Danh sách mã bệnh (key trong Danh mục bệnh) thuộc nhóm này.
+    # Mã bệnh (key trong danh mục bệnh) thuộc nhóm.
     icd_codes: List[str] = Field(default_factory=list)
 
 
@@ -238,16 +232,14 @@ def delete_disease_group(
 
 
 def _seed_disease_groups() -> List[Dict[str, Any]]:
-    # Khớp đúng NHOM_ICD thật đang dùng cho dự báo (icd_groups.py) — để danh
-    # mục này bắt đầu nhất quán với hệ thống, dù sau đó admin có thể thêm/sửa
-    # tự do (chỉ ảnh hưởng danh mục hiển thị, xem lưu ý ở đầu file).
+    # Khởi tạo từ NHOM_ICD của mô hình dự báo; chỉnh sửa về sau chỉ ảnh hưởng hiển thị.
     return [
         {"key": nhom, "name": ten, "icd_codes": ma_thuoc_nhom(nhom)}
         for nhom, ten in NHOM_ICD.items()
     ]
 
 
-# ── Regions ─────────────────────────────────────────────────────────────────
+# ── Khu vực ──
 
 
 class RegionItem(BaseModel):

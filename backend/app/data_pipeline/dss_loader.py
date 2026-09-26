@@ -1,23 +1,17 @@
-"""Nạp bốn luồng dữ liệu DSS từ STA về DB local.
-
-Đặt tại: backend/app/data_pipeline/dss_loader.py
+"""Nạp bốn luồng dữ liệu DSS từ view STA về DB local.
 
     vw_MedForecast_TieuHaoTong        →  fact_usage_total
     vw_MedForecast_CaBenhPhanCap      →  fact_cases_by_care_level
     vw_MedForecast_TieuHaoPhanCap     →  fact_usage_by_care_level
     vw_MedForecast_TonKhoLo_MoiNhat   →  fact_inventory_lot        (cho FEFO)
 
-Ba luồng đầu theo KỲ (`period`), nạp tăng dần được. Luồng thứ tư là ẢNH CHỤP
-tồn kho (`snapshot_date`) — không có khái niệm kỳ, và một ảnh chụp mới làm ảnh
-chụp cũ hết giá trị. Cả bốn đều xoá-rồi-chèn theo khoá phân vùng của mình.
+Ba luồng đầu theo kỳ (`period`), nạp tăng dần; luồng thứ tư là ảnh chụp tồn kho
+(`snapshot_date`), ảnh mới thay ảnh cũ. Tách khỏi `pipeline.py` và mỗi luồng một
+transaction riêng để một luồng DSS lỗi không rollback phần ca bệnh.
 
-Tách khỏi `pipeline.py` để một luồng DSS hỏng không rollback phần ca bệnh;
-module chạy sau pipeline chính, transaction riêng cho từng luồng.
-
-Cơ chế nạp: XOÁ-RỒI-CHÈN theo khoá phân vùng. Mỗi kỳ có trong dữ liệu vừa kéo
-về bị xoá sạch bên local rồi chèn lại — idempotent, và dòng biến mất bên nguồn
-(toa huỷ muộn) cũng biến mất bên local (INSERT OR REPLACE không làm được điều
-đó). Kỳ không có trong lần kéo được giữ nguyên nên nạp tăng dần an toàn.
+Cơ chế nạp: xoá-rồi-chèn theo khoá phân vùng. Idempotent, và dòng biến mất bên nguồn
+(toa huỷ muộn) cũng biến mất bên local, điều INSERT OR REPLACE không làm được.
+Phân vùng không có trong lần kéo được giữ nguyên.
 """
 from __future__ import annotations
 
@@ -35,15 +29,12 @@ logger = logging.getLogger(__name__)
 
 SQL_DIR = Path(__file__).parent / "sql"
 
-# Số kỳ lùi lại khi nạp tăng dần. Dữ liệu tiêu hao gần như không đổi sau khi
-# chốt tháng, nhưng toa bị huỷ muộn thì có — lùi 3 kỳ cho chắc.
+# Số kỳ lùi lại khi nạp tăng dần, để bắt toa bị huỷ muộn sau khi chốt tháng.
 LOOKBACK_MONTHS = int(os.environ.get("DSS_LOOKBACK_MONTHS", "3"))
 INSERT_CHUNK = 1000
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Đặc tả ba luồng
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Đặc tả các luồng ──
 
 FLOWS: Dict[str, Dict[str, Any]] = {
     "usage_total": {
@@ -65,8 +56,7 @@ FLOWS: Dict[str, Dict[str, Any]] = {
         },
         "numeric": ["so_luong_toan_vien", "so_luong_hohap", "d_baseline_thang",
                     "ty_trong_hohap", "so_dong_toa", "so_luot", "is_vtyt"],
-        # Chỉ những cột CỘNG ĐƯỢC. `d_baseline_thang` và `ty_trong_hohap` là
-        # đại lượng dẫn xuất — cộng hai dòng trùng sẽ ra gấp đôi tỷ trọng.
+        # Chỉ các cột cộng được; `d_baseline_thang`, `ty_trong_hohap` là đại lượng dẫn xuất.
         "sum": ["so_luong_toan_vien", "so_luong_hohap", "so_dong_toa", "so_luot"],
         "required": ["supply_code", "so_luong_toan_vien"],
     },
@@ -99,10 +89,8 @@ FLOWS: Dict[str, Dict[str, Any]] = {
         "sum": ["quantity", "line_count"],
         "required": ["block_code", "ro", "supply_code", "quantity"],
     },
-    # LUỒNG THỨ TƯ — không theo kỳ, mà theo ẢNH CHỤP TỒN KHO.
-    # `partition` nói cho `load_flow` biết xoá-rồi-chèn theo cột nào. Ba luồng
-    # trên dùng `period`; luồng này dùng `snapshot_date`, vì tồn kho không có
-    # khái niệm kỳ và một ảnh chụp mới làm ảnh chụp cũ hết giá trị.
+    # Ảnh chụp tồn kho theo lô: `partition` chỉ định cột xoá-rồi-chèn là
+    # `snapshot_date` thay cho `period` mặc định.
     "inventory_lot": {
         "sql_file": "inventory_lot_sta.sql",
         "table": "fact_inventory_lot",
@@ -122,25 +110,21 @@ FLOWS: Dict[str, Dict[str, Any]] = {
         },
         "numeric": ["lot_id", "co_han_dung", "quantity",
                     "don_gia_mua", "don_gia_thau", "don_gia_von"],
-        # CHỈ `quantity`. `lot_id` là khoá; ba cột đơn giá và `co_han_dung` là
-        # thuộc tính của lô — cộng chúng lại là vô nghĩa.
+        # Chỉ `quantity`: `lot_id` là khoá; đơn giá và `co_han_dung` là thuộc tính của lô.
         "sum": ["quantity"],
         "required": ["supply_code", "quantity"],
-        # Giữ CẢ dòng lot_id = 0 (tồn không tra được lô). Lọc bỏ sẽ làm tổng
-        # tồn theo lô nhỏ hơn tổng tồn thật → hiện "hụt hàng" giả.
+        # Giữ cả dòng lot_id = 0 (tồn không tra được lô), nếu bỏ tổng tồn theo lô
+        # nhỏ hơn tồn thật và sinh cảnh báo thiếu hụt giả.
     },
 }
 
-# Thứ tự nạp. Ba luồng theo kỳ trước, ảnh chụp tồn kho sau — thứ tự này không
-# bắt buộc về mặt kỹ thuật (các luồng độc lập) nhưng giữ cho log dễ đọc.
+# Thứ tự nạp; các luồng độc lập, thứ tự chỉ để log dễ đọc.
 THU_TU_NAP = ("usage_total", "cases_care_level", "usage_care_level", "inventory_lot")
 
 RO_HOP_LE = {"NGT", "NT1", "NT2", "NT3", "NT0"}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# DDL — bốn bảng fact nằm ngoài Base.metadata
-# ─────────────────────────────────────────────────────────────────────────────
+# ── DDL: bốn bảng fact nằm ngoài Base.metadata ──
 
 DDL = [
     """
@@ -203,21 +187,18 @@ DDL = [
 
 
 def ensure_tables(db) -> None:
-    """Tạo bốn bảng đích + index nếu chưa có. Chạy lại vô hại."""
+    """Tạo bốn bảng đích và index nếu chưa có (idempotent)."""
     for stmt in DDL:
         db.execute(text(stmt))
     db.commit()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Tiện ích
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Tiện ích ──
 
 def _period_key(v: Any) -> Optional[str]:
-    """Bên STA `Period` là kiểu date (ngày 01 của tháng). Đưa về 'YYYY-MM'.
+    """Đưa `Period` (date, ngày 01 của tháng) về 'YYYY-MM'.
 
-    Chấp nhận cả chuỗi 'YYYY-MM-DD', 'YYYY-MM' và 'MM/YYYY' để không phụ thuộc
-    driver ODBC trả kiểu gì.
+    Chấp nhận cả chuỗi 'YYYY-MM-DD', 'YYYY-MM', 'MM/YYYY' để không phụ thuộc kiểu driver ODBC trả về.
     """
     if v is None or (isinstance(v, float) and pd.isna(v)):
         return None
@@ -245,8 +226,8 @@ def _period_key(v: Any) -> Optional[str]:
 def _ngay_key(v: Any) -> Optional[str]:
     """Đưa một ngày bất kỳ về chuỗi 'YYYY-MM-DD'.
 
-    Cần vì SQLite so sánh ngày theo thứ tự chuỗi — '2026-9-1' sẽ đứng SAU
-    '2026-10-01' nếu không đệm số 0, và FEFO sẽ sắp lô sai thứ tự hạn dùng.
+    SQLite so sánh ngày theo thứ tự chuỗi; không đệm số 0 thì '2026-9-1' đứng sau
+    '2026-10-01' và FEFO sắp lô sai thứ tự hạn dùng.
     """
     if v is None or (isinstance(v, float) and pd.isna(v)):
         return None
@@ -287,18 +268,11 @@ _RE_LINE_COMMENT = re.compile(r"--[^\n]*")
 
 
 def _bo_chu_thich(sql: str) -> str:
-    """Bóc chú thích /* */ và -- khỏi câu SQL TRƯỚC khi dùng.
+    """Bóc chú thích /* */ và -- khỏi câu SQL trước khi dùng.
 
-    11/09/2026 — lỗi thật gặp ở lần Đồng bộ đầu tiên qua giao diện:
-      - inventory_lot_sta.sql không có tham số, nhưng chú thích đầu file viết
-        "VÌ SAO LUỒNG NÀY KHÔNG CÓ :since_date" → `":since_date" in sql` đúng →
-        truyền 1 tham số cho câu có 0 dấu hỏi.
-      - usage_total_sta.sql có :since_date ở WHERE VÀ trong chú thích →
-        SQLAlchemy text() đổi cả hai thành `?`, pyodbc bóc chú thích rồi mới
-        đếm → "1 marker, 2 parameters".
-    Hai luồng còn lại chạy được chỉ vì chú thích của chúng tình cờ không nhắc
-    tới tham số. Bóc chú thích ở đây là cách duy nhất để tác giả file SQL được
-    tự do viết chú thích.
+    Nếu chú thích nhắc `:since_date`, phép kiểm tra `":since_date" in sql` và
+    SQLAlchemy text() sẽ tính cả tham số trong chú thích, trong khi pyodbc bóc chú
+    thích trước khi đếm dấu hỏi, gây lệch số tham số.
     """
     sql = _RE_BLOCK_COMMENT.sub(" ", sql)
     sql = _RE_LINE_COMMENT.sub(" ", sql)
@@ -323,24 +297,14 @@ def _watermark(db, table: str) -> Optional[str]:
         return None
 
 
-def _num(v, default=0.0):
-    try:
-        if v is None or (isinstance(v, float) and pd.isna(v)):
-            return default
-        return float(v)
-    except Exception:
-        return default
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Nạp một luồng
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _fetch(connector, sql: str, since_period: Optional[str]) -> pd.DataFrame:
-    """Đọc từ STA qua chính engine của SqlServerConnector.
+    """Đọc từ STA qua `_read()` của SqlServerConnector.
 
-    Dùng lại `_read()` của connector để thừa hưởng pool_pre_ping, timeout và
-    đọc theo lô — thay vì mở một đường kết nối thứ hai với cấu hình khác.
+    Dùng lại engine của connector để thừa hưởng pool_pre_ping, timeout và đọc theo lô.
     """
     if not sql.strip():
         return pd.DataFrame()
@@ -356,7 +320,7 @@ def _prepare(df: pd.DataFrame, spec: Dict[str, Any]) -> pd.DataFrame:
         return pd.DataFrame(columns=list(spec["map"].keys()))
 
     df = df.copy()
-    # Chuẩn hoá tên cột về chữ thường để không phụ thuộc cách driver trả về
+    # Chuẩn hoá tên cột về chữ thường để không phụ thuộc cách driver trả về.
     lower = {c.lower(): c for c in df.columns}
 
     out = pd.DataFrame(index=df.index)
@@ -365,7 +329,7 @@ def _prepare(df: pd.DataFrame, spec: Dict[str, Any]) -> pd.DataFrame:
             src = lower.get("period") or lower.get("month")
             out["period"] = df[src].map(_period_key) if src else None
         elif src_col == "__snapshot__":
-            # Ảnh chụp tồn kho: bên STA cột là NgaySnapshot (kiểu date).
+            # Cột ảnh chụp bên STA là NgaySnapshot (kiểu date).
             src = lower.get("ngaysnapshot") or lower.get("snapshot_date")
             out["snapshot_date"] = df[src].map(_ngay_key) if src else None
         else:
@@ -392,7 +356,7 @@ def _prepare(df: pd.DataFrame, spec: Dict[str, Any]) -> pd.DataFrame:
         logger.warning("%s: loại %d/%d dòng thiếu khoá hoặc thiếu giá trị bắt buộc.",
                        spec["table"], bo, truoc)
 
-    # Rổ chăm sóc lạ → dồn về NT0 thay vì để lọt vào bảng với giá trị vô nghĩa.
+    # Rổ chăm sóc ngoài danh mục dồn về NT0.
     if "ro" in out.columns:
         la = ~out["ro"].astype(str).isin(RO_HOP_LE)
         if la.any():
@@ -403,15 +367,14 @@ def _prepare(df: pd.DataFrame, spec: Dict[str, Any]) -> pd.DataFrame:
     if "is_vtyt" in out.columns:
         out["is_vtyt"] = out["is_vtyt"].fillna(0).astype(int).clip(0, 1)
 
-    # Khử trùng khoá: nguồn không nên có trùng, nhưng nếu có thì cộng lại còn
-    # hơn để INSERT vỡ vì PRIMARY KEY giữa chừng.
+    # Khử trùng khoá: gộp dòng trùng thay vì để INSERT vi phạm PRIMARY KEY giữa chừng.
     keys = [c for c in ("period", "snapshot_date", "block_code", "ro",
                         "supply_code", "lot_id", "so_kho") if c in out.columns]
     if keys and out.duplicated(subset=keys).any():
         n = int(out.duplicated(subset=keys).sum())
         logger.warning("%s: %d dòng trùng khoá từ nguồn — gộp lại.", spec["table"], n)
-        # Cột được cộng = spec["sum"], trừ đi mọi cột đang làm khoá. Không lấy
-        # từ spec["numeric"]: "numeric" nói KIỂU, "sum" nói CỘNG ĐƯỢC HAY KHÔNG.
+        # Cột được cộng = spec["sum"] trừ các cột khoá; "numeric" chỉ quy định kiểu,
+        # "sum" quy định cột nào cộng được.
         so = [c for c in spec.get("sum", []) if c in out.columns and c not in keys]
         chu = [c for c in out.columns if c not in keys + so]
         out = (out.groupby(keys, as_index=False)
@@ -422,12 +385,10 @@ def _prepare(df: pd.DataFrame, spec: Dict[str, Any]) -> pd.DataFrame:
 
 def _replace_periods(db, table: str, df: pd.DataFrame, cols: Sequence[str],
                      khoa: str = "period") -> int:
-    """XOÁ SẠCH các giá trị phân vùng có trong `df` rồi CHÈN LẠI. Idempotent.
+    """Xoá các giá trị phân vùng có trong `df` rồi chèn lại (idempotent).
 
-    `khoa` là 'period' cho ba luồng theo kỳ, 'snapshot_date' cho luồng tồn kho
-    theo lô. Nguyên tắc giống nhau: xoá đúng những lát dữ liệu vừa kéo về, giữ
-    nguyên các lát khác — nên nạp tăng dần an toàn, và chạy lại mười lần cũng
-    ra đúng một kết quả.
+    `khoa` là 'period' cho luồng theo kỳ, 'snapshot_date' cho tồn kho theo lô;
+    các phân vùng không có trong `df` được giữ nguyên.
     """
     if df.empty:
         return 0
@@ -466,16 +427,14 @@ def load_flow(db, connector, flow: str, full: bool = False) -> Dict[str, Any]:
     except Exception as exc:                          # noqa: BLE001
         msg = str(exc)
         if "Invalid column name" in msg and flow == "usage_total":
-            # 11/09/2026 — dấu hiệu view vw_MedForecast_TieuHaoTong đang ở bản
-            # 9 cột (Phase0_01) thay vì 12 cột (G1_01). Nói thẳng cách sửa.
+            # View vw_MedForecast_TieuHaoTong trên STA thiếu cột so với câu SQL đọc.
             raise RuntimeError(
-                "vw_MedForecast_TieuHaoTong thiếu cột — view đang ở bản cũ. "
-                "Chạy lại sql_his/phase0/G1_01_STA_sua_bang.sql trên STA. "
+                "vw_MedForecast_TieuHaoTong thiếu cột. "
+                "Chạy lại sql_his/sta/03_bang_tieu_hao_tong.sql trên STA. "
                 f"Lỗi gốc: {msg[:200]}") from exc
         raise
     df = _prepare(raw, spec)
-    # Xoá-rồi-chèn là MỘT giao dịch: DELETE xong mà INSERT vỡ giữa chừng thì
-    # phải quay lại đúng trạng thái trước, không được để lát dữ liệu trống.
+    # Xoá-rồi-chèn trong một giao dịch: INSERT lỗi thì rollback, không để lát dữ liệu trống.
     try:
         n = _replace_periods(db, spec["table"], df, list(spec["map"].keys()), khoa_pv)
         db.commit()
@@ -496,8 +455,7 @@ def load_flow(db, connector, flow: str, full: bool = False) -> Dict[str, Any]:
 
 
 def load_all(db, connector, full: bool = False) -> Dict[str, Any]:
-    """Nạp cả bốn luồng theo THU_TU_NAP. Một luồng hỏng không chặn các luồng
-    còn lại; lỗi được ghi log và trả về trong `flows[i].message`."""
+    """Nạp bốn luồng theo THU_TU_NAP; luồng lỗi không chặn luồng khác, lỗi trả về trong `flows[i].message`."""
     ensure_tables(db)
     ket_qua = []
     for flow in THU_TU_NAP:

@@ -1,8 +1,8 @@
-# Bộ huấn luyện MedForecast — v1.0 (11/09/2026)
+# Bộ huấn luyện MedForecast — v1.0
 
-Đây là **đúng dữ liệu mà mô hình dự báo đọc vào để học**, xuất phẳng từ CSDL
-của ứng dụng để ai cũng huấn luyện lại và kiểm chứng được mà không cần
-bệnh viện, không cần SQL Server, không cần SQLite của app.
+Bộ dữ liệu này là chính dữ liệu đầu vào mà mô hình dự báo (Tầng 1) dùng để học,
+xuất phẳng từ CSDL ứng dụng để có thể huấn luyện lại và kiểm chứng độc lập mà
+không cần truy cập HIS, SQL Server hay CSDL SQLite của ứng dụng.
 
 | File | Nội dung | Dòng |
 |---|---|---|
@@ -16,7 +16,7 @@ bệnh viện, không cần SQL Server, không cần SQLite của app.
 
 Bản `.parquet` cùng tên có khi máy xuất có `pyarrow`; nội dung giống CSV.
 
-## Huấn luyện lại và dự báo — ba lệnh
+## Huấn luyện lại và dự báo
 
 ```bash
 cd backend
@@ -34,16 +34,15 @@ trước bước đó), rồi huấn luyện lần cuối và ghi:
 - `models/v1/model_v1.pkl` — thành viên đã khớp + trạng thái kết hợp (joblib),
   cho `predict.py` dùng không cần khớp lại.
 
-Kết quả phải trùng bảng chính thức trong `docs/KetQua_Backtest_ChonCauHinh.md`
-(RelMAE mức mã 0,500; mức nhóm 0,516 / 0,377 / 0,541). Nếu không trùng thì
-hoặc dataset đã xuất từ DB khác, hoặc cấu hình `PRODUCTION_CONFIG` đã đổi —
-`model_v1.json` ghi cả hai để truy ngược.
+Kết quả cần trùng với kết quả backtest chính thức trong `backend/ketqua_backtest/`
+(`nhom.csv`, `phancap.csv`: RelMAE mức mã 0,500; mức nhóm 0,516 / 0,377 / 0,541).
+Nếu không trùng thì hoặc dataset đã được xuất từ CSDL khác, hoặc cấu hình
+`PRODUCTION_CONFIG` đã thay đổi; `model_v1.json` ghi cả hai để truy ngược.
 
 ## Áp cho bệnh viện khác
 
-Chỉ cần tạo ba file cùng cột (xem từ điển) từ HIS của họ — tối thiểu
-`nhom_thang.csv` với `period, block_code, year, month, cases, is_covid,
-is_complete`; thời tiết là tuỳ chọn (mô hình tự tắt thành viên thời tiết nếu
-thiếu). Không có bước "train một lần rồi đóng băng": mô hình khớp lại trong
-vài chục giây mỗi khi có tháng mới, nên quy trình vận hành là *xuất → train →
-predict* theo tháng.
+Tạo ba file cùng cấu trúc cột (xem `TU_DIEN_DU_LIEU.md`) từ HIS của bệnh viện
+đích; tối thiểu là `nhom_thang.csv` với `period, block_code, year, month, cases,
+is_covid, is_complete`. Thời tiết là tuỳ chọn (mô hình tự tắt thành viên thời
+tiết nếu thiếu). Mô hình được khớp lại mỗi khi có tháng mới (vài chục giây), nên
+quy trình vận hành theo tháng là *xuất → train → predict*.

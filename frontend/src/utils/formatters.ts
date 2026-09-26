@@ -1,6 +1,4 @@
-/**
- * Format a number with thousand separators
- */
+/** Định dạng số có phân tách hàng nghìn. */
 export function formatNumber(value: number, decimals = 0): string {
   return new Intl.NumberFormat('vi-VN', {
     minimumFractionDigits: decimals,
@@ -8,9 +6,7 @@ export function formatNumber(value: number, decimals = 0): string {
   }).format(value);
 }
 
-/**
- * Format a number as Vietnamese currency (VND)
- */
+/** Định dạng tiền VND. */
 export function formatCurrency(value: number): string {
   return new Intl.NumberFormat('vi-VN', {
     style: 'currency',
@@ -20,9 +16,7 @@ export function formatCurrency(value: number): string {
   }).format(value);
 }
 
-/**
- * Format a date string to Vietnamese locale
- */
+/** Định dạng ngày theo locale vi-VN. */
 export function formatDate(dateString: string, options?: Intl.DateTimeFormatOptions): string {
   const date = new Date(dateString);
   return new Intl.DateTimeFormat('vi-VN', {
@@ -33,9 +27,7 @@ export function formatDate(dateString: string, options?: Intl.DateTimeFormatOpti
   }).format(date);
 }
 
-/**
- * Format a date string with time
- */
+/** Định dạng ngày kèm giờ. */
 export function formatDateTime(dateString: string): string {
   const date = new Date(dateString);
   return new Intl.DateTimeFormat('vi-VN', {
@@ -47,9 +39,7 @@ export function formatDateTime(dateString: string): string {
   }).format(date);
 }
 
-/**
- * Format a date as relative time (e.g., "2 hours ago")
- */
+/** Thời gian tương đối (vd. "2 giờ trước"). */
 export function formatRelativeTime(dateString: string): string {
   const date = new Date(dateString);
   const now = new Date();
@@ -66,34 +56,25 @@ export function formatRelativeTime(dateString: string): string {
   return formatDate(dateString);
 }
 
-/**
- * Format a percentage value
- */
+/** Định dạng phần trăm. */
 export function formatPercent(value: number, decimals = 1): string {
   return `${value.toFixed(decimals)}%`;
 }
 
-/**
- * Format a quantity with unit
- */
+/** Định dạng số lượng kèm đơn vị. */
 export function formatQuantity(value: number, unit: string): string {
   return `${formatNumber(value)} ${unit}`;
 }
 
-/**
- * Truncate a string to a maximum length
- */
+/** Cắt chuỗi về độ dài tối đa. */
 export function truncateText(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
   return `${text.slice(0, maxLength)}...`;
 }
 
 /**
- * Câu lỗi mà máy chủ thật sự trả về (FastAPI đặt ở `detail`).
- *
- * 12/09/2026: nút Đồng bộ HIS bắt lỗi rồi hiện "Đồng bộ thất bại" — nuốt mất
- * câu hướng dẫn duy nhất người dùng cần ("Chưa cấu hình kết nối HIS. Vào Quản
- * trị → Kết nối HIS…"). Dùng hàm này thay cho chuỗi cố định.
+ * Thông điệp lỗi máy chủ trả về (FastAPI đặt ở `detail`).
+ * Dùng thay cho chuỗi lỗi cố định để người dùng thấy hướng dẫn cụ thể từ backend.
  */
 export function loiMayChu(e: unknown, macDinh = 'Có lỗi xảy ra'): string {
   const err = e as { response?: { data?: { detail?: unknown } }; message?: string };
@@ -110,13 +91,11 @@ export function loiMayChu(e: unknown, macDinh = 'Có lỗi xảy ra'): string {
 /**
  * Chuỗi thời gian do máy chủ trả về → Date đúng múi giờ.
  *
- * SQLite ghi `CURRENT_TIMESTAMP` theo **UTC**, còn `datetime.isoformat()` của
- * Python KHÔNG kèm offset ("2026-09-13T10:22:33"). Theo chuẩn ECMAScript,
- * chuỗi date-time không offset bị hiểu là GIỜ ĐỊA PHƯƠNG → ở Việt Nam hiển thị
- * lệch đúng 7 tiếng. Hàm này gắn 'Z' khi chuỗi thiếu offset để luôn quy về UTC
- * rồi mới đổi sang giờ máy người dùng.
+ * SQLite ghi `CURRENT_TIMESTAMP` theo UTC và `datetime.isoformat()` không kèm
+ * offset; ECMAScript hiểu chuỗi không offset là giờ địa phương (lệch 7 tiếng ở
+ * Việt Nam). Hàm gắn 'Z' khi thiếu offset rồi đổi sang giờ máy người dùng.
  */
-export function parseThoiGianMayChu(iso: string | null | undefined): Date | null {
+function parseThoiGianMayChu(iso: string | null | undefined): Date | null {
   if (!iso) return null;
   const s = String(iso).trim();
   if (!s) return null;

@@ -1,38 +1,32 @@
 import api from './api';
 import type { SystemConfig, ConfigUpdateRequest, AuditLog } from '../types/config';
 
-// 12/09/2026: getConversionRatios / getThresholds (3-7-14 ngày) đã gỡ — DSS thật
-// đọc `dss.thresholds` (Đỏ ≤ 18 / Vàng ≤ 36 ngày DOI) qua dssConfigService.
+// Ngưỡng cảnh báo DSS (`dss.thresholds`: Đỏ ≤ 18 / Vàng ≤ 36 ngày DOI) đọc qua
+// dssService, không qua service này.
 
 export const configService = {
-  /**
-   * Get all system configurations
-   */
+  /** Toàn bộ cấu hình hệ thống. */
   async getConfigs(): Promise<SystemConfig[]> {
     const response = await api.get<SystemConfig[]>('/config/');
     return response.data;
   },
 
-  /**
-   * Get a single configuration by key
-   */
+  /** Một cấu hình theo khoá. */
   async getConfigByKey(key: string): Promise<SystemConfig> {
     const response = await api.get<SystemConfig>(`/config/${key}`);
     return response.data;
   },
 
-  /**
-   * Update a configuration value by key (Admin only)
-   */
+  /** Cập nhật giá trị cấu hình theo khoá (chỉ Quản trị viên). */
   async updateConfig(key: string, data: ConfigUpdateRequest): Promise<SystemConfig> {
     const response = await api.put<SystemConfig>(`/config/${key}`, data);
     return response.data;
   },
 
   /**
-   * Get audit logs for config change history (Admin only)
-   * Backend trả về paginated object AuditLogListResponse {total, page, page_size, items}.
-   * Frontend gọi với param `limit` để giữ tương thích ngược → map sang `page_size`.
+   * Nhật ký thay đổi cấu hình (chỉ Quản trị viên).
+   * Backend phân trang theo page/page_size (AuditLogListResponse); tham số skip/limit
+   * phía client được quy đổi sang page/page_size.
    */
   async getAuditLogs(params?: {
     skip?: number;
@@ -43,7 +37,6 @@ export const configService = {
     start_date?: string;
     end_date?: string;
   }): Promise<AuditLog[]> {
-    // Map skip/limit → page/page_size
     const page_size = Math.min(params?.limit ?? 50, 200);
     const page = params?.skip ? Math.floor(params.skip / page_size) + 1 : 1;
     const queryParams: Record<string, unknown> = {
@@ -55,7 +48,7 @@ export const configService = {
       start_date: params?.start_date,
       end_date: params?.end_date,
     };
-    // Loại bỏ undefined để không gửi key rỗng
+    // Bỏ giá trị undefined để không gửi tham số rỗng
     Object.keys(queryParams).forEach(
       (k) => queryParams[k] === undefined && delete queryParams[k],
     );

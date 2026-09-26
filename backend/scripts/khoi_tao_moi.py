@@ -1,30 +1,25 @@
-"""DỰNG HỆ THỐNG TỪ CLONE SẠCH — một lệnh, không cần DB của máy khác (11/09/2026).
+"""Khởi tạo hệ thống trên máy mới từ bản clone (không cần CSDL có sẵn).
 
     cd backend
     python scripts/khoi_tao_moi.py
 
-Vì sao cần: `backend/.env` và `backend/data/*.db` nằm trong .gitignore (mật khẩu
-HIS và dữ liệu bệnh viện KHÔNG được đưa lên git), nên `git clone` xong là thư mục
-trống — backend tự tạo một DB rỗng, không có tài khoản nào, đăng nhập trả 401.
-Script này lấp đúng khoảng trống đó:
+`backend/.env` và `backend/data/*.db` không nằm trong git (chứa mật khẩu HIS và dữ
+liệu bệnh viện). Script thực hiện:
 
   1. Tạo `.env` từ `.env.example` nếu chưa có, sinh SECRET_KEY ngẫu nhiên.
-  2. Tạo toàn bộ bảng (nghiệp vụ + tầng dữ liệu mart/fact) trong CÙNG một file DB.
-  3. Tạo tài khoản quản trị (mặc định admin / admin123 — ĐỔI ngay sau khi đăng nhập).
-  4. Nạp bộ dữ liệu đóng gói `dataset/v1` (số ca theo tháng + thời tiết) vào các
-     bảng mart/fact, để Tầng 1 (dự báo) chạy được ngay mà không cần kết nối HIS.
+  2. Tạo toàn bộ bảng (nghiệp vụ + tầng dữ liệu mart/fact) và view trong cùng một file SQLite.
+  3. Tạo tài khoản quản trị (mặc định admin / admin123; đổi mật khẩu sau khi đăng nhập).
+  4. Nạp bộ dữ liệu `dataset/v1` (số ca theo tháng + thời tiết) vào mart/fact để
+     Tầng 1 (dự báo) chạy được ngay mà không cần kết nối HIS.
 
-Sau khi chạy, máy mới có: đăng nhập, trang Dữ liệu bệnh, Phân tích & Dự báo,
-và Dashboard phần dịch tễ (số ca, xu hướng, dự báo, chất lượng mô hình).
-Phần vật tư — tồn kho, DOI, Cảnh báo thiếu hụt — cần dữ liệu kho của bệnh viện,
-chỉ có được sau khi cấu hình kết nối HIS/STA rồi bấm Đồng bộ (bộ dữ liệu công bố
-không chứa dữ liệu vật tư).
+Phần vật tư (tồn kho, DOI, cảnh báo thiếu hụt) cần dữ liệu kho bệnh viện, chỉ có
+sau khi cấu hình kết nối STA và đồng bộ; bộ dữ liệu công bố không chứa dữ liệu vật tư.
 
 Tuỳ chọn:
     --data ../dataset/v1     thư mục bộ dữ liệu
     --no-data                chỉ tạo bảng + tài khoản, không nạp dữ liệu
-    --username / --password  tài khoản quản trị khác mặc định
-    --reset                  xoá dữ liệu dịch tễ cũ trước khi nạp (mặc định: có nạp là ghi đè)
+    --username / --password / --email   tài khoản quản trị khác mặc định
+    --ghi-de-du-lieu         nạp dataset dù CSDL đã có dữ liệu (xoá dữ liệu dịch tễ hiện có)
 """
 from __future__ import annotations
 
@@ -32,14 +27,13 @@ import argparse
 import csv
 import secrets
 import sys
-from datetime import date, datetime
 from pathlib import Path
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BACKEND_DIR))
 
 TOAN_QUOC = "TOAN_QUOC"
-TINH_MAC_DINH = "TP. Hồ Chí Minh"   # tên CHUẨN, khớp dropdown/master + Open-Meteo
+TINH_MAC_DINH = "TP. Hồ Chí Minh"   # tên chuẩn, khớp danh mục tỉnh/thành
 
 
 # ── 1. .env ──────────────────────────────────────────────────────────────────
@@ -67,9 +61,8 @@ def tao_bang() -> str:
     from app.data_pipeline.db import init_db as pipeline_init_db, get_db_url
     pipeline_init_db()
     from app.data_pipeline.db import Base as PBase
-    # Sáu bảng tự quản + bốn view: create_all không biết tới chúng. Không dựng
-    # ở đây thì DB mới chỉ có 29/35 bảng và 0 view — Dashboard sẽ hiện
-    # "0 mã có mẫu số" mà không báo lỗi gì.
+    # Bảng tự quản và view nằm ngoài create_all; thiếu chúng thì Dashboard trả
+    # rỗng mà không báo lỗi.
     from app.data_pipeline.views import dam_bao_luoc_do, VIEWS
     kq = dam_bao_luoc_do(engine)
     n_view = sum(1 for k, v in kq.items() if k in VIEWS and v == "đã tạo")
@@ -131,8 +124,8 @@ def _bool(v) -> int:
 def nap_du_lieu(data_dir: Path) -> list[str]:
     """Nạp dataset/v1 vào mart/fact + bảng nghiệp vụ disease_cases.
 
-    Ghi đè: xoá sạch các bảng này rồi nạp lại, vì đây là thao tác KHỞI TẠO —
-    trộn nửa cũ nửa mới sẽ cho ra chuỗi thời gian sai mà không ai thấy.
+    Xoá sạch các bảng đích rồi nạp lại: trộn dữ liệu cũ và mới sẽ làm sai
+    chuỗi thời gian mà không phát hiện được.
     """
     from sqlalchemy import text
     from app.database import SessionLocal
@@ -229,7 +222,7 @@ def nap_du_lieu(data_dir: Path) -> list[str]:
 # ── chạy ─────────────────────────────────────────────────────────────────────
 
 def _dem_du_lieu_cu() -> str:
-    """Mô tả ngắn dữ liệu đang có trong DB, "" nếu DB còn trống."""
+    """Mô tả ngắn dữ liệu đang có trong CSDL; chuỗi rỗng nếu CSDL còn trống."""
     from sqlalchemy import text
     from app.database import SessionLocal
     db = SessionLocal()
@@ -264,7 +257,7 @@ def main(argv=None) -> int:
     print("MedForecast — khởi tạo hệ thống trên máy mới\n" + "─" * 60)
     print("1) Cấu hình   :", tao_env(BACKEND_DIR))
 
-    # .env vừa tạo phải được nạp TRƯỚC khi import app.config (settings đọc một lần)
+    # Nạp .env trước khi import app.config (settings chỉ đọc một lần)
     try:
         from dotenv import load_dotenv
         load_dotenv(BACKEND_DIR / ".env")
@@ -278,8 +271,8 @@ def main(argv=None) -> int:
         print("4) Dữ liệu    : bỏ qua (--no-data)")
     else:
         d = Path(args.data)
-        # Máy đã chạy và đã đồng bộ HIS: nạp dataset sẽ XOÁ số ca thật rồi thay
-        # bằng 938 dòng của bản công bố — mất dữ liệu mà không ai thấy. Chặn lại.
+        # CSDL đã có dữ liệu (ví dụ đã đồng bộ HIS): không nạp dataset để tránh
+        # ghi đè số liệu thật, trừ khi có --ghi-de-du-lieu.
         dang_co = _dem_du_lieu_cu()
         if dang_co and not args.ghi_de_du_lieu:
             print(f"4) Dữ liệu    : DB đã có dữ liệu ({dang_co}) — KHÔNG nạp dataset "
@@ -300,8 +293,8 @@ def main(argv=None) -> int:
     print()
     print("CHẠY ĐƯỢC NGAY : Dữ liệu bệnh · Phân tích & Dự báo · Dashboard (số ca,")
     print("                 xu hướng, dự báo kỳ tới, chất lượng mô hình).")
-    print("CẦN HIS        : Tồn kho, DOI, Cảnh báo thiếu hụt — vào Quản trị →")
-    print("                 Kết nối HIS, nhập thông tin STA rồi bấm Đồng bộ.")
+    print("CẦN HIS        : Tồn kho, DOI, Cảnh báo thiếu hụt — cấu hình tại Quản trị →")
+    print("                 Nguồn dữ liệu (CSDL DW), rồi bấm «Nạp dữ liệu DW» ở trang Dữ liệu bệnh.")
     print("                 Bộ dữ liệu công bố không chứa dữ liệu vật tư.")
     return 0
 

@@ -1,4 +1,4 @@
-"""Trang Tổng quan và Cảnh báo thiếu hụt — API v2.
+"""API trang Tổng quan và Cảnh báo thiếu hụt.
 
 Routes
 ------
@@ -7,13 +7,9 @@ GET /api/v1/dashboard/v2/alerts            trang Cảnh báo thiếu hụt, phâ
 GET /api/v1/dashboard/v2/forecast          Ŷ_g ba khối bằng ensemble (xem trước, có cache)
 GET /api/v1/dashboard/v2/forecast/history  sổ theo dõi mô hình trong vận hành
 
-Cả bốn endpoint CHỈ ĐỌC dữ liệu nghiệp vụ. Phần ghi duy nhất là cache dự báo
-(`dss_forecast_cache`, `forecast_runs`) — do dss_dashboard quản, khoá theo dấu
-vân tay dữ liệu, không đụng vào bảng nghiệp vụ nào.
-
-Các endpoint cũ (/overview, /summary, /risk-status, /critical-alerts,
-/case-trend, /care-level) và lớp cache Redis đã gỡ 13/09/2026: giao diện không
-còn gọi, mỗi cái một mốc thời gian và một cách đếm khác v2.
+Các endpoint chỉ đọc dữ liệu nghiệp vụ. Phần ghi duy nhất là cache dự báo
+(`dss_forecast_cache`, `forecast_runs`) do dss_dashboard quản lý, khoá theo
+dấu vân tay dữ liệu.
 """
 from __future__ import annotations
 
@@ -45,7 +41,7 @@ def get_dashboard_v2(
     chất lượng mô hình, tình trạng dữ liệu.
 
     Chưa ghi nhận dự báo kỳ tới thì `demand.ready = false`, cột `d_forecast` /
-    `delta_need` để None — giao diện phải nói "chưa có dự báo", không hiện 0.
+    `delta_need` để None để giao diện hiển thị "chưa có dự báo" thay vì 0.
     """
     try:
         return dss_dashboard.overview_payload(db, focus=focus, level=level, limit=limit)
@@ -79,12 +75,12 @@ def get_dashboard_v2_forecast(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Dict:
-    """Ŷ_g ba khối bằng ensemble PRODUCTION_CONFIG — bản xem trước, KHÔNG nuôi
-    Tổng quan/Cảnh báo (hai trang đó đọc bản đã Ghi nhận ở trang Phân tích).
+    """Ŷ_g ba khối bằng ensemble PRODUCTION_CONFIG — bản xem trước, không dùng
+    cho Tổng quan/Cảnh báo (hai trang đó đọc bản đã ghi nhận ở trang Phân tích).
 
-    Lần đầu với một bộ dữ liệu mất vài chục giây (dựng khoảng thực nghiệm
-    ~25 lần khớp mỗi khối); kết quả cache theo dấu vân tay chuỗi ca + thời
-    tiết + cấu hình, đồng bộ xong khoá tự đổi.
+    Lần tính đầu mất vài chục giây (dựng khoảng thực nghiệm ~25 lần khớp mỗi
+    khối); kết quả cache theo dấu vân tay chuỗi ca + thời tiết + cấu hình,
+    nên khoá tự đổi sau mỗi lần đồng bộ.
     """
     return dss_dashboard.forecast_payload(db, compute=True, force=force)
 

@@ -2,10 +2,10 @@
 
 Nguồn gốc chung: HIS PROD của bệnh viện → thủ tục `usp_MedForecast_DayDuLieu`
 đẩy sang STA `MEDFORECAST_DW` (bảng `MF_CaBenh_Nhom`, view
-`vw_MedForecast_CaBenhNhom`) → pipeline app nạp vào `mart_monthly_cases_by_block`
+`vw_MedForecast_CaBenhNhom`) → pipeline ứng dụng nạp vào `mart_monthly_cases_by_block`
 / `fact_disease_case`; thời tiết từ Open-Meteo (archive API) nạp vào
 `mart_monthly_weather`. Bộ này xuất bằng `python -m app.forecasting.dataset`,
-dùng CÙNG hàm đọc (`data_access.py`) mà mô hình và backtest dùng.
+dùng cùng hàm đọc (`data_access.py`) với mô hình và backtest.
 
 ## `nhom_thang.csv` — chuỗi tháng theo khối ICD (đầu vào Tầng 1, mức nhóm)
 
@@ -58,7 +58,7 @@ Dùng để dựng lại danh mục khi cài hệ thống trên máy mới (`scr
 ## Không có trong bộ này (và vì sao)
 
 - **Tồn kho, tiêu hao vật tư, định mức**: thuộc Tầng 2–3 (quy đổi nhu cầu,
-  DOI), không phải đầu vào của mô hình dự báo ca; sẽ đóng gói riêng nếu cần.
+  DOI), không phải đầu vào của mô hình dự báo ca.
 - **Phân theo tỉnh**: bản phát hành gộp toàn quốc để giảm nguy cơ tái định danh
   và vì mô hình sản xuất dự báo mức toàn quốc (`region = TOAN_QUOC`).
 - **Mức độ nặng, tuổi, giới**: không cần cho Tầng 1; có trong HIS nhưng không

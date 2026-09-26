@@ -1,36 +1,26 @@
 import api from './api';
 import type { LoginRequest, LoginResponse, RefreshTokenResponse, User } from '../types/auth';
 
-/**
- * Authentication service for API calls
- */
+/** Gọi API xác thực (/auth). */
 class AuthService {
-  /**
-   * Login user with username and password
-   */
+  /** Đăng nhập bằng tên đăng nhập/mật khẩu. */
   async login(credentials: LoginRequest): Promise<LoginResponse> {
     const response = await api.post<LoginResponse>('/auth/login', credentials);
     return response.data;
   }
 
-  /**
-   * Logout current user
-   */
+  /** Đăng xuất phiên hiện tại. */
   async logout(): Promise<void> {
     await api.post('/auth/logout');
   }
 
-  /**
-   * Get current user information
-   */
+  /** Thông tin người dùng đang đăng nhập. */
   async getCurrentUser(): Promise<User> {
     const response = await api.get<User>('/auth/me');
     return response.data;
   }
 
-  /**
-   * Refresh access token
-   */
+  /** Làm mới access token. */
   async refreshToken(): Promise<RefreshTokenResponse> {
     const response = await api.post<RefreshTokenResponse>('/auth/refresh');
     return response.data;
@@ -38,4 +28,3 @@ class AuthService {
 }
 
 export const authService = new AuthService();
-export default authService;

@@ -27,7 +27,7 @@ export default function Header() {
 
   return (
     <header className="flex items-center justify-between h-16 px-6 bg-white border-b border-neutral-200 shrink-0">
-      {/* Left: Menu toggle + Page title */}
+      {/* Trái: nút mở menu + tiêu đề trang */}
       <div className="flex items-center gap-4">
         <button
           onClick={toggleSidebar}
@@ -41,9 +41,9 @@ export default function Header() {
         </h1>
       </div>
 
-      {/* Right: Notifications + User */}
+      {/* Phải: thông báo + người dùng */}
       <div className="flex items-center gap-3">
-        {/* Notifications bell */}
+        {/* Chuông thông báo */}
         <button
           className="relative p-2 rounded-lg text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700 transition-colors"
           aria-label="Thông báo"
@@ -57,7 +57,7 @@ export default function Header() {
           )}
         </button>
 
-        {/* User menu */}
+        {/* Menu người dùng */}
         <div className="relative">
           <button
             onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
@@ -67,7 +67,7 @@ export default function Header() {
             <div className="flex items-center justify-center w-8 h-8 bg-primary-600 rounded-full text-white text-sm font-semibold">
               {userInitials}
             </div>
-            {/* User info */}
+            {/* Thông tin người dùng */}
             <div className="hidden sm:block text-left">
               <p className="text-sm font-medium text-neutral-900 leading-tight">
                 {user?.full_name || 'Người dùng'}
@@ -85,10 +85,10 @@ export default function Header() {
             />
           </button>
 
-          {/* Dropdown menu */}
+          {/* Menu thả xuống */}
           {isUserMenuOpen && (
             <>
-              {/* Backdrop */}
+              {/* Lớp nền đóng menu */}
               <div
                 className="fixed inset-0 z-10"
                 onClick={() => setIsUserMenuOpen(false)}

@@ -1,4 +1,4 @@
-"""Security utilities for authentication and authorization."""
+"""Tiện ích bảo mật: băm mật khẩu (bcrypt) và phát hành/kiểm tra JWT."""
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from jose import JWTError, jwt
@@ -7,13 +7,13 @@ from app.config import settings
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a password against its hash."""
+    """Kiểm tra mật khẩu với chuỗi băm."""
     return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
 
 
 def get_password_hash(password: str) -> str:
-    """Hash a password."""
-    # Ensure password is not too long for bcrypt (max 72 bytes)
+    """Băm mật khẩu bằng bcrypt."""
+    # bcrypt chỉ nhận tối đa 72 byte
     if len(password.encode('utf-8')) > 72:
         password = password[:72]
     
@@ -23,12 +23,12 @@ def get_password_hash(password: str) -> str:
 
 
 def hash_password(password: str) -> str:
-    """Hash a password (alias for get_password_hash for consistency)."""
+    """Bí danh của get_password_hash."""
     return get_password_hash(password)
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    """Create a JWT access token."""
+    """Tạo JWT access token; mặc định hết hạn sau ACCESS_TOKEN_EXPIRE_MINUTES."""
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
@@ -41,7 +41,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 
 def verify_token(token: str) -> Optional[dict]:
-    """Verify and decode a JWT token."""
+    """Giải mã JWT; trả None nếu token không hợp lệ hoặc hết hạn."""
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         return payload

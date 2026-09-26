@@ -13,7 +13,7 @@ import Weather from './pages/Weather';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 
-// Protected route wrapper
+// Route yêu cầu đăng nhập
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuthStore();
 
@@ -24,7 +24,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-// Redirect authenticated users away from login
+// Đã đăng nhập thì không vào lại trang /login
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuthStore();
 
@@ -39,7 +39,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Public routes */}
+        {/* Route công khai */}
         <Route
           path={ROUTES.LOGIN}
           element={
@@ -49,7 +49,7 @@ export default function App() {
           }
         />
 
-        {/* Protected routes — wrapped in Layout */}
+        {/* Route cần đăng nhập, bọc trong Layout */}
         <Route
           path="/"
           element={
@@ -58,10 +58,10 @@ export default function App() {
             </ProtectedRoute>
           }
         >
-          {/* Default redirect */}
+          {/* Chuyển hướng mặc định */}
           <Route index element={<Navigate to={ROUTES.DASHBOARD} replace />} />
 
-          {/* Main pages */}
+          {/* Các trang chính */}
           <Route path={ROUTES.DASHBOARD} element={<Dashboard />} />
           <Route path={ROUTES.INVENTORY} element={<Inventory />} />
           <Route path={ROUTES.FORECASTING} element={<Forecasting />} />
@@ -73,7 +73,7 @@ export default function App() {
           <Route path={ROUTES.SETTINGS} element={<Settings />} />
         </Route>
 
-        {/* Catch-all redirect */}
+        {/* Route không khớp */}
         <Route path="*" element={<Navigate to={ROUTES.DASHBOARD} replace />} />
       </Routes>
     </BrowserRouter>

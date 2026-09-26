@@ -2,9 +2,9 @@
 
   POST /api/v1/sync/run          -> chạy đồng bộ (khám bệnh + tồn kho), trả tóm tắt
   GET  /api/v1/sync/status       -> trạng thái lần gần nhất + số liệu hiện có
-  GET  /api/v1/sync/config       -> cấu hình kết nối (KHÔNG kèm mật khẩu)
+  GET  /api/v1/sync/config       -> cấu hình kết nối (không kèm mật khẩu)
   PUT  /api/v1/sync/config       -> lưu cấu hình (chỉ Administrator)
-  POST /api/v1/sync/config/test  -> thử kết nối với cấu hình vừa nhập, CHƯA lưu
+  POST /api/v1/sync/config/test  -> thử kết nối với cấu hình vừa nhập, chưa lưu
 """
 from __future__ import annotations
 from typing import Optional
@@ -30,8 +30,8 @@ def run_sync(full: bool = Query(False, description="True = nạp lại toàn b�
     try:
         return SyncService(db).run_sync(full=full)
     except RuntimeError as e:
-        # Lỗi CẤU HÌNH (chưa khai báo kết nối, thiếu trường) — người dùng sửa
-        # được, không phải sự cố máy chủ. 400 để giao diện hiện đúng câu này.
+        # Lỗi cấu hình (chưa khai báo kết nối, thiếu trường) do người dùng sửa được,
+        # nên trả 400 để giao diện hiển thị nguyên thông điệp.
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Đồng bộ thất bại: {e}")
@@ -43,10 +43,10 @@ def sync_status(db: Session = Depends(get_db),
     return SyncService(db).get_status()
 
 
-# ── Cấu hình kết nối — sửa từ giao diện, không phải xuống code ───────────────
+# ── Cấu hình kết nối ──
 class SyncConfigIn(BaseModel):
-    """Mật khẩu là tuỳ chọn: bỏ trống khi lưu = GIỮ mật khẩu cũ."""
-    source: str = Field("sqlserver", pattern="^sqlserver$")   # nguồn tệp CSV đã bỏ 23/09/2026
+    """Cấu hình kết nối HIS/DW; bỏ trống mật khẩu khi lưu thì giữ mật khẩu đang có."""
+    source: str = Field("sqlserver", pattern="^sqlserver$")
     host: str = "localhost"
     port: int = 1433
     instance: str = ""            # instance có tên (localhost\\SQLEXPRESS) — đặt thì bỏ qua port
@@ -81,6 +81,6 @@ def save_sync_config(payload: SyncConfigIn,
 def test_sync_config(payload: SyncConfigIn,
                      db: Session = Depends(get_db),
                      _user: User = Depends(get_admin_user)):
-    """Thử kết nối bằng cấu hình VỪA NHẬP (chưa lưu). Trả từng bước
-    kiểm tra để giao diện chỉ đúng chỗ hỏng."""
+    """Thử kết nối bằng cấu hình vừa nhập (chưa lưu). Trả kết quả từng bước
+    kiểm tra để giao diện chỉ ra bước lỗi."""
     return sync_config_service.test_connection(db, payload.model_dump())

@@ -1,16 +1,11 @@
--- Đọc ca bệnh từ DB trung chuyển MEDFORECAST_DW (máy chủ STAGING).
+-- Ca bệnh từ MEDFORECAST_DW trên STA, đã tổng hợp sẵn bên PROD theo
+-- (tháng × mã ICD × tỉnh × vật tư): mã ICD gom về 3 ký tự, `cases` là
+-- COUNT(DISTINCT lượt khám) lặp trên mọi dòng vật tư, tỉnh đã đổi từ mã sang tên.
 --
--- Dữ liệu ở đây ĐÃ ĐƯỢC TỔNG HỢP SẴN bên PROD theo (tháng × mã ICD × tỉnh ×
--- vật tư): mã ICD đã gom về 3 ký tự, `cases` đã là COUNT(DISTINCT lượt khám)
--- và lặp trên mọi dòng vật tư, tỉnh đã đổi từ mã sang tên. Xem
--- sql_his/03_PROD_store_tong_hop.sql.
---
--- Period là ngày 01 của tháng — lọc trên cột này để dùng được index.
+-- Period là ngày 01 của tháng; lọc trên cột này để dùng được index.
+-- `disease_group` là nhóm ICD (TM_ICD.PHANNHOM, vd 'J00-J06') nên pipeline không cần tra TM_ICD.xlsx.
 --
 -- Dùng: PIPELINE_CASE_SQL_FILE=case_sta.sql
---
--- `disease_group` là nhóm ICD (TM_ICD.PHANNHOM, vd 'J00-J06'). Có cột này thì
--- pipeline không cần tra TM_ICD.xlsx nữa — nguồn duy nhất là HIS.
 SELECT [month],
        disease_code,
        disease_name,

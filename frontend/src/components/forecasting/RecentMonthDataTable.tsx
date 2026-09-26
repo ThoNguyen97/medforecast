@@ -14,13 +14,10 @@ interface DiseaseCaseData {
   location: string;
 }
 
-// Ba nhóm ICD của đề tài — PHẢI khớp với backend (app/utils/icd_groups.py,
-// NHOM_ICD). Từ 08/2026, trang Dự báo lưu disease_forecasts.icd_code ở CẤP
-// NHÓM (vd 'J09-J18'), trong khi /disease-cases/ vẫn trả disease_name ở cấp
-// MÃ lẻ (vd 'Viêm phổi, tác nhân không xác định'). Ghép hai bên bằng so
-// chuỗi disease_name tự do (cách cũ) không bao giờ khớp vì khác cấp — đây là
-// lý do cột "Số ca dự báo"/"Độ lệch" luôn trống. Sửa bằng cách ghép theo MÃ,
-// gộp ca bệnh thực tế lên cùng cấp NHÓM với dự báo trước khi so sánh.
+// Ba nhóm ICD của đề tài, phải khớp với backend (app/utils/icd_groups.py, NHOM_ICD).
+// disease_forecasts.icd_code lưu ở cấp nhóm (vd 'J09-J18'), còn /disease-cases/ trả
+// disease_name ở cấp mã lẻ, nên ca bệnh thực tế được gộp lên cấp nhóm rồi ghép
+// với dự báo theo mã, không so theo tên bệnh.
 const NHOM_ICD: Record<string, string> = {
   'J00-J06': 'Nhiễm khuẩn cấp đường hô hấp trên',
   'J09-J18': 'Cúm và viêm phổi',
@@ -48,7 +45,7 @@ const nhomCuaMa = (icdCode?: string | null): string | undefined => {
 };
 
 /** Suy ra khoá NHÓM cho 1 ca bệnh: ưu tiên cột disease_group đã đồng bộ sẵn,
- *  rơi về suy từ icd_code nếu cột đó chưa có (bản ghi cũ), cuối cùng mới
+ *  rơi về suy từ icd_code nếu cột đó trống, cuối cùng mới
  *  giữ nguyên mã lẻ cho bệnh ngoài 3 nhóm đề tài đang theo dõi. */
 const resolveGroup = (
   icdCode?: string | null,
@@ -93,7 +90,6 @@ const normalizeLocation = (location: string): string => {
     return 'Thành phố Hồ Chí Minh';
   }
   
-  // Các tỉnh khác có thể chuẩn hóa tương tự
   const hnVariants = ['hà nội', 'ha noi', 'hanoi'];
   if (hnVariants.includes(normalized.toLowerCase())) {
     return 'Hà Nội';
@@ -106,7 +102,6 @@ const normalizeLocation = (location: string): string => {
 export default function RecentMonthDataTable({ currentMonth, currentYear, diseaseLabel, regionFilter }: Props) {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<DiseaseCaseData[]>([]);
-  // Thanh lọc cố định — luôn hiển thị, không còn ẩn/hiện qua nút bấm.
   // Temp = đang chỉnh trên dropdown; Applied = đã bấm Lọc, dùng để filter thật.
   // Mặc định lọc sẵn theo đúng bệnh/khu vực vừa chọn để phân tích ở trên (nếu có).
   const initialDisease = diseaseLabel || 'all';
@@ -149,13 +144,10 @@ export default function RecentMonthDataTable({ currentMonth, currentYear, diseas
         }).catch(() => ({ data: [] })), // Fallback nếu chưa có dữ liệu forecast
       ]);
       
-      // Group cases by month + (NHÓM ICD nếu có, mã lẻ nếu không) + location.
-      // Gộp theo NHÓM vì dự báo (xem forEach forecast bên dưới) được lưu ở
-      // cấp nhóm — phải cùng cấp mới ghép được. Lưu ý: nếu 1 lượt khám có 2
-      // chẩn đoán trong cùng nhóm, tổng theo nhóm ở đây có thể đếm lượt đó 2
-      // lần (đặc thù dữ liệu HIS đã ghi ở sql_his/README.md, không phải lỗi
-      // riêng của bảng này) — chỉ dùng để đối chiếu nhanh, không thay số
-      // chính thức từ tầng MART.
+      // Gộp ca bệnh theo tháng + (nhóm ICD nếu có, mã lẻ nếu không) + khu vực,
+      // cùng cấp với dự báo để ghép được. Một lượt khám có 2 chẩn đoán cùng nhóm
+      // có thể bị đếm 2 lần (đặc thù dữ liệu HIS), nên bảng này chỉ dùng để đối
+      // chiếu nhanh, không thay số chính thức từ tầng MART.
       const grouped: Record<string, DiseaseCaseData> = {};
 
       casesResponse.data.forEach((item: any) => {
@@ -180,9 +172,8 @@ export default function RecentMonthDataTable({ currentMonth, currentYear, diseas
       });
 
       // Thêm dữ liệu dự báo vào grouped data — ghép bằng MÃ (icd_code), không
-      // so tên tiếng Việt tự do. forecast.icd_code là mã NHÓM ('J09-J18') cho
-      // dự báo mới, hoặc mã lẻ cho dự báo cũ tương thích ngược — cả hai
-      // trường hợp đều khớp đúng với matchKey đã tính ở trên.
+      // so tên tiếng Việt tự do. forecast.icd_code là mã nhóm ('J09-J18') hoặc
+      // mã lẻ; cả hai trường hợp đều khớp với matchKey đã tính ở trên.
       forecastResponse.data.forEach((forecast: any) => {
         const month = forecast.month; // Đã ở dạng MM/YYYY
         const matchKey: string = forecast.icd_code || forecast.disease_label || forecast.disease_name;
@@ -206,9 +197,9 @@ export default function RecentMonthDataTable({ currentMonth, currentYear, diseas
         } else {
           // Chỉ có dự báo, chưa có dòng thực tế khớp khoá.
           //
-          // Bản Toàn quốc (location=NULL) KHÔNG BAO GIỜ khớp: disease_cases luôn
+          // Bản Toàn quốc (location=NULL) không bao giờ khớp: disease_cases luôn
           // có tỉnh nên không có nhóm "Toàn quốc" ở trên. Backend chỉ điền
-          // actual_cases cho kỳ ĐÃ CHỐT (so_ca_thuc_te → None khi kỳ đang mở),
+          // actual_cases cho kỳ đã chốt (so_ca_thuc_te → None khi kỳ đang mở),
           // nên tháng hiện tại Toàn quốc hiện 0 trong khi từng tỉnh vẫn có số
           // (cộng thẳng từ disease_cases). Dùng cùng một nguồn với các tỉnh:
           // tổng các nhóm tỉnh cùng tháng + nhóm bệnh.
@@ -237,7 +228,7 @@ export default function RecentMonthDataTable({ currentMonth, currentYear, diseas
       });
 
       const result = Object.values(grouped).sort((a, b) => {
-        // Sort by month descending
+        // Sắp xếp theo tháng giảm dần
         const [aM, aY] = a.month.split('/').map(Number);
         const [bM, bY] = b.month.split('/').map(Number);
         if (aY !== bY) return bY - aY;

@@ -1,15 +1,10 @@
-"""CLI chạy đồng bộ một lần.
+"""CLI chạy đồng bộ pipeline một lần.
 
-Ví dụ (dev, nguồn file, DB SQLite):
-  PIPELINE_DB_URL=sqlite:///./data/medforecast_dw.db \
-  python -m app.data_pipeline.run --source file \
-      --data-dir ../data --icd-dir ../data
-
-Triển khai (nguồn HIS SQL Server, DB Postgres):
-  PIPELINE_DB_URL=postgresql+psycopg2://user:pass@host/medforecast \
+Nguồn file:
+  python -m app.data_pipeline.run --source file --data-dir ../data --icd-dir ../data
+Nguồn SQL Server (MEDFORECAST_DW trên STA):
   python -m app.data_pipeline.run --source sqlserver \
-      --conn "mssql+pyodbc://user:pass@host/HIS?driver=ODBC+Driver+17+for+SQL+Server" \
-      --icd-dir ../data
+      --conn "mssql+pyodbc://user:pass@host/MEDFORECAST_DW?driver=ODBC+Driver+17+for+SQL+Server"
 """
 from __future__ import annotations
 

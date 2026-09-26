@@ -1,4 +1,4 @@
-"""FastAPI dependencies."""
+"""Dependency FastAPI: xác thực JWT và phân quyền theo vai trò."""
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
@@ -6,13 +6,14 @@ from app.database import get_db
 from app.core.security import verify_token
 from app.models.user import User
 
-# Security scheme
 security = HTTPBearer()
 
 
 def _user_tu_token(token: str, db: Session, loai: str) -> User:
-    """Giải mã JWT, kiểm đúng loại token ('access' | 'refresh') rồi tra user.
-    Refresh token (hạn 7 ngày) không được dùng thay access token và ngược lại."""
+    """Giải mã JWT, kiểm tra loại token ('access' | 'refresh') rồi tra người dùng.
+
+    Refresh token không được dùng thay access token và ngược lại.
+    """
     payload = verify_token(token)
     if payload is None:
         raise HTTPException(
@@ -56,7 +57,7 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
 ) -> User:
-    """Người dùng hiện tại từ ACCESS token."""
+    """Người dùng hiện tại từ access token."""
     return _user_tu_token(credentials.credentials, db, "access")
 
 
@@ -64,12 +65,12 @@ def get_user_from_refresh_token(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
 ) -> User:
-    """Người dùng từ REFRESH token — chỉ dùng cho POST /auth/refresh."""
+    """Người dùng từ refresh token; chỉ dùng cho POST /auth/refresh."""
     return _user_tu_token(credentials.credentials, db, "refresh")
 
 
 def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
-    """Get current user and verify admin role."""
+    """Yêu cầu vai trò Administrator."""
     if current_user.role != "Administrator":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -78,18 +79,8 @@ def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
     return current_user
 
 
-def get_pharmacist_user(current_user: User = Depends(get_current_user)) -> User:
-    """Get current user and verify pharmacist or admin role."""
-    if current_user.role not in ["Administrator", "Pharmacist"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
-        )
-    return current_user
-
-
 def get_inventory_manager_user(current_user: User = Depends(get_current_user)) -> User:
-    """Get current user and verify inventory manager or admin role."""
+    """Yêu cầu vai trò Inventory_Manager hoặc Administrator."""
     if current_user.role not in ["Administrator", "Inventory_Manager"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -98,5 +89,4 @@ def get_inventory_manager_user(current_user: User = Depends(get_current_user)) -
     return current_user
 
 
-# Alias for convenience
 get_inventory_manager_or_admin = get_inventory_manager_user

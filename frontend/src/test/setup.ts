@@ -1,7 +1,6 @@
 import '@testing-library/jest-dom';
 import { vi, beforeAll, afterAll, afterEach } from 'vitest';
 
-// Mock localStorage
 const localStorageMock: Storage = (() => {
   let store: Record<string, string> = {};
   return {
@@ -19,20 +18,19 @@ Object.defineProperty(window, 'localStorage', {
   writable: true,
 });
 
-// Mock window.location
 Object.defineProperty(window, 'location', {
   value: { href: 'http://localhost/', pathname: '/', assign: vi.fn(), replace: vi.fn() },
   writable: true,
 });
 
-// Mock ResizeObserver (used by Recharts)
+// Recharts cần ResizeObserver, jsdom không có
 global.ResizeObserver = class ResizeObserver {
   observe() {}
   unobserve() {}
   disconnect() {}
 };
 
-// Silence console.error in tests (noisy React warnings)
+// Tắt console.error trong test để lọc cảnh báo React
 const originalConsoleError = console.error;
 beforeAll(() => {
   console.error = (...args: unknown[]) => {

@@ -1,4 +1,4 @@
-"""Inventory service layer."""
+"""Nghiệp vụ tồn kho (bảng inventory): truy vấn, cập nhật đơn lẻ/hàng loạt kèm audit log."""
 import logging
 from typing import List, Optional
 from datetime import date, timedelta
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class InventoryService:
-    """Service for managing inventory."""
+    """Quản lý tồn kho."""
     
     def __init__(self, db: Session):
         self.db = db
@@ -27,14 +27,12 @@ class InventoryService:
         supply_id: Optional[int] = None,
         location: Optional[str] = None
     ) -> List[Inventory]:
-        """Get list of inventory items with optional filtering."""
+        """Danh sách tồn kho, lọc tuỳ chọn theo supply_id và vị trí."""
         query = self.db.query(Inventory).options(joinedload(Inventory.supply))
         
-        # Filter by supply_id
         if supply_id:
             query = query.filter(Inventory.supply_id == supply_id)
         
-        # Filter by location
         if location:
             query = query.filter(Inventory.location == location)
         
@@ -42,7 +40,7 @@ class InventoryService:
         return items
     
     def get_inventory_by_id(self, inventory_id: int) -> Inventory:
-        """Get inventory item by ID."""
+        """Một dòng tồn kho theo ID; 404 nếu không có."""
         inventory = self.db.query(Inventory).options(
             joinedload(Inventory.supply)
         ).filter(Inventory.id == inventory_id).first()
@@ -62,20 +60,18 @@ class InventoryService:
         updated_by_user_id: int,
         ip_address: str
     ) -> Inventory:
-        """Update inventory stock levels."""
+        """Cập nhật số lượng tồn và ghi audit log."""
         inventory = self.get_inventory_by_id(inventory_id)
         
-        # Store old values for audit
         old_values = {
             "current_stock": inventory.current_stock,
             "safety_stock": inventory.safety_stock,
             "location": inventory.location
         }
         
-        # Update fields
         update_data = inventory_data.model_dump(exclude_unset=True)
         
-        # Validate non-negative quantities
+        # Số lượng không được âm.
         if "current_stock" in update_data and update_data["current_stock"] < 0:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -93,7 +89,6 @@ class InventoryService:
         
         inventory.updated_by = updated_by_user_id
         
-        # Log the action
         audit_log = AuditLog(
             user_id=updated_by_user_id,
             action="UPDATE_INVENTORY",
@@ -116,7 +111,7 @@ class InventoryService:
         updated_by_user_id: int,
         ip_address: str
     ) -> List[Inventory]:
-        """Batch update multiple inventory items."""
+        """Cập nhật hàng loạt; bỏ qua dòng không tồn tại hoặc giá trị không hợp lệ."""
         updated_items = []
         
         for update_item in updates:
@@ -127,14 +122,13 @@ class InventoryService:
             try:
                 inventory = self.get_inventory_by_id(inventory_id)
                 
-                # Store old values
                 old_values = {
                     "current_stock": inventory.current_stock,
                     "safety_stock": inventory.safety_stock
                 }
                 
-                # Kiểm cả hai giá trị TRƯỚC khi gán: gán rồi mới `continue`
-                # thì object đã dirty và commit cuối vẫn ghi nửa chừng.
+                # Kiểm cả hai giá trị trước khi gán: gán rồi mới `continue` thì object
+                # đã dirty và commit cuối vẫn ghi dở dang.
                 gia_tri = {}
                 hop_le = True
                 for cot in ("current_stock", "safety_stock"):
@@ -157,7 +151,6 @@ class InventoryService:
                 
                 inventory.updated_by = updated_by_user_id
                 
-                # Log the action
                 audit_log = AuditLog(
                     user_id=updated_by_user_id,
                     action="BATCH_UPDATE_INVENTORY",
@@ -177,7 +170,6 @@ class InventoryService:
         
         self.db.commit()
         
-        # Refresh all items
         for item in updated_items:
             self.db.refresh(item)
         
@@ -185,20 +177,10 @@ class InventoryService:
         return updated_items
     
     def get_low_stock_items(self, threshold_multiplier: float = 1.0) -> List[Inventory]:
-        """Thuốc ĐANG HẾT HÀNG (tồn <= 0).
+        """Các dòng tồn kho đang hết hàng (current_stock <= 0).
 
-        Lưu ý phạm vi (sửa 09/09/2026):
-
-        Điều kiện cũ là `current_stock <= safety_stock * threshold_multiplier`.
-        Trong phạm vi DSS, Inventory.safety_stock đã bị vô hiệu hoá — 5.007/5.041
-        dòng có giá trị 0 — nên vế phải luôn bằng 0 và hàm ÂM THẦM thoái hoá
-        thành truy vấn "hết hàng", bất kể `threshold_multiplier` truyền vào là
-        bao nhiêu. Tham số đó không còn tác dụng gì.
-
-        Thay vì để một điều kiện nói dối về ý nghĩa của nó, hàm nay khai đúng
-        việc nó làm. Phân loại "dưới ngưỡng" theo số ngày tồn phủ nhu cầu
-        (DOI = tồn hữu dụng FEFO / nhu cầu trung bình ngày) thuộc tầng cảnh báo
-        DSS — xem app/services/dss_alerts.py.
+        `threshold_multiplier` không được dùng: safety_stock trong phạm vi DSS hầu như
+        bằng 0. Phân loại theo số ngày đáp ứng (DOI) thuộc app/services/dss_alerts.py.
         """
         return (
             self.db.query(Inventory)
@@ -208,9 +190,7 @@ class InventoryService:
         )
     
     def get_expiring_items(self, days_threshold: int = 30) -> List[Inventory]:
-        """
-        Get inventory items expiring within the specified number of days.
-        """
+        """Các dòng tồn kho hết hạn trong vòng `days_threshold` ngày tới."""
         threshold_date = date.today() + timedelta(days=days_threshold)
         
         items = self.db.query(Inventory).options(
@@ -224,8 +204,7 @@ class InventoryService:
         return items
     
     def get_inventory_by_supply(self, supply_id: int) -> List[Inventory]:
-        """Get all inventory items for a specific supply."""
-        # Verify supply exists
+        """Mọi dòng tồn kho của một vật tư; 404 nếu vật tư không tồn tại."""
         supply = self.db.query(MedicalSupply).filter(
             MedicalSupply.id == supply_id
         ).first()
@@ -243,7 +222,7 @@ class InventoryService:
         return items
     
     def get_total_stock_by_supply(self, supply_id: int) -> dict:
-        """Get total stock across all locations for a supply."""
+        """Tổng tồn và tổng tồn an toàn của một vật tư trên mọi vị trí."""
         result = self.db.query(
             func.sum(Inventory.current_stock).label("total_stock"),
             func.sum(Inventory.safety_stock).label("total_safety_stock")
@@ -266,8 +245,7 @@ class InventoryService:
         created_by_user_id: int = None,
         ip_address: str = None
     ) -> Inventory:
-        """Create a new inventory item."""
-        # Verify supply exists
+        """Tạo dòng tồn kho và ghi audit log (khi có người thực hiện)."""
         supply = self.db.query(MedicalSupply).filter(
             MedicalSupply.id == supply_id
         ).first()
@@ -278,7 +256,6 @@ class InventoryService:
                 detail=f"Medical supply with ID {supply_id} not found"
             )
         
-        # Validate quantities
         if current_stock < 0:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -291,7 +268,6 @@ class InventoryService:
                 detail="Safety stock cannot be negative"
             )
         
-        # Create inventory item
         inventory = Inventory(
             supply_id=supply_id,
             current_stock=current_stock,
@@ -305,7 +281,6 @@ class InventoryService:
         self.db.add(inventory)
         self.db.flush()
         
-        # Log the action
         if created_by_user_id and ip_address:
             audit_log = AuditLog(
                 user_id=created_by_user_id,

@@ -1,18 +1,12 @@
-"""BỘ HUẤN LUYỆN đóng gói — xuất từ DB ra file và nạp lại từ file (3.7, 11/09/2026).
+"""Bộ huấn luyện đóng gói: xuất đầu vào mô hình từ DB ra file có phiên bản và nạp lại.
 
-Vì sao
-------
-Mô hình học từ ba bảng mart trong SQLite; người ngoài (hội đồng, bệnh viện
-khác) không thấy "dataset" ở đâu. Gói này biến đúng đầu vào mà mô hình đang
-đọc thành file phẳng có phiên bản, kèm manifest (số dòng, sha256, cột), để:
+Kèm manifest (số dòng, sha256, cột) để huấn luyện/dự báo chạy được trên máy không có DB:
 
-    python -m app.forecasting.train   --data dataset/v1     # huấn luyện + backtest từ FILE
+    python -m app.forecasting.train   --data dataset/v1     # huấn luyện + backtest từ file
     python -m app.forecasting.predict --model ...           # dự báo từ artifact đã huấn luyện
+    python -m app.forecasting.dataset --db data/medforecast.db --out ../dataset/v1
 
-chạy được ở bất kỳ máy nào KHÔNG có DB — và cho ra đúng bảng số của
-KetQua_Backtest_ChonCauHinh.md (kiểm chứng ở dataset/v1/manifest.json).
-
-Ba file dữ liệu (CSV UTF-8, có BOM để Excel mở đúng dấu; Parquet nếu có pyarrow):
+Các file dữ liệu (CSV UTF-8 có BOM để Excel mở đúng dấu; Parquet nếu có pyarrow):
 
     nhom_thang.csv     period × block_code: cases, is_covid, is_complete, thời tiết
                        cùng kỳ và trễ 1–2 tháng — đúng đầu vào của Tầng 1 mức nhóm
@@ -21,10 +15,9 @@ Ba file dữ liệu (CSV UTF-8, có BOM để Excel mở đúng dấu; Parquet n
     dim_icd.csv        từ điển mã ICD: tên mã, khối, tên khối (tham chiếu, không
                        phải dữ liệu quan sát) — để dựng lại danh mục khi cài mới
 
-Khử định danh: toàn bộ là SỐ ĐẾM theo tháng, không có mã bệnh nhân, không có
-ngày khám, không có địa chỉ dưới cấp tỉnh (và bản phát hành gộp toàn quốc).
-Ô nhỏ: xem DATASHEET.md — cases < 5 ở mức mã được giữ nguyên vì là đếm theo
-tháng trên toàn viện, không truy ngược được cá nhân.
+Khử định danh: chỉ có số đếm theo tháng, không mã bệnh nhân, ngày khám hay địa chỉ
+dưới cấp tỉnh (bản phát hành gộp toàn quốc). Ô nhỏ (cases < 5 ở mức mã) được giữ
+vì là đếm theo tháng trên toàn viện (xem dataset/v1/DATASHEET.md).
 """
 from __future__ import annotations
 
@@ -45,15 +38,14 @@ FILES = {"nhom": "nhom_thang.csv", "ma": "ma_thang.csv", "ty_trong": "ty_trong_c
          "dim_icd": "dim_icd.csv"}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Xuất
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Xuất ──
 
 def _add_lags(df: pd.DataFrame) -> pd.DataFrame:
-    """Cột thời tiết trễ 1–2 tháng, tính TRÊN CHUỖI ĐÃ SẮP THEO THÁNG của từng
-    khối. Đây chính là đặc trưng HarmonicPoisson dùng (weather_lags=(1,2)) và
-    SARIMAX dùng (lag 1) — ghi thẳng vào file để người đọc thấy mô hình nhìn
-    thấy gì, không phải suy ra từ mã."""
+    """Thêm cột thời tiết trễ 1–2 tháng trên chuỗi đã sắp theo tháng của một khối.
+
+    Là đặc trưng HarmonicPoisson (weather_lags=(1,2)) và SARIMAX (lag 1) dùng, ghi ra
+    file để tham khảo; khi nạp lại mô hình tự tính lại.
+    """
     out = df.sort_values("period").reset_index(drop=True).copy()
     for c in WCOLS:
         if c in out:
@@ -63,7 +55,7 @@ def _add_lags(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_frames(db_path: str, region: str = "TOAN_QUOC") -> Dict[str, pd.DataFrame]:
-    """Dựng ba bảng từ DB — CÙNG hàm đọc mà backtest/service dùng (data_access)."""
+    """Dựng các bảng từ DB bằng cùng hàm đọc mà backtest/service dùng (data_access)."""
     weather = da.weather_series(db_path, region)
     nhom_parts, ma_parts, tt_parts = [], [], []
     for b in da.list_blocks(db_path, region):
@@ -81,13 +73,13 @@ def build_frames(db_path: str, region: str = "TOAN_QUOC") -> Dict[str, pd.DataFr
 
     nhom = pd.concat(nhom_parts, ignore_index=True)
     ma = pd.concat(ma_parts, ignore_index=True) if ma_parts else pd.DataFrame()
-    # is_complete cho mức mã: lấy theo kỳ của nhóm (cùng mốc chốt)
+    # is_complete mức mã lấy theo kỳ của nhóm (cùng mốc chốt).
     if not ma.empty:
         flag = nhom[["period", "block_code", "is_complete"]].drop_duplicates()
         ma = ma.merge(flag, on=["period", "block_code"], how="left")
     ty_trong = pd.DataFrame(tt_parts)
 
-    # Từ điển ICD — tham chiếu, cần khi dựng lại hệ thống từ clone sạch
+    # Từ điển ICD để tham chiếu khi dựng lại danh mục.
     dim = pd.DataFrame(da._q(db_path,
         "select icd_code, icd_name, block_code, block_name, is_target from dim_icd "
         "order by icd_code"),
@@ -105,7 +97,7 @@ def _sha256(path: Path) -> str:
 
 def export(db_path: str, out_dir: str | Path, region: str = "TOAN_QUOC",
            parquet: bool = True) -> dict:
-    """Ghi ba file + manifest.json vào `out_dir`. Trả manifest."""
+    """Ghi các file dữ liệu và manifest.json vào `out_dir`; trả manifest."""
     out = Path(out_dir); out.mkdir(parents=True, exist_ok=True)
     frames = build_frames(db_path, region)
     files = {}
@@ -149,17 +141,15 @@ def export(db_path: str, out_dir: str | Path, region: str = "TOAN_QUOC",
     return manifest
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Nạp lại — trả về đúng cấu trúc mà walk_forward_frames / forecast_group_next cần
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Nạp lại theo cấu trúc walk_forward_frames / forecast_group_next cần ──
 
 def load(data_dir: str | Path, complete_only: bool = True,
          from_period: Optional[str] = None) -> Dict[str, object]:
     """Đọc dataset/vX → {blocks, group[b], codes[b], shares[b], weather, manifest}.
 
-    `complete_only=True` bỏ kỳ chưa chốt (giống service). Thời tiết trả bảng
-    riêng [period, temp, humidity, rainfall] để `join_weather` ghép đúng như
-    khi đọc DB — cột *_lag trong CSV là để người đọc, mô hình tự tính lại.
+    `complete_only=True` bỏ kỳ chưa chốt (giống service). Thời tiết trả bảng riêng
+    [period, temp, humidity, rainfall] để `join_weather` ghép như khi đọc DB; cột *_lag
+    trong CSV chỉ để tham khảo.
     """
     d = Path(data_dir)
     nhom = pd.read_csv(d / FILES["nhom"], encoding="utf-8-sig", dtype={"period": str})

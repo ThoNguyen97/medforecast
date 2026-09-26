@@ -37,8 +37,7 @@ import { formatThoiGianMayChu } from '../utils/formatters';
 const KHOA_PHAN_TICH_TAM = 'forecast_phan_tich_tam';
 
 /**
- * Module 5 — Phân tích & Dự báo số ca bệnh
- * Theo design của Smart Medical System.
+ * Module 5 — Phân tích & Dự báo số ca bệnh.
  */
 export default function Forecasting() {
   const { setPageTitle } = useUIStore();
@@ -49,17 +48,15 @@ export default function Forecasting() {
 
   const [tab, setTab] = useState<'phan-tich' | 'lich-su'>('phan-tich');
 
-  // Default tháng dự báo = tháng hiện tại
+  // Tháng dự báo mặc định là tháng hiện tại
   const defaultMonth = useMemo(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   }, []);
 
-  // Lưu filters vào localStorage để persist khi navigate. Kết quả phân tích
-  // KHÔNG persist qua localStorage (từng gây lệch — hiển thị kết quả cũ không
-  // khớp bộ lọc đang chọn). Thay vào đó: effect bên dưới gọi /forecast/saved
-  // để nạp lại bản ĐÃ GHI NHẬN theo đúng khóa (nhóm bệnh, tỉnh/thành, tháng);
-  // chưa ghi nhận thì để trống, chờ người dùng bấm "Phân tích".
+  // Chỉ bộ lọc được lưu vào localStorage. Kết quả phân tích không lưu ở đây để
+  // tránh hiện kết quả lệch bộ lọc; effect bên dưới gọi /forecast/saved nạp bản
+  // đã ghi nhận theo khóa (nhóm bệnh, tỉnh/thành, tháng), chưa có thì để trống.
   const [filters, setFilters] = useState<ForecastFilters>(() => {
     try {
       const saved = localStorage.getItem('forecast_filters');
@@ -67,27 +64,23 @@ export default function Forecasting() {
         return JSON.parse(saved);
       }
     } catch {
-      // ignore
+      // bỏ qua
     }
     return {
-      // Khối ICD đầu tiên trong phạm vi hô hấp. KHÔNG để mã ngoài phạm vi
-      // (trước đây là 'dengue_fever'): effect "Auto-pick disease" bên dưới có
-      // chữa lại sau khi danh mục về, nhưng nếu bấm Phân tích trước khi danh
-      // mục kịp tải thì vẫn gửi lên một mã không có dữ liệu.
+      // Mặc định là nhóm ICD hô hấp đầu tiên, để bấm Phân tích trước khi danh mục
+      // tải xong vẫn gửi một mã có dữ liệu.
       disease: 'J00-J06',
       province: 'all',
       month: defaultMonth,
     };
   });
 
-  // Sync filters to localStorage whenever they change
   useEffect(() => {
     localStorage.setItem('forecast_filters', JSON.stringify(filters));
   }, [filters]);
 
-  // Kết quả VỪA PHÂN TÍCH (chưa ghi nhận). Được ưu tiên hiển thị. Ngoài state,
-  // nó còn được gửi tạm vào sessionStorage kèm khoá bộ lọc: rời sang menu khác
-  // rồi quay lại là component bị huỷ, không lưu thì mất trắng công phân tích.
+  // Kết quả vừa phân tích (chưa ghi nhận), được ưu tiên hiển thị. Lưu tạm vào
+  // sessionStorage kèm khoá bộ lọc để không mất khi rời trang rồi quay lại.
   const [phanTichMoi, setPhanTichMoi] = useState<AnalyzeResponse | null>(null);
   /** Thời điểm chạy phân tích tạm (ms) — để hiện "Phân tích lúc ...". */
   const [phanTichLuc, setPhanTichLuc] = useState<number | null>(null);
@@ -95,7 +88,7 @@ export default function Forecasting() {
 
   const { data: diseases = [] } = useDiseaseOptions();
 
-  // Map cascade tỉnh → list quận có data thực trong DB (gộp từ disease + environmental)
+  // Tỉnh → danh sách quận có dữ liệu trong DB (gộp ca bệnh và thời tiết)
   const [regionDistricts, setRegionDistricts] = useState<Record<string, string[]>>({});
   useEffect(() => {
     const load = async () => {
@@ -124,7 +117,7 @@ export default function Forecasting() {
         addAll(d2 as Record<string, string[]>);
         setRegionDistricts(merged);
       } catch {
-        /* ignore */
+        /* bỏ qua */
       }
     };
     load();
@@ -146,7 +139,7 @@ export default function Forecasting() {
         JSON.stringify({ khoa: khoaLoc, luc, ketQua: data }),
       );
     } catch {
-      // Hết chỗ lưu thì thôi — chỉ mất tiện ích, không ảnh hưởng kết quả.
+      // Hết dung lượng thì bỏ qua: chỉ mất bản tạm, không ảnh hưởng kết quả.
     }
   };
 
@@ -170,7 +163,7 @@ export default function Forecasting() {
     };
   };
 
-  /** Bấm "Phân tích": chạy mô hình để XEM, không ghi gì vào DB. */
+  /** Bấm "Phân tích": chạy mô hình để xem, không ghi vào DB. */
   const runAnalyze = () => {
     const payload = buildPayload();
     if (!payload) return;
@@ -197,8 +190,7 @@ export default function Forecasting() {
       { ...payload, save: true, overwrite },
       {
         onSuccess: (data) => {
-          // Backend báo kỳ này đã có bản ghi nhận → hỏi ghi đè, giữ nguyên
-          // kết quả đang hiển thị trên màn hình.
+          // Kỳ này đã có bản ghi nhận: hỏi ghi đè, giữ kết quả đang hiển thị.
           if (data?.conflict) {
             setXacNhanGhiDe(
               data.message ??
@@ -206,8 +198,8 @@ export default function Forecasting() {
             );
             return;
           }
-          // Không có căn cứ dự báo (0 ca, không ensemble) → backend từ chối ghi.
-          // Giữ kết quả trên màn hình, nói rõ lý do.
+          // Không có căn cứ dự báo (0 ca, không có ensemble) nên backend từ chối ghi;
+          // giữ kết quả trên màn hình và hiện lý do.
           if (data?.forecast?.khong_ghi_nhan) {
             setPhanTichMoi(data);
             alert(data.forecast.khong_ghi_nhan);
@@ -215,8 +207,8 @@ export default function Forecasting() {
           }
           setPhanTichMoi(data);
           setPhanTichLuc(null);
-          xoaTam(); // đã nằm trong DB, không cần bản tạm nữa
-          // Bản ghi nhận vừa tạo → làm mới cache đọc + lịch sử
+          xoaTam(); // đã ghi vào DB, bỏ bản tạm
+          // Làm mới cache bản đã ghi nhận và lịch sử
           queryClient.invalidateQueries({ queryKey: ['forecast', 'saved'] });
           queryClient.invalidateQueries({ queryKey: ['forecast', 'history'] });
         },
@@ -228,16 +220,15 @@ export default function Forecasting() {
     );
   };
 
-  // Auto-pick disease nếu list có dữ liệu mà filters đang trống
+  // Tự chọn nhóm bệnh đầu tiên khi danh mục đã tải mà bộ lọc còn trống
   useEffect(() => {
     if (diseases.length > 0 && !diseases.some((d) => d.key === filters.disease)) {
       setFilters((f) => ({ ...f, disease: diseases[0].key }));
     }
   }, [diseases, filters.disease]);
 
-  // ── Mở trang / đổi bộ lọc: CHỈ nạp bản đã ghi nhận theo khóa
-  // (Nhóm bệnh, Tỉnh/Thành, Tháng dự báo). Không bao giờ tự chạy mô hình —
-  // muốn phân tích thì phải bấm nút "Phân tích".
+  // Mở trang / đổi bộ lọc: chỉ nạp bản đã ghi nhận theo khóa (nhóm bệnh,
+  // tỉnh/thành, tháng); không tự chạy mô hình.
   const savedKey = useMemo(
     () => (filters.disease && filters.month ? buildPayload() : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -245,8 +236,8 @@ export default function Forecasting() {
   );
   const savedQuery = useSavedForecast(savedKey);
 
-  // Mở trang / đổi bộ lọc: khôi phục bản phân tích tạm NẾU đúng bộ lọc này,
-  // ngược lại bỏ đi (tránh hiện kết quả của bộ lọc khác).
+  // Mở trang / đổi bộ lọc: khôi phục bản phân tích tạm nếu khớp bộ lọc hiện tại,
+  // ngược lại bỏ đi.
   useEffect(() => {
     setXacNhanGhiDe(null);
     analyze.reset();
@@ -266,10 +257,10 @@ export default function Forecasting() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [khoaLoc]);
 
-  // Ưu tiên bản vừa phân tích (chưa ghi nhận), nếu không có thì lấy bản đã ghi nhận.
+  // Ưu tiên bản vừa phân tích (chưa ghi nhận), sau đó tới bản đã ghi nhận.
   const displayResult = phanTichMoi ?? savedQuery.data ?? null;
-  // isLoading (không phải isFetching): chỉ hiện spinner khi thật sự chưa có dữ
-  // liệu cho khóa đang chọn, tránh chớp màn hình khi làm mới ngầm sau khi ghi nhận.
+  // Dùng isLoading (không phải isFetching) để không chớp spinner khi làm mới
+  // ngầm sau khi ghi nhận.
   const dangNap = savedQuery.isLoading || analyze.isPending;
 
   const targetMonthNum = displayResult?.forecast.target_month ?? Number(filters.month.split('-')[1]);
@@ -277,9 +268,8 @@ export default function Forecasting() {
 
   const daGhiNhan = !!displayResult?.forecast.is_recorded;
 
-  // created_at do máy chủ trả về là UTC KHÔNG kèm offset — phải qua
-  // formatThoiGianMayChu, nếu không trình duyệt hiểu là giờ địa phương và
-  // hiển thị lệch 7 tiếng.
+  // created_at là UTC không kèm offset, phải qua formatThoiGianMayChu để không
+  // bị hiểu nhầm là giờ địa phương.
   const analyzedAtLabel = useMemo(() => {
     const nhan = formatThoiGianMayChu(displayResult?.forecast.recorded_at, '');
     return nhan || null;
@@ -289,7 +279,7 @@ export default function Forecasting() {
 
   return (
     <div className="space-y-5">
-      {/* Page header */}
+      {/* Tiêu đề trang */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-3xl font-extrabold text-neutral-900">
@@ -370,7 +360,7 @@ export default function Forecasting() {
         />
       ) : (
         <>
-          {/* Filter bar */}
+          {/* Bộ lọc */}
           <ForecastFilterBar
             filters={filters}
             onChange={setFilters}
@@ -444,7 +434,7 @@ export default function Forecasting() {
             </div>
           )}
 
-          {/* Error */}
+          {/* Lỗi */}
           {analyze.isError && (
             <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
               <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
@@ -469,7 +459,7 @@ export default function Forecasting() {
             </div>
           )}
 
-          {/* Loading skeleton */}
+          {/* Khung chờ tải */}
           {dangNap && (
             <div className="rounded-2xl border border-neutral-200 bg-white p-10 flex items-center justify-center text-neutral-500 text-sm gap-2">
               <Loader2 className="w-5 h-5 animate-spin" />
@@ -479,10 +469,10 @@ export default function Forecasting() {
             </div>
           )}
 
-          {/* Result */}
+          {/* Kết quả */}
           {displayResult && !dangNap && (
             <>
-              {/* Row 1: Forecast card + Main chart */}
+              {/* Hàng 1: thẻ dự báo + biểu đồ chính */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
                 <div className="space-y-5 lg:col-span-1">
                   <ForecastResultCard
@@ -513,7 +503,7 @@ export default function Forecasting() {
                 </div>
               </div>
 
-              {/* Row 2: Comparison + Current year trend */}
+              {/* Hàng 2: so sánh + xu hướng năm hiện tại */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                 <ComparisonChart
                   data={displayResult.charts.comparison}
@@ -526,14 +516,14 @@ export default function Forecasting() {
                 />
               </div>
 
-              {/* Row 3: Correlation chart full width */}
+              {/* Hàng 3: biểu đồ tương quan */}
               <CorrelationChart
                 data={displayResult.charts.correlation}
                 targetMonth={targetMonthNum}
                 coefficients={displayResult.charts.correlation_coefficients}
               />
 
-              {/* Row 4: Dữ liệu ca bệnh gần đây */}
+              {/* Hàng 4: dữ liệu ca bệnh gần đây */}
               <RecentMonthDataTable
                 // id null khi chưa ghi nhận → dùng khóa bộ lọc để vẫn nạp lại đúng
                 key={displayResult.forecast.id ?? `${filters.disease}|${filters.province}|${filters.month}`}

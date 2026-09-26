@@ -11,14 +11,11 @@ const fmt = (v: number | null | undefined, d = 0) =>
   v == null ? '—' : v.toLocaleString('vi-VN', { maximumFractionDigits: d });
 
 /**
- * Định mức thực nghiệm — CHỈ ĐỌC.
+ * Định mức thực nghiệm (chỉ đọc).
  *
- * Bảng này hiện đúng con số Tầng 2 nhân với Ŷ_g × p̂(g,ro): tử số (tiêu hao),
- * mẫu số (ca) và Norm theo từng rổ chăm sóc, trên cùng cửa sổ với tỷ trọng
- * rổ. Định mức tự cập nhật mỗi lần nạp dữ liệu DW; muốn đổi cách tính thì đổi
- * tham số ở tab "Tham số DSS", không có ô nhập tay.
- *
- * Thay cho tab "Định mức thuốc" (Nhẹ/TB/Nặng, nhập tay) trước 12/09/2026.
+ * Hiện đúng con số Tầng 2 nhân với Ŷ_g × p̂(g,ro): tử số (tiêu hao), mẫu số (ca)
+ * và Norm theo từng rổ chăm sóc, trên cùng cửa sổ với tỷ trọng rổ. Định mức tự
+ * cập nhật mỗi lần nạp dữ liệu DW; cách tính điều chỉnh qua tab "Tham số DSS".
  */
 export default function EmpiricalNormsSection() {
   const [block, setBlock] = useState<BlockCode>('J00-J06');

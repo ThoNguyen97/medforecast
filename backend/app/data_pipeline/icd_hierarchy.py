@@ -1,9 +1,9 @@
 """Ánh xạ phân cấp ICD: Mã → Nhóm (block) → Chương.
 
 Nguồn: TM_ICD.xlsx (cột MAICD, TENICD, PHANNHOM) + TM_ICD_CHUONG.xlsx
-(cột MACHUONGICD, TENCHUONGICD). PHANNHOM chính là mã NHÓM, vd 'J00-J06'.
+(cột MACHUONGICD, TENCHUONGICD). PHANNHOM là mã nhóm, vd 'J00-J06'.
 
-3 nhóm hô hấp dùng để dự báo (đã chốt):
+Ba nhóm hô hấp đích của dự báo:
   J00-J06  Nhiễm khuẩn hô hấp trên cấp
   J20-J22  Nhiễm khuẩn hô hấp dưới cấp khác
   J09-J18  Cúm và viêm phổi
@@ -28,7 +28,7 @@ TARGET_BLOCKS = {
 
 
 def normalize_icd(code: str) -> str:
-    """Chuẩn hóa mã ICD: bỏ khoảng trắng, viết HOA, bỏ phần sau dấu chấm nếu cần.
+    """Chuẩn hóa mã ICD về gốc 3 ký tự: bỏ khoảng trắng, viết hoa, bỏ phần sau dấu chấm.
 
     'j01' → 'J01'; ' J20.0 ' → 'J20' (gốc 3 ký tự để gộp nhóm).
     """
@@ -49,15 +49,10 @@ class IcdHierarchy:
 
     @classmethod
     def from_dir_optional(cls, icd_dir: str | Path) -> "IcdHierarchy":
-        """Đọc TM_ICD*.xlsx nếu có; thiếu file thì trả bảng tra RỖNG, không ném lỗi.
+        """Đọc TM_ICD*.xlsx nếu có; thiếu hoặc hỏng file thì trả bảng tra rỗng.
 
-        Vì sao không bắt buộc: khi nguồn là DB trung chuyển STA, mỗi dòng dữ liệu
-        đã kèm sẵn cột `disease_group` (thủ tục bên PROD lấy từ TM_ICD.PHANNHOM),
-        nên không cần tra Excel nữa. Bắt buộc có file sẽ làm máy chủ triển khai
-        chết ngay lúc khởi động chỉ vì thiếu hai file không còn dùng tới.
-
-        Khi nguồn là file CSV export thì vẫn cần — lúc đó thiếu file sẽ lộ ra ở
-        chỗ khác: mọi dòng không tra được nhóm và bị loại, log báo rõ.
+        Nguồn STA đã kèm cột `disease_group` (từ TM_ICD.PHANNHOM) nên không cần bảng tra.
+        Với nguồn file CSV, thiếu bảng tra khiến mọi dòng không tra được nhóm và bị loại (có log).
         """
         icd = Path(icd_dir) / "TM_ICD.xlsx"
         chapter = Path(icd_dir) / "TM_ICD_CHUONG.xlsx"
@@ -100,7 +95,7 @@ class IcdHierarchy:
                 if ch:
                     h.block_to_chapter[block] = ch
 
-        # Tên nhóm cho 3 nhóm đích (đảm bảo có nhãn đẹp)
+        # Tên chuẩn cho 3 nhóm đích.
         for b, name in TARGET_BLOCKS.items():
             h.block_name[b] = name
         return h
@@ -113,8 +108,6 @@ class IcdHierarchy:
         b = self.block_of(icd_code)
         return self.block_to_chapter.get(b) if b else None
 
-    def is_target(self, icd_code: str) -> bool:
-        return self.block_of(icd_code) in TARGET_BLOCKS
 
     def block_label(self, block_code: str) -> str:
         return self.block_name.get(block_code) or block_code
@@ -140,5 +133,5 @@ def _find_chapter(block: str, chapter_ranges: list[str]) -> Optional[str]:
             continue
         if lo[0] == start[0] == hi[0] and lo[1] <= start[1] <= hi[1]:
             return rng
-        # Chương bắc cầu nhiều chữ cái (hiếm với hô hấp) — bỏ qua cho đơn giản
+        # Chương trải nhiều chữ cái (hiếm với hô hấp) không được xét.
     return None

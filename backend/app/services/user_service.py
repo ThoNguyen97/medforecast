@@ -1,4 +1,4 @@
-"""User service for business logic."""
+"""Nghiệp vụ quản lý người dùng: tạo, cập nhật, vô hiệu hoá kèm audit log."""
 import logging
 from typing import List, Optional
 from sqlalchemy.orm import Session
@@ -14,18 +14,16 @@ logger = logging.getLogger(__name__)
 
 
 class UserService:
-    """Service class for user management operations."""
+    """Quản lý người dùng."""
     
     def __init__(self, db: Session):
         self.db = db
     
     def create_user(self, user_data: UserCreate, created_by_user_id: int, ip_address: str = None) -> User:
-        """Create a new user."""
+        """Tạo người dùng; HTTP 400 nếu trùng username/email."""
         try:
-            # Hash the password
             password_hash = get_password_hash(user_data.password)
             
-            # Create user object
             db_user = User(
                 username=user_data.username,
                 email=user_data.email,
@@ -35,12 +33,10 @@ class UserService:
                 is_active=True
             )
             
-            # Add to database
             self.db.add(db_user)
             self.db.commit()
             self.db.refresh(db_user)
             
-            # Log the creation
             self._log_audit(
                 user_id=created_by_user_id,
                 action="CREATE_USER",
@@ -79,19 +75,19 @@ class UserService:
                 )
     
     def get_users(self, skip: int = 0, limit: int = 100) -> List[User]:
-        """Get list of users with pagination."""
+        """Danh sách người dùng có phân trang."""
         return self.db.query(User).offset(skip).limit(limit).all()
     
     def get_user_by_id(self, user_id: int) -> Optional[User]:
-        """Get user by ID."""
+        """Người dùng theo ID."""
         return self.db.query(User).filter(User.id == user_id).first()
     
     def get_user_by_username(self, username: str) -> Optional[User]:
-        """Get user by username."""
+        """Người dùng theo username."""
         return self.db.query(User).filter(User.username == username).first()
     
     def update_user(self, user_id: int, user_data: UserUpdate, updated_by_user_id: int, ip_address: str = None) -> User:
-        """Update user information."""
+        """Cập nhật thông tin người dùng; 404 nếu không có, 400 nếu trùng email."""
         db_user = self.get_user_by_id(user_id)
         if not db_user:
             raise HTTPException(
@@ -99,7 +95,6 @@ class UserService:
                 detail="User not found"
             )
         
-        # Store old values for audit log
         old_values = {
             "email": db_user.email,
             "full_name": db_user.full_name,
@@ -107,7 +102,6 @@ class UserService:
             "is_active": db_user.is_active
         }
         
-        # Update fields if provided
         update_data = user_data.model_dump(exclude_unset=True)
         
         try:
@@ -120,7 +114,6 @@ class UserService:
             self.db.commit()
             self.db.refresh(db_user)
             
-            # Store new values for audit log
             new_values = {
                 "email": db_user.email,
                 "full_name": db_user.full_name,
@@ -128,7 +121,6 @@ class UserService:
                 "is_active": db_user.is_active
             }
             
-            # Log the update
             self._log_audit(
                 user_id=updated_by_user_id,
                 action="UPDATE_USER",
@@ -156,7 +148,7 @@ class UserService:
                 )
     
     def delete_user(self, user_id: int, deleted_by_user_id: int, ip_address: str = None) -> bool:
-        """Delete user (soft delete by setting is_active to False)."""
+        """Xoá mềm người dùng (is_active = False); không cho tự xoá tài khoản của mình."""
         db_user = self.get_user_by_id(user_id)
         if not db_user:
             raise HTTPException(
@@ -164,14 +156,12 @@ class UserService:
                 detail="User not found"
             )
         
-        # Prevent self-deletion
         if user_id == deleted_by_user_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Cannot delete your own account"
             )
         
-        # Store old values for audit log
         old_values = {
             "username": db_user.username,
             "email": db_user.email,
@@ -180,11 +170,9 @@ class UserService:
             "is_active": db_user.is_active
         }
         
-        # Soft delete by setting is_active to False
         db_user.is_active = False
         self.db.commit()
         
-        # Log the deletion
         self._log_audit(
             user_id=deleted_by_user_id,
             action="DELETE_USER",
@@ -200,7 +188,7 @@ class UserService:
     
     def _log_audit(self, user_id: int, action: str, table_name: str, record_id: int, 
                    old_value: dict = None, new_value: dict = None, ip_address: str = None):
-        """Log audit trail for user operations."""
+        """Thêm bản ghi audit log vào session."""
         audit_log = AuditLog(
             user_id=user_id,
             action=action,
@@ -212,4 +200,4 @@ class UserService:
         )
         
         self.db.add(audit_log)
-        # Note: commit is handled by the calling method
+        # Không commit tại đây; bản ghi chỉ được lưu ở lần commit kế tiếp của session.

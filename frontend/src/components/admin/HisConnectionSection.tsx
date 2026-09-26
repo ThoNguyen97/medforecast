@@ -18,12 +18,12 @@ import { cn } from '../../utils/cn';
 /**
  * Quản trị → Nguồn dữ liệu (CSDL DW).
  *
- * Cấu hình lưu trong DB (bảng system_config) thay vì file .env: admin đổi
- * host/mật khẩu ngay trên giao diện, có nút thử kết nối trước khi lưu, và lần
- * đồng bộ sau tự dùng cấu hình mới — không cần khởi động lại backend.
+ * Cấu hình lưu trong bảng system_config thay vì file .env: admin đổi host/mật
+ * khẩu trên giao diện, thử kết nối trước khi lưu, và lần đồng bộ sau tự dùng cấu
+ * hình mới mà không cần khởi động lại backend.
  *
- * Mật khẩu chỉ đi MỘT CHIỀU (client → server). Server không bao giờ trả lại,
- * form chỉ biết "đã đặt hay chưa" qua has_password.
+ * Mật khẩu chỉ đi một chiều (client → server): server không trả lại, form chỉ
+ * biết "đã đặt hay chưa" qua has_password.
  */
 
 const RONG: HisConnectionInput = {
@@ -115,9 +115,9 @@ export default function HisConnectionSection() {
         <div className="border rounded-xl p-3 border-primary-500 bg-primary-50/50 ring-1 ring-primary-500 max-w-xl">
           <div className="font-medium text-sm text-neutral-800">SQL Server — CSDL nghiên cứu MEDFORECAST_DW</div>
           <div className="text-xs text-neutral-500 mt-0.5">
-            Snapshot database do bệnh viện bàn giao (12 bảng MF_*, đã khử định danh), khôi phục trên
-            SQL Server cục bộ của máy trạm. Ứng dụng đọc 7 view vw_MedForecast_* tại đây — không kết nối
-            tới HIS hay máy chủ trung gian nào.
+            CSDL trên máy chủ STA của bệnh viện (12 bảng MF_*, đã khử định danh, do các thủ tục
+            usp_MedForecast_* trên HIS PROD tổng hợp). Ứng dụng chỉ đọc 7 view vw_MedForecast_*
+            tại đây, không kết nối trực tiếp tới HIS.
           </div>
         </div>
       </div>
@@ -128,11 +128,11 @@ export default function HisConnectionSection() {
           <h3 className="font-semibold text-neutral-800">Thông số kết nối</h3>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Truong label="Máy chủ SQL Server" required ghiChu="Cục bộ: localhost hoặc 127.0.0.1">
+            <Truong label="Máy chủ SQL Server" required ghiChu="Tên máy hoặc địa chỉ IP máy chủ STA">
               <input className={o} value={form.host} placeholder="localhost"
                      onChange={(e) => doi('host', e.target.value)} />
             </Truong>
-            <Truong label="Instance (nếu có)" ghiChu="vd SQLEXPRESS → localhost\\SQLEXPRESS; đặt instance thì port bị bỏ qua">
+            <Truong label="Instance (nếu có)" ghiChu="Đặt instance thì port bị bỏ qua">
               <input className={o} value={form.instance} placeholder="vd: SQLEXPRESS"
                      onChange={(e) => doi('instance', e.target.value)} />
             </Truong>
@@ -145,7 +145,7 @@ export default function HisConnectionSection() {
               <input className={o} value={form.database}
                      onChange={(e) => doi('database', e.target.value)} />
             </Truong>
-            <Truong label="Xác thực" ghiChu="SQL Server cục bộ thường chỉ bật Windows Authentication">
+            <Truong label="Xác thực" ghiChu="SQL auth với tài khoản chỉ đọc medforecast_app, hoặc Windows Authentication">
               <select className={o} value={form.auth}
                       onChange={(e) => doi('auth', e.target.value as 'windows' | 'sql')}>
                 <option value="windows">Windows Authentication</option>
@@ -176,7 +176,7 @@ export default function HisConnectionSection() {
               </select>
             </Truong>
             <Truong label="Số kỳ nạp lại (tháng)"
-                    ghiChu="Số kỳ gần nhất được xoá-nạp lại mỗi lần; snapshot đóng băng thì 0 cũng đủ">
+                    ghiChu="Số kỳ gần nhất được xoá-nạp lại mỗi lần đồng bộ">
               <input className={o} type="number" min={0} max={24} value={form.lookback_months}
                      onChange={(e) => doi('lookback_months', Number(e.target.value) || 0)} />
             </Truong>
@@ -185,7 +185,7 @@ export default function HisConnectionSection() {
                 <input type="checkbox" className="rounded border-neutral-300"
                        checked={form.trust_cert}
                        onChange={(e) => doi('trust_cert', e.target.checked)} />
-                Tin chứng chỉ tự ký của SQL Server cục bộ
+                Tin chứng chỉ tự ký của máy chủ SQL Server
               </label>
             </Truong>
           </div>
@@ -241,7 +241,7 @@ export default function HisConnectionSection() {
           >
             <div className="font-medium text-sm">
               {testResult.ok
-                ? 'Kết nối tốt — đọc được đủ 7 view của snapshot'
+                ? 'Kết nối tốt — đọc được đủ 7 view vw_MedForecast_*'
                 : 'Chưa kết nối được — xem từng bước bên dưới'}
             </div>
             <ul className="space-y-1.5">

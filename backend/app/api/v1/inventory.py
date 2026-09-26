@@ -1,4 +1,4 @@
-"""Inventory API endpoints."""
+"""API tồn kho: tra cứu, cập nhật, xoá, import CSV tồn đầu kỳ và xuất Excel."""
 import logging
 from typing import List, Optional, Any
 from fastapi import APIRouter, Depends, File, HTTPException, status, Request, Query, UploadFile
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_client_ip(request: Request) -> str:
-    """Extract client IP address from request."""
+    """Lấy IP client, ưu tiên X-Forwarded-For khi chạy sau proxy."""
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
         return forwarded.split(",")[0].strip()
@@ -31,12 +31,7 @@ def list_inventory(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> Any:
-    """
-    List all inventory items.
-    
-    Supports filtering by supply_id and location.
-    All authenticated users can access this endpoint.
-    """
+    """Danh sách dòng tồn kho, lọc theo supply_id và vị trí."""
     inventory_service = InventoryService(db)
     items = inventory_service.get_inventory_items(
         skip=skip,
@@ -53,12 +48,7 @@ def get_low_stock_items(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> Any:
-    """
-    Get inventory items with low stock.
-    
-    Returns items where current_stock <= safety_stock * threshold.
-    Default threshold is 1.0 (at or below safety stock).
-    """
+    """Dòng tồn kho có current_stock ≤ safety_stock × threshold (mặc định 1.0)."""
     inventory_service = InventoryService(db)
     items = inventory_service.get_low_stock_items(threshold_multiplier=threshold)
     return items
@@ -70,22 +60,18 @@ def get_expiring_items(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> Any:
-    """
-    Get inventory items expiring within the specified number of days.
-    
-    Default is 30 days.
-    """
+    """Dòng tồn kho hết hạn trong `days` ngày tới (mặc định 30)."""
     inventory_service = InventoryService(db)
     items = inventory_service.get_expiring_items(days_threshold=days)
     return items
 
 
-# ── Smart Medical spec 6 — Static path routes phải khai báo trước "/{inventory_id}" ──
+# ── Route đường dẫn tĩnh: phải khai báo trước "/{inventory_id}" ──
 
 
 @router.get("/template", include_in_schema=True)
 async def download_inventory_template():
-    """File CSV mẫu cho Import tồn kho đầu kỳ (4 bệnh hô hấp + 15 thuốc)."""
+    """File CSV mẫu cho import tồn kho đầu kỳ."""
     from fastapi.responses import StreamingResponse
 
     sample = (
@@ -111,7 +97,7 @@ async def _import_inventory_csv(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_inventory_manager_or_admin),
 ) -> Any:
-    """Import tồn kho đầu kỳ từ file CSV (spec 6.5)."""
+    """Import tồn kho đầu kỳ từ file CSV (Inventory Manager / Admin)."""
     return await _do_inventory_import(file, db, current_user)
 
 
@@ -120,7 +106,7 @@ async def _export_inventory_excel(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    """Xuất báo cáo tồn kho ra file Excel (.xlsx) — spec 6.6."""
+    """Xuất báo cáo tồn kho ra file Excel (.xlsx)."""
     return _do_inventory_export(db)
 
 
@@ -130,11 +116,7 @@ def get_inventory_item(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> Any:
-    """
-    Get inventory item by ID.
-    
-    All authenticated users can access this endpoint.
-    """
+    """Một dòng tồn kho theo ID."""
     inventory_service = InventoryService(db)
     item = inventory_service.get_inventory_by_id(inventory_id)
     return item
@@ -147,8 +129,8 @@ def delete_inventory(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_inventory_manager_or_admin),
 ) -> Any:
-    """Xoá một dòng tồn kho (Inventory Manager / Admin). Cảnh báo không cần
-    đóng theo: chúng được tính lại từ DOI mỗi lần đọc, không lưu trạng thái."""
+    """Xoá một dòng tồn kho (Inventory Manager / Admin). Cảnh báo không lưu trạng
+    thái mà tính lại từ DOI mỗi lần đọc, nên không cần xử lý kèm."""
     from app.models.inventory import Inventory as InventoryModel
 
     item = (
@@ -189,11 +171,7 @@ def update_inventory(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_inventory_manager_or_admin)
 ) -> Any:
-    """
-    Update inventory stock levels.
-    
-    Only Inventory Managers and Administrators can update inventory.
-    """
+    """Cập nhật mức tồn của một dòng tồn kho (Inventory Manager / Admin)."""
     inventory_service = InventoryService(db)
     client_ip = get_client_ip(request)
     
@@ -217,21 +195,10 @@ def batch_update_inventory(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_inventory_manager_or_admin)
 ) -> Any:
-    """
-    Batch update multiple inventory items.
-    
-    Request body should be a list of objects with:
-    - inventory_id (required): ID of inventory item to update
-    - current_stock (optional): New current stock value
-    - safety_stock (optional): New safety stock value
-    
-    Only Inventory Managers and Administrators can perform batch updates.
-    
-    Example:
-    [
-        {"inventory_id": 1, "current_stock": 500},
-        {"inventory_id": 2, "current_stock": 300, "safety_stock": 100}
-    ]
+    """Cập nhật nhiều dòng tồn kho một lần (Inventory Manager / Admin).
+
+    Body là danh sách object gồm `inventory_id` (bắt buộc), `current_stock`,
+    `safety_stock` (tuỳ chọn), ví dụ `[{"inventory_id": 1, "current_stock": 500}]`.
     """
     inventory_service = InventoryService(db)
     client_ip = get_client_ip(request)
@@ -249,11 +216,11 @@ def batch_update_inventory(
 
 
 
-# ── Smart Medical spec 6.5: Helpers ─────────────────────────────────────────
+# ── Helpers import/export ──
 
 
 async def _do_inventory_import(file: "UploadFile", db: Session, current_user: User) -> Any:
-    """Logic import tồn kho đầu kỳ (spec 6.5)."""
+    """Đọc CSV, tìm hoặc tạo MedicalSupply, rồi upsert dòng Inventory tương ứng."""
     import csv as _csv
     import io as _io
     from datetime import datetime as _dt
@@ -277,7 +244,7 @@ async def _do_inventory_import(file: "UploadFile", db: Session, current_user: Us
     errors: list[dict] = []
 
     for idx, row in enumerate(reader, start=2):
-        # Hỗ trợ format mới (supply_code/drug_code/ten_hoat_chat) và format cũ (supply_name)
+        # Nhận cả cột supply_code/drug_code/ten_hoat_chat lẫn supply_name.
         supply_code = (row.get("supply_code") or "").strip()
         drug_code = (row.get("drug_code") or "").strip()
         ten_hoat_chat = (row.get("ten_hoat_chat") or row.get("supply_name") or "").strip()
@@ -290,9 +257,8 @@ async def _do_inventory_import(file: "UploadFile", db: Session, current_user: Us
             errors.append({"row": idx, "reason": "Thiếu supply_code / drug_code / ten_hoat_chat"})
             continue
 
-        # Parse số
         try:
-            # Hỗ trợ cả current_stock và stock_quantity
+            # Nhận cả current_stock lẫn stock_quantity.
             cur_stock = int(float((row.get("current_stock") or row.get("stock_quantity") or "0").strip() or 0))
             saf_stock = int(float((row.get("safety_stock") or "0").strip() or 0))
         except ValueError:
@@ -317,7 +283,7 @@ async def _do_inventory_import(file: "UploadFile", db: Session, current_user: Us
                 except ValueError:
                     continue
 
-        # 1. Tìm MedicalSupply theo supply_code, drug_code, hoặc ten_hoat_chat
+        # Khớp MedicalSupply lần lượt theo supply_code, drug_code, ten_hoat_chat.
         supply = None
         if supply_code:
             supply = (
@@ -340,7 +306,6 @@ async def _do_inventory_import(file: "UploadFile", db: Session, current_user: Us
 
         is_new_supply = supply is None
         if is_new_supply:
-            # Tạo mới với các trường bắt buộc
             if not supply_code:
                 supply_code = f"VT_AUTO_{int(_dt.now().timestamp())}_{idx}"
             if not drug_code:
@@ -358,7 +323,6 @@ async def _do_inventory_import(file: "UploadFile", db: Session, current_user: Us
             db.add(supply)
             db.flush()
         else:
-            # Cập nhật metadata nếu có thay đổi
             if category and category != "other":
                 supply.category = category
             if unit:
@@ -366,7 +330,6 @@ async def _do_inventory_import(file: "UploadFile", db: Session, current_user: Us
             if group_name and group_name != "Khác":
                 supply.group_name = group_name
 
-        # 2. Tìm/Tạo Inventory record
         inv = (
             db.query(InventoryModel)
             .filter(InventoryModel.supply_id == supply.id)
@@ -409,7 +372,7 @@ async def _do_inventory_import(file: "UploadFile", db: Session, current_user: Us
 
 
 def _do_inventory_export(db: Session) -> Any:
-    """Logic xuất Excel báo cáo tồn kho."""
+    """Dựng file Excel tồn kho; trạng thái: Nguy cấp nếu tồn ≤ 0 hoặc < 30% ngưỡng an toàn."""
     import io as _io
     from datetime import datetime as _dt
     from fastapi.responses import Response
@@ -471,24 +434,7 @@ def _do_inventory_export(db: Session) -> Any:
         c.font = header_font
         c.alignment = align_center
 
-    category_label = {
-        "medicine": "Thuốc",
-        "mask": "Khẩu trang",
-        "glove": "Găng tay",
-        "test_kit": "Kit XN",
-        "disinfectant": "Hoá chất",
-        "iv_fluid": "Dịch truyền",
-        "other": "Khác",
-    }
-    prefix_map = {
-        "medicine": "VT",
-        "mask": "TB",
-        "glove": "TB",
-        "test_kit": "TB",
-        "disinfectant": "HC",
-        "iv_fluid": "VT",
-        "other": "VT",
-    }
+    category_label = {"medicine": "Thuốc", "other": "Khác"}
     status_color = {
         "Bình thường": "16A34A",
         "Dưới ngưỡng": "D97706",
@@ -507,7 +453,6 @@ def _do_inventory_export(db: Session) -> Any:
         else:
             status_text = "Bình thường"
 
-        # Sử dụng supply_code mới (VT001-VT015), không cần prefix
         code = r.supply_code or f"VT-{str(r.supply_id).zfill(4)}"
 
         ws.cell(row=r_idx, column=1, value=code)

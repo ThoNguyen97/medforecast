@@ -1,4 +1,4 @@
-"""FastAPI application entry point."""
+"""Điểm vào ứng dụng FastAPI: khởi tạo logging, lược đồ CSDL, CORS và router API."""
 import logging
 from contextlib import asynccontextmanager
 
@@ -18,15 +18,13 @@ setup_logging(settings.LOG_LEVEL)
 logger = logging.getLogger(__name__)
 
 # ── Database ──────────────────────────────────────────────────────────────────
-# Import all models so SQLAlchemy registers them before create_all
+# Nạp mọi model để SQLAlchemy đăng ký trước create_all
 import app.models  # noqa: F401, E402
 
 Base.metadata.create_all(bind=engine)
 logger.info("Database tables verified / created.")
 
-# DATABASE_URL là đường dẫn TƯƠNG ĐỐI theo thư mục làm việc, và _ensure_db_dir()
-# còn tự mkdir — chạy uvicorn từ thư mục khác backend/ là âm thầm dùng một file DB
-# khác mà không có lỗi nào. In đường dẫn tuyệt đối để không bao giờ phải đoán nữa.
+# Ghi log đường dẫn tuyệt đối của file SQLite đang dùng để dễ đối chiếu khi vận hành.
 if settings.DATABASE_URL.startswith("sqlite:///"):
     from pathlib import Path as _Path
     _db = _Path(settings.DATABASE_URL[len("sqlite:///"):]).resolve()
@@ -34,7 +32,7 @@ if settings.DATABASE_URL.startswith("sqlite:///"):
                 _db, _db.exists(), _db.stat().st_size if _db.exists() else 0,
                 _Path.cwd())
 
-# Hợp nhất nguồn dữ liệu: tạo luôn bảng tầng dữ liệu (mart/fact) trong CÙNG DB app.
+# Tạo bảng tầng dữ liệu (mart/fact) trong cùng CSDL ứng dụng.
 try:
     from app.data_pipeline.db import init_db as _pipeline_init_db
     _pipeline_init_db()
@@ -42,8 +40,8 @@ try:
 except Exception as _e:  # noqa: BLE001
     logger.warning("Pipeline table init skipped (non-fatal): %s", _e)
 
-# Lược đồ ngoài ORM (6 bảng tự quản, 2 dòng cấu hình DSS, 4 view): create_all
-# không biết tới chúng; thiếu view thì Tầng 2/3 mù mà không ném lỗi. Idempotent.
+# Lược đồ ngoài ORM (bảng tự quản, cấu hình DSS, view SQLite) mà create_all không
+# quản lý; thiếu view thì Tầng 2/3 trả rỗng mà không báo lỗi. Idempotent.
 try:
     from app.data_pipeline.views import dam_bao_luoc_do as _dam_bao
     _kq = _dam_bao()
@@ -59,8 +57,8 @@ except Exception as _e:  # noqa: BLE001
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan: run startup logic then yield."""
-    # Startup: run log retention cleanup once (non-fatal if it fails)
+    """Vòng đời ứng dụng: dọn log quá hạn lưu trữ khi khởi động."""
+    # Lỗi dọn log không chặn khởi động
     try:
         from app.database import SessionLocal
         from app.services.audit_log_service import AuditLogService
@@ -80,7 +78,6 @@ async def lifespan(app: FastAPI):
         logger.warning("Startup log cleanup failed (non-fatal): %s", exc)
 
     yield
-    # Shutdown: nothing to do
 
 
 app = FastAPI(
@@ -107,7 +104,7 @@ logger.info("CORS configured for origins: %s", settings.cors_origins_list)
 # ── Routes ────────────────────────────────────────────────────────────────────
 @app.get("/", tags=["root"])
 async def root():
-    """Root endpoint — basic service info."""
+    """Thông tin cơ bản của dịch vụ."""
     return {
         "message": "MedForecast - Hệ thống DSS dự báo ca bệnh và cảnh báo thiếu hụt vật tư y tế",
         "version": settings.VERSION,
@@ -118,7 +115,7 @@ async def root():
 
 @app.get("/health", tags=["health"])
 async def health_check():
-    """Health check endpoint."""
+    """Kiểm tra tình trạng hoạt động của dịch vụ."""
     return {
         "status": "healthy",
         "service": "medforecast-api",
@@ -127,8 +124,6 @@ async def health_check():
 
 
 # ── API Routes ────────────────────────────────────────────────────────────────
-# Router đã archive (xem _archive/README.md): alerts, supply_recommendations,
-# admin_severity, supply_plan, forecast_hier, supplies.
 from app.api.v1 import (auth, users, inventory, environmental, disease_cases,
                         supply_requirements, dashboard, reports, config, audit_logs,
                         forecast_analysis, admin_catalog, sync, dss_config)

@@ -1,21 +1,8 @@
-"""Cấu hình SẢN XUẤT duy nhất của tầng dự báo (M1 — 11/09/2026).
+"""Cấu hình sản xuất duy nhất của tầng dự báo.
 
-Vì sao cần file này
--------------------
-Trước 11/09/2026 có BỐN cấu hình mô hình cùng tồn tại:
-
-    evaluate.py                      build_default_ensemble()        thời tiết TẮT
-    dashboard  (dss_runner/topdown)  Ridge + lag, không phải ensemble (đã gỡ, _archive)
-    trang Phân tích                  ensemble(use_weather=auto)      thời tiết BẬT
-    trang Kế hoạch                   nhóm BẬT / mã TẮT
-
-Con số MASE ~0,60 công bố trong báo cáo được đo ở dòng đầu — một cấu hình mà
-không màn hình nào dùng. Từ nay MỌI nơi (backtest lẫn service) đọc tham số từ
-PRODUCTION_CONFIG; không chỗ nào tự đặt tham số riêng. Muốn thử cấu hình khác
-thì tạo một ForecastConfig khác và truyền vào — không sửa mặc định.
-
-Ghi kèm cấu hình này vào mỗi kết quả dự báo (xem `ForecastConfig.as_record`)
-để bảng số trong báo cáo luôn truy ngược được về đúng mô hình đã sinh ra nó.
+Backtest và service đều đọc tham số từ PRODUCTION_CONFIG để số đánh giá khớp với số
+hiển thị; thử cấu hình khác bằng cách truyền một ForecastConfig khác. Cấu hình được
+ghi kèm mỗi kết quả (`ForecastConfig.as_record`) để truy ngược về mô hình đã sinh ra nó.
 """
 from __future__ import annotations
 from dataclasses import dataclass, asdict
@@ -24,67 +11,55 @@ from typing import Optional
 
 @dataclass(frozen=True)
 class ForecastConfig:
-    # ── thành viên ensemble ──────────────────────────────────────────────
+    # ── Thành viên ensemble ──
     use_weather: bool = True
     """Thêm HarmonicPoisson(thời tiết) vào ensemble và cho SARIMAX dùng exog.
     Chỉ có hiệu lực khi chuỗi có đủ `weather_min_months` tháng thời tiết."""
     weather_min_months: int = 12
     """Dưới ngưỡng này chuỗi coi như chưa có thời tiết → tự tắt, không lỗi."""
     smearing: bool = False
-    """Hiệu chỉnh Duan cho các mô hình khớp trên log1p (M8). TẮT: đo walk-forward
-    11/09/2026 cho thấy ensemble vốn dự báo THỪA (MPE +13…+18%), bật smearing
-    đẩy lệch lên +30%. Giữ tuỳ chọn để đối chứng trong báo cáo."""
+    """Hiệu chỉnh Duan cho các mô hình khớp trên log1p. Tắt mặc định: ensemble vốn
+    dự báo thừa, smearing làm lệch dương tăng thêm (xem ketqua_backtest/smearing.csv)."""
     ridge_lam: float = 10.0
-    """Hình phạt Ridge trên cột ĐÃ chuẩn hoá (M10). Dò walk-forward 3 nhóm
-    11/09/2026: 10 thắng hoặc hoà bản cũ ở mọi ô; ≥30 giết J09-J18. Tối ưu theo
-    nhóm khác nhau (≈100 / 10 / 30) — dò theo nhóm là thí nghiệm kế tiếp."""
+    """Hình phạt Ridge trên biến đã chuẩn hoá; chọn bằng walk-forward trên ba nhóm ICD
+    (giá trị ≥ 30 làm giảm mạnh độ chính xác nhóm J09-J18)."""
 
     use_ets: bool = True
-    """Thành viên ETS Holt–Winters (cần statsmodels). M12, 11/09/2026: đứng
-    một mình đã RelMAE 0,55/0,40/0,58 (ba nhóm) — chỉ kém SARIMAX, tốt hơn xa
-    ba thành viên numpy. Bằng chứng: ket_hop.csv."""
+    """Thành viên ETS Holt–Winters (cần statsmodels); chỉ kém SARIMAX khi đứng một mình
+    (xem ketqua_backtest/thanhvien.csv)."""
 
-    # ── kết hợp thành viên & hiệu chỉnh lệch (M12) ───────────────────────
+    # ── Kết hợp thành viên và hiệu chỉnh lệch ──
     combine: str = "inv_mae"
-    """'mean' = trung bình đều (hành vi cũ); 'inv_mae' = trọng số nghịch đảo
-    MAE của từng thành viên trên `combine_window` bước walk-forward gần nhất
-    (Bates–Granger). Chỉ áp ở MỨC NHÓM; mức mã vẫn trung bình đều.
-
-    Chọn 11/09/2026 bằng bench walk-forward 68 bước (ket_hop.csv): trung bình
-    đều RelMAE nhóm 0,755/0,594/0,688 vì seasonal_trend và poisson_trend còn
-    TỆ HƠN seasonal-naive (RelMAE > 1 ở J00-J06) mà vẫn được 1/5 phiếu.
-    inv_mae power 2 + hệ số lệch: 0,516/0,377/0,541 — MPE về −0,5/−3/+4 %."""
+    """'mean' = trung bình đều; 'inv_mae' = trọng số nghịch đảo MAE của từng thành viên
+    trên `combine_window` bước walk-forward gần nhất (Bates–Granger). Chỉ áp ở mức nhóm;
+    mức mã dùng trung bình đều. So sánh các phương án: ketqua_backtest/ket_hop.csv."""
     combine_window: int = 12
     combine_power: float = 2.0
     combine_min_hist: int = 6
     bias_correct: bool = True
-    """Nhân dự báo nhóm với hệ số = 1 + shrink·(median(thực tế/dự báo) − 1)
-    trên `bias_window` bước gần nhất, chặn trong [1/clip, clip]. Sửa lệch
-    một chiều (J09-J18 hụt ~15 %, J20-J22 thừa ~13 %) mà trung bình đều
-    không tự sửa. Ước lượng chỉ từ quá khứ → walk-forward vẫn trung thực."""
+    """Nhân dự báo nhóm với hệ số 1 + shrink·(median(thực tế/dự báo) − 1) trên
+    `bias_window` bước gần nhất, chặn trong [1/clip, clip], để sửa lệch một chiều.
+    Hệ số chỉ ước lượng từ quá khứ nên walk-forward không bị rò rỉ thông tin."""
     bias_window: int = 12
     bias_shrink: float = 0.5
     bias_clip: float = 1.5
 
-    # ── phân cấp ─────────────────────────────────────────────────────────
+    # ── Phân cấp ──
     method: str = "top_down_dynamic"
-    """Chốt bằng backtest 09/08/2026: bottom-up nổ MASE 483,7 trên mã thưa."""
+    """Top-down động theo tỷ trọng EWMA; bottom-up không ổn định trên các mã thưa."""
     ewma_span: int = 6
 
-    # ── cửa sổ ───────────────────────────────────────────────────────────
+    # ── Cửa sổ ──
     from_period: Optional[str] = None
-    """None = toàn bộ lịch sử từ 2019. Phân tích độ nhạy ba cửa sổ đã cho thấy
-    cắt ngắn làm mất mùa dịch cũ mà thành phần thời tiết cần."""
+    """None = toàn bộ lịch sử từ 2019; cắt ngắn làm mất các mùa dịch mà thành phần
+    thời tiết cần để ước lượng."""
     min_train: int = 24
 
-    # ── khoảng dự báo (M9) ───────────────────────────────────────────────
+    # ── Khoảng dự báo ──
     interval_level: float = 0.90
-    """Một mức cho MỌI màn hình. Trước đây Dashboard dùng 0,80 còn trang Kế
-    hoạch dùng z=1,96 đã hiệu chuẩn tới ~90% độ phủ — giữ 0,90 để không mất
-    kết quả hiệu chuẩn đó."""
+    """Mức khoảng dự báo dùng chung cho mọi màn hình."""
     interval_n_back: int = 24
-    """Số phần dư walk-forward gần nhất dùng để lấy phân vị. 12 (bản cũ) quá
-    ít để ước lượng đuôi; 24 = hai chu kỳ mùa."""
+    """Số phần dư walk-forward gần nhất dùng để lấy phân vị (24 = hai chu kỳ mùa)."""
 
     def as_record(self) -> dict:
         """Bản ghi gọn để lưu kèm mỗi kết quả dự báo / mỗi bảng backtest."""

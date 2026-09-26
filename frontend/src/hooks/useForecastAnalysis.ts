@@ -37,16 +37,12 @@ export function useAnalyzeForecast() {
 }
 
 /**
- * Nạp bản dự báo ĐÃ GHI NHẬN theo khóa (nhóm bệnh, khu vực, tháng).
+ * Nạp bản dự báo đã ghi nhận theo khóa (nhóm bệnh, khu vực, tháng).
  *
- * Cố ý dùng useQuery chứ không phải useMutation: đây là thao tác ĐỌC, chạy tự
- * động theo bộ lọc. Dùng mutation trong useEffect lúc mount sẽ hỏng dưới
- * <StrictMode> — React chạy effect, huỷ, rồi chạy lại; React Query gỡ observer
- * khỏi mutation đang bay nên kết quả không bao giờ về tới component và
- * isPending kẹt true vĩnh viễn.
- *
- * queryKey tách thành từng giá trị nguyên thuỷ (không truyền cả object) để
- * key không đổi sau mỗi lần render.
+ * Dùng useQuery thay vì useMutation vì đây là thao tác đọc chạy theo bộ lọc:
+ * mutation gọi trong useEffect lúc mount hỏng dưới <StrictMode> (effect chạy hai
+ * lần, observer bị gỡ khỏi mutation đang chạy nên isPending kẹt true).
+ * queryKey gồm các giá trị nguyên thuỷ để key ổn định giữa các lần render.
  */
 export function useSavedForecast(
   p: {
@@ -73,9 +69,6 @@ export function useSavedForecast(
     refetchOnWindowFocus: false,
   });
 }
-
-// Đã gỡ useTrainModels() và useMLAnalyzeForecast() ngày 09/09/2026 —
-// không component nào dùng, và endpoint backend đã bị gỡ.
 
 export function useForecastHistory(
   params?: {

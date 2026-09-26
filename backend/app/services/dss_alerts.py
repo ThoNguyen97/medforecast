@@ -1,61 +1,23 @@
-"""TẦNG 3 — TỒN HỮU DỤNG, SỐ NGÀY ĐÁP ỨNG, CẢNH BÁO BỐN MÀU.
-
-Đặt tại: backend/app/services/dss_alerts.py
+"""Tầng 3: tồn hữu dụng FEFO, số ngày đáp ứng (DOI) và cảnh báo bốn màu.
 
     d_eff    = D_i / horizon_days      nhu cầu dự báo mỗi ngày (Tầng 2)
     S_usable = Σ_b u_b        u_b = clamp( d_eff·ngày_còn_hạn_b − C_{b−1}, 0, q_b )   FEFO
     DOI      = S_usable / d_eff
     nhãn     = Đỏ ≤ 18 ngày · Vàng ≤ 36 ngày · Xanh > 36 ngày · Xám không đo được
 
-=============================================================================
-MẪU SỐ LÀ NHU CẦU DỰ BÁO, KHÔNG PHẢI TIÊU HAO LỊCH SỬ (19/09/2026)
+Mẫu số của DOI chỉ là nhu cầu dự báo d_eff (không lùi về tiêu hao lịch sử), để Tầng 1
+thực sự lái Tầng 3; mã không có D_i nhận Xám `no_forecast`. FEFO dùng cùng d_eff.
 
-Trước 19/09 DOI chia cho `d_daily` (tiêu hao toàn viện TB 12 kỳ) còn D_i của
-Tầng 2 chỉ đi vào cột Δ_need. Hệ quả đo được: nhân số ca dự báo lên gấp đôi
-thì KHÔNG một mã nào đổi màu — Tầng 1 không lái Tầng 3, trái với mọi tài liệu
-("DOI_i = tồn hữu dụng FEFO_i / (D_i / horizon)"). Nay mẫu số là d_eff và
-CHỈ là d_eff: mã không có D_i thì không có mẫu số, nhận màu Xám kèm lý do
-`no_forecast`. Nhánh lùi về tiêu hao lịch sử đã gỡ ngày 20/09 — giữ nó thì
-trên màn hình tồn tại hai công thức DOI, người đọc không biết dòng nào theo
-công thức nào (đo 20/09: 0/1.476 mã dùng nhánh đó, gỡ không đổi con số nào).
-FEFO dùng CÙNG d_eff để "kịp dùng trước hạn" và DOI nói về cùng một tốc độ.
-Đo trên DB thật 19/09: tập trọng tâm 34/25/145/38 → 32/27/145/38 (2 mã
-Đỏ→Vàng) vì (D_i/30)/d_daily có trung vị 0,98 — đổi công thức không đổi bức
-tranh, nhưng từ nay Ŷ×2 làm 42/242 mã đổi nhãn thay vì 0.
+Ngưỡng 18/36 ngày: trung vị chu kỳ nhập thực tế của bệnh viện là 18 ngày; Đỏ nghĩa là
+tồn không đủ tới lần nhập kế tiếp, Vàng là hai chu kỳ. Đây là ngưỡng chung cho mọi mã.
 
-=============================================================================
-NGƯỠNG 18/36 TỪ ĐÂU
+Nguồn tồn kho (`_lots_by_code`), theo thứ tự ưu tiên:
+  1. `fact_inventory_lot` (ETL từ `vw_MedForecast_TonKhoLo_MoiNhat`): có hạn dùng → FEFO đầy đủ.
+  2. `inventory`: không có hạn dùng → S_usable = tồn hiện có.
+Mỗi dòng trả `fefo_ap_dung` và `nguon_ton_kho`; không suy diễn hạn dùng khi nguồn không có.
 
-Không phải chọn cho tròn. Đ9 đo chu kỳ nhập thực tế của bệnh viện trên 1.992 mã
-được nhập đều: trung vị 18 ngày. Đỏ nghĩa là "tồn không sống nổi tới lần nhập
-kế tiếp"; Vàng = hai chu kỳ. Chu kỳ chênh 7,5 lần giữa các nhóm luân chuyển
-(14 → 104,5 ngày) nên G4 sẽ đặt ngưỡng RIÊNG theo từng mã; 18/36 là ngưỡng
-chung dùng trước.
-
-=============================================================================
-HAI NGUỒN TỒN KHO, ƯU TIÊN BẢNG LÔ
-
-`_lots_by_code()` đọc theo thứ tự ưu tiên:
-
-  1. `fact_inventory_lot`  — do luồng ETL thứ tư nạp từ STA
-                             (`vw_MedForecast_TonKhoLo_MoiNhat`). CÓ hạn dùng
-                             → FEFO tính đầy đủ.
-  2. `inventory`           — bảng cũ của ứng dụng. Đo trên DB thật:
-                             `expiry_date` NULL ở CẢ 5.041 dòng. Không có hạn
-                             dùng → S_usable = tồn hiện có.
-
-Module tự phát hiện và trả `fefo_ap_dung` cùng `nguon_ton_kho` theo từng mã.
-KHÔNG bịa hạn dùng, KHÔNG lặng lẽ coi như đã áp FEFO. Một hệ thống nói "đã trừ
-lô cận date" khi chưa trừ gì là tệ hơn một hệ thống nói thẳng là chưa có dữ
-liệu lô.
-
-=============================================================================
-VÌ SAO TỒN = 0 KHÔNG PHẢI MÀU ĐỎ
-
-Đo được: 25,8% danh mục có tồn bằng 0. Phần lớn là mã ĐÃ NGỪNG DÙNG, không phải
-hàng sắp hết. Nhuộm đỏ hết thì 323 dòng đỏ giả sẽ chôn vùi 235 dòng đỏ thật.
-Nên quy tắc là: KHÔNG có mẫu số (d_daily = 0, tức 12 kỳ qua không xuất một
-lần) → Xám kèm lý do `no_norm`; tồn = 0 mà d_daily > 0 → Đỏ thật.
+Tồn = 0 không mặc nhiên là Đỏ: phần lớn là mã đã ngừng dùng. Mã không xuất lần nào trong
+12 kỳ (d_daily = 0) → Xám `no_norm`; tồn = 0 mà còn nhu cầu → Đỏ.
 """
 from __future__ import annotations
 
@@ -70,13 +32,13 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 THRESHOLDS_DEFAULT: Dict[str, Any] = {
-    "doi_red_days": 18,          # Đ9: trung vị chu kỳ nhập
+    "doi_red_days": 18,          # trung vị chu kỳ nhập
     "doi_amber_days": 36,        # hai chu kỳ
     "horizon_days": 30,
     "fefo_window_days": 30,      # chỉ để thống kê s_expiring, không đổi s_usable
 }
 
-# Lý do màu Xám — trùng đúng union type `GreyReason` bên dashboardV2.ts
+# Lý do màu Xám; phải khớp union type `GreyReason` ở dashboardV2.ts.
 GREY_NO_NORM = "no_norm"
 GREY_NO_FORECAST = "no_forecast"
 GREY_NO_STOCK_DATA = "no_stock_data"
@@ -122,9 +84,7 @@ def _parse_date(v: Any) -> Optional[date]:
         return None
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Tồn hữu dụng theo FEFO
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Tồn hữu dụng theo FEFO ──
 
 def usable_stock_fefo(lots: List[Tuple[float, Optional[date]]],
                       d_daily: float,   # tốc độ tiêu thụ/ngày — nơi gọi truyền d_eff
@@ -137,12 +97,9 @@ def usable_stock_fefo(lots: List[Tuple[float, Optional[date]]],
         u_b    = clamp( D(e_b) − C_{b−1}, 0, q_b )
         C_b    = C_{b−1} + u_b
 
-    Ý nghĩa: một lô chỉ hữu dụng tới phần mà bệnh viện KỊP DÙNG trước khi nó
-    hết hạn, sau khi đã dùng hết các lô hết hạn sớm hơn. Phần vượt là tồn sẽ
-    huỷ — có trong kho nhưng không đáp ứng được nhu cầu.
-
-    Lô KHÔNG có hạn dùng được coi là hạn xa vô hạn (hữu dụng toàn bộ). Đó là
-    giả định lạc quan, nên hàm trả kèm `so_lo_khong_han` để nơi gọi biết.
+    Một lô chỉ hữu dụng tới phần kịp dùng trước khi hết hạn, sau khi đã dùng các lô
+    hết hạn sớm hơn; phần vượt là tồn sẽ huỷ. Lô không có hạn dùng được coi là hữu
+    dụng toàn bộ (giả định lạc quan), nên hàm trả kèm `so_lo_khong_han`.
     """
     hom_nay = hom_nay or date.today()
     tong_ton = float(sum(max(0.0, q) for q, _ in lots))
@@ -185,13 +142,12 @@ def usable_stock_fefo(lots: List[Tuple[float, Optional[date]]],
 
 
 def _lots_by_code(db: Session) -> Tuple[Dict[str, List[Tuple[float, Optional[date]]]], str]:
-    """Tồn kho theo lô cho mọi mã, MỘT truy vấn (không N+1).
+    """Tồn kho theo lô cho mọi mã trong một truy vấn (tránh N+1).
 
-    Trả (bảng lô, tên nguồn). Ưu tiên `fact_inventory_lot` vì chỉ nó có hạn
-    dùng thật; chỉ khi bảng đó chưa có hoặc rỗng mới lùi về `inventory`.
-
-    Chỉ lấy ảnh chụp MỚI NHẤT trong `fact_inventory_lot`. Nếu lấy cả lịch sử
-    thì tồn kho sẽ bị cộng dồn qua các ngày — sai gấp nhiều lần.
+    Returns:
+        (bảng lô, tên nguồn). Ưu tiên `fact_inventory_lot` (có hạn dùng); bảng đó
+        chưa có hoặc rỗng thì lùi về `inventory`. Chỉ đọc ảnh chụp mới nhất, tránh
+        cộng dồn tồn kho qua các ngày.
     """
     out: Dict[str, List[Tuple[float, Optional[date]]]] = {}
 
@@ -205,8 +161,7 @@ def _lots_by_code(db: Session) -> Tuple[Dict[str, List[Tuple[float, Optional[dat
                 "FROM   fact_inventory_lot WHERE snapshot_date = :d"),
                 {"d": moi_nhat}).fetchall()
             for r in rows:
-                # `co_han_dung = 0` nghĩa là HIS không tra được lô cho dòng này.
-                # Đừng tin `expiry_date` trong trường hợp đó.
+                # `co_han_dung = 0`: HIS không tra được lô, bỏ qua `expiry_date`.
                 han = _parse_date(r.e) if int(r.ch or 0) == 1 else None
                 out.setdefault(r.code, []).append((float(r.q or 0), han))
             if out:
@@ -224,9 +179,7 @@ def _lots_by_code(db: Session) -> Tuple[Dict[str, List[Tuple[float, Optional[dat
     return out, "khong_co"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Gán nhãn
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Gán nhãn ──
 
 def classify(doi: Optional[float], red_days: float, amber_days: float) -> str:
     if doi is None:
@@ -238,17 +191,13 @@ def classify(doi: Optional[float], red_days: float, amber_days: float) -> str:
     return "green"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Bảng cảnh báo
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Bảng cảnh báo ──
 
 def ngay_neo(db: Session) -> Tuple[date, str]:
-    """Ngày "hôm nay" dùng cho FEFO — neo vào DỮ LIỆU, không vào đồng hồ.
+    """Ngày "hôm nay" dùng cho FEFO, neo vào dữ liệu thay vì đồng hồ hệ thống.
 
-    Dữ liệu tồn kho là ảnh chụp (snapshot) bàn giao theo đợt. Nếu đo hạn dùng
-    bằng `date.today()` thì càng xa ngày chụp, càng nhiều lô bị coi là hết hạn
-    trong khi kho thật đã xuất/nhập khác — số Đỏ phồng lên giả tạo và kết quả
-    không tái lập được. Vì vậy:
+    Tồn kho là ảnh chụp theo đợt; đo hạn dùng bằng `date.today()` sẽ làm số lô hết hạn
+    (và số Đỏ) tăng giả tạo theo thời gian và không tái lập được. Thứ tự ưu tiên:
 
         1. MAX(snapshot_date) của fact_inventory_lot   (ảnh chụp lô mới nhất)
         2. ngày cuối của kỳ đã chốt gần nhất (period_service) — khi chưa có lô
@@ -279,17 +228,14 @@ def alert_rows(db: Session,
                hom_nay: Optional[date] = None) -> Dict[str, Any]:
     """Một dòng cho mỗi mã thuốc: S_usable · D_forecast · DOI · nhãn màu.
 
-    `demand` là {supply_code: nhu cầu dự báo trong horizon_days}, lấy từ
-    `dss_demand.demand_by_supply()`. Đây là MẪU SỐ DUY NHẤT của DOI
-    (d_eff = D_i / horizon). Mã không có D_i — hoặc không truyền `demand` —
-    không đo được: DOI None, màu Xám, lý do `no_forecast`.
+    Args:
+        demand: {supply_code: nhu cầu dự báo trong horizon_days} từ
+            `dss_demand.demand_by_supply()`; là mẫu số duy nhất của DOI
+            (d_eff = D_i / horizon). Mã không có D_i → DOI None, Xám `no_forecast`.
+        only_focus: giới hạn ở tập trọng tâm (mã có tỷ trọng hô hấp ≥ 25%).
 
-    `d_daily` (tiêu hao TB 12 kỳ) vẫn đọc từ `v_supply_daily_demand` nhưng chỉ
-    để phân biệt lý do Xám: `no_norm` là mã 12 kỳ không xuất lần nào (đã ngừng
-    dùng), khác hẳn `no_forecast` là mã còn dùng mà Tầng 2 chưa cho D_i.
-
-    `only_focus = True` giới hạn ở tập trọng tâm (~555 mã có tỷ trọng hô hấp
-    ≥ 25%) — tập mà mô hình dịch tễ thật sự lái được nhu cầu.
+    `d_daily` (tiêu hao TB 12 kỳ) chỉ dùng để tách lý do Xám: `no_norm` là mã không
+    xuất lần nào trong 12 kỳ, `no_forecast` là mã còn dùng mà Tầng 2 chưa có D_i.
     """
     th = get_thresholds(db)
     red_days = float(th["doi_red_days"])
@@ -342,8 +288,7 @@ def alert_rows(db: Session,
         d_daily = float(r.d_daily or 0)
         d_forecast = demand.get(code)
 
-        # Mẫu số DUY NHẤT: nhu cầu dự báo mỗi ngày. Không có D_i → không có
-        # mẫu số → Xám, chứ không lùi về tiêu hao lịch sử (xem đầu file).
+        # Mẫu số duy nhất là nhu cầu dự báo mỗi ngày; không có D_i → Xám.
         d_eff = (float(d_forecast) / float(horizon)
                  if d_forecast is not None and float(d_forecast) > 0 and horizon > 0
                  else 0.0)
@@ -363,8 +308,7 @@ def alert_rows(db: Session,
             # Còn xuất mà Tầng 2 chưa cho D_i → no_forecast.
             ly_do = GREY_NO_NORM if d_daily <= 0 else GREY_NO_FORECAST
         elif s_usable <= 0:
-            # Tồn 0 + có nhu cầu → Đỏ thật. Tồn 0 + không nhu cầu đã bị chặn ở
-            # nhánh d_eff <= 0 phía trên.
+            # Tồn 0 và có nhu cầu → Đỏ (trường hợp không nhu cầu đã rơi vào nhánh trên).
             doi = 0.0
         else:
             doi = s_usable / d_eff
@@ -429,7 +373,7 @@ def _canh_bao(tong: int, fefo_that: int, co_demand: bool,
     if fefo_that == 0:
         cb.append(f"CHƯA áp được FEFO cho mã nào (nguồn tồn kho: {nguon_ton or 'không rõ'}) "
                   "— không có hạn dùng nào đọc được. S_usable đang bằng tồn hiện có. "
-                  "Chạy: python scripts/run_dss_load.py --flow inventory_lot")
+                  "Bấm «Nạp dữ liệu DW» ở trang Dữ liệu bệnh.")
     elif fefo_that < tong:
         khong_ton = dem.get("grey", 0)
         khong_han = tong - fefo_that - khong_ton

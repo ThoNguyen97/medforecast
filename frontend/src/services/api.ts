@@ -2,10 +2,9 @@ import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse,
 import { API_BASE_URL, TOKEN_KEY, REFRESH_TOKEN_KEY, TOKEN_EXPIRY_KEY } from '../utils/constants';
 import { useAuthStore } from '../store/authStore';
 
-// Flag to prevent multiple redirects
+// Chặn chuyển hướng /login nhiều lần khi nhiều request cùng nhận 401.
 let isLoggingOut = false;
 
-// Create Axios instance
 const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
   timeout: 60000,
@@ -15,7 +14,7 @@ const api: AxiosInstance = axios.create({
   },
 });
 
-// Request interceptor — inject auth token
+// Gắn access token vào mọi request
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     if (isLoggingOut) {
@@ -36,7 +35,7 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor — handle 401
+// Xử lý 401: thử làm mới token rồi gửi lại request
 api.interceptors.response.use(
   (response: AxiosResponse) => {
     return response;
@@ -48,11 +47,10 @@ api.interceptors.response.use(
 
     const originalRequest = error.config as AxiosRequestConfig & { _retry?: boolean };
 
-    // Handle 401 Unauthorized
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
-      // /auth/refresh nhận REFRESH token (hạn 7 ngày), không phải access token vừa hết hạn.
+      // /auth/refresh nhận refresh token (hạn 7 ngày), không phải access token vừa hết hạn.
       const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
       if (refreshToken) {
         try {
@@ -75,7 +73,7 @@ api.interceptors.response.use(
           }
           return api(originalRequest);
         } catch {
-          // Refresh failed — logout
+          // Làm mới thất bại: đăng xuất
           forceLogout();
           return Promise.reject(new Error('Session expired'));
         }
@@ -94,20 +92,16 @@ function forceLogout() {
   if (isLoggingOut) return;
   isLoggingOut = true;
 
-  // Clear storage
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(REFRESH_TOKEN_KEY);
   localStorage.removeItem(TOKEN_EXPIRY_KEY);
 
-  // Update zustand store
   useAuthStore.getState().logout();
 
-  // Redirect
   if (window.location.pathname !== '/login') {
     window.location.href = '/login';
   }
 
-  // Reset after redirect
   setTimeout(() => { isLoggingOut = false; }, 2000);
 }
 

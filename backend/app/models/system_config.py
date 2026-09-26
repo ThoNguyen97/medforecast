@@ -1,4 +1,4 @@
-"""System Config model."""
+"""Model cấu hình hệ thống."""
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -6,7 +6,7 @@ from app.database import Base
 
 
 class SystemConfig(Base):
-    """System configuration key-value store."""
+    """Kho cấu hình hệ thống dạng khoá–giá trị."""
     
     __tablename__ = "system_config"
     
@@ -17,5 +17,4 @@ class SystemConfig(Base):
     updated_by = Column(Integer, ForeignKey("users.id"))
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     
-    # Relationships
     updater = relationship("User")

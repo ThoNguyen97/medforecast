@@ -33,8 +33,8 @@ export default function ComparisonChart({ data, targetMonth }: Props) {
         <h3 className="text-sm font-semibold text-neutral-900">
           So sánh số ca bệnh cùng kỳ (Tháng {targetMonth})
         </h3>
-        {/* Hai màu cột = hai nghĩa: nhạt là số THỰC TẾ các năm trước, đậm là
-            số DỰ BÁO của năm mục tiêu — chú thích phải nói rõ cả hai. */}
+        {/* Hai màu cột = hai nghĩa: nhạt là số thực tế các năm trước, đậm là
+            số dự báo của năm mục tiêu — chú thích phải nói rõ cả hai. */}
         <div className="flex items-center gap-3 text-xs text-neutral-600 whitespace-nowrap">
           <span className="inline-flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-sm bg-[#bfdbfe]" />

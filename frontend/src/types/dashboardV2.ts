@@ -1,7 +1,5 @@
 /**
- * Hợp đồng dữ liệu — GET /api/v1/dashboard/v2 và /v2/forecast
- * ---------------------------------------------------------------------------
- * MedForecast · phạm vi DSS thuần (Tuần 3, 11/09/2026)
+ * Hợp đồng dữ liệu GET /api/v1/dashboard/v2 và /v2/forecast (phạm vi DSS thuần).
  * Nguồn sự thật: backend/app/services/dss_dashboard.py
  *
  * Không có trường nào thuộc phân hệ mua sắm. "Thiếu hụt dự kiến" là
@@ -13,11 +11,11 @@ export type Period = string;
 
 export type BlockCode = 'J00-J06' | 'J09-J18' | 'J20-J22';
 
-/** Rổ phân cấp chăm sóc (NGT tách khỏi NT3 — Đ5). */
+/** Rổ phân cấp chăm sóc (NGT tách riêng khỏi NT3). */
 export type CareBucket = 'NGT' | 'NT1' | 'NT2' | 'NT3' | 'NT0';
 
 /**
- * Bốn mức theo DOI. `grey` = KHÔNG đo được, tuyệt đối không hiển thị như xanh.
+ * Bốn mức theo DOI. `grey` = không đo được, không được hiển thị như xanh.
  */
 export type AlertLevel = 'red' | 'amber' | 'green' | 'grey';
 
@@ -45,7 +43,7 @@ export interface DashboardMeta {
   assumptions_note: string;
 }
 
-export interface BlockCases {
+interface BlockCases {
   block_code: BlockCode;
   block_name: string;
   cases_last_closed: number;
@@ -90,7 +88,7 @@ export interface ForecastSummary {
 
 export interface DemandMeta {
   ready: boolean;
-  /** số mã có nhu cầu dự báo TRONG phạm vi đang xem (focus / toàn danh mục) */
+  /** số mã có nhu cầu dự báo trong phạm vi đang xem (focus / toàn danh mục) */
   so_ma?: number;
   /** số mã Tầng 2 sinh ra trên cả danh mục */
   so_ma_toan_danh_muc?: number;
@@ -101,7 +99,7 @@ export interface DemandMeta {
   error?: string;
 }
 
-export interface LevelCounts {
+interface LevelCounts {
   red: number;
   amber: number;
   green: number;
@@ -118,12 +116,12 @@ export interface LevelCounts {
 /**
  * Mức cảnh báo vận hành của danh mục — tổng hợp từ bộ đếm DOI của Tầng 3.
  *
- * Dùng CHUNG thang bốn mức với từng mã thuốc (`AlertLevel`) để một màu chỉ
- * mang một nghĩa trên toàn hệ thống: `red` = NGUY CẤP, `amber` = CẢNH BÁO,
- * `green` = AN TOÀN, `grey` = CHƯA ĐỦ DỮ LIỆU (không mã nào đo được DOI).
+ * Dùng chung thang bốn mức với từng mã thuốc (`AlertLevel`) để mỗi màu chỉ
+ * mang một nghĩa: `red` = nguy cấp, `amber` = cảnh báo, `green` = an toàn,
+ * `grey` = chưa đủ dữ liệu (không mã nào đo được DOI).
  * Nguồn: `period_service.danh_gia_muc_canh_bao`.
  */
-export interface OperationalAlert {
+interface OperationalAlert {
   level: AlertLevel;
   /** Nhãn trạng thái viết hoa, do backend phát — xem OPERATIONAL_LEVEL_LABELS. */
   label: string;
@@ -189,7 +187,7 @@ export interface TrendPoint {
 export interface TrendSection {
   periods: Period[];
   total: TrendPoint[];
-  // Chưa có mart (DB mới) → backend trả {} cho by_block và last_year.
+  // Chưa có mart (DB mới khởi tạo) thì backend trả {} cho by_block và last_year.
   by_block: Partial<Record<BlockCode, TrendPoint[]>>;
   last_year: {
     total?: TrendPoint[];
@@ -211,7 +209,7 @@ export interface CareLevelSection {
   ghi_chu: string;
 }
 
-export interface QualityBlock {
+interface QualityBlock {
   block: BlockCode;
   rel_mae_codes?: number | null;
   mae_codes?: number | null;
@@ -251,7 +249,7 @@ export interface QualitySection {
   };
 }
 
-export interface DssTableStatus {
+interface DssTableStatus {
   rows: number;
   latest: string | null;
 }
@@ -301,44 +299,6 @@ export interface DashboardV2Params {
 }
 
 // ─── /v2/forecast ────────────────────────────────────────────────────────────
-
-export interface ForecastBlockFull {
-  block: BlockCode;
-  block_name: string;
-  region: string;
-  anchor_period: Period;
-  target_period: Period;
-  point: number;
-  lower: number | null;
-  upper: number | null;
-  level: number;
-  n_resid: number;
-  interval_reason: string | null;
-  n_history_months: number;
-  weather_used: boolean;
-  model: {
-    members: string[];
-    members_used: string[];
-    members_failed: Record<string, string>;
-    config: Record<string, unknown>;
-  };
-  computed_at?: string;
-  from_cache?: boolean;
-}
-
-export interface DashboardForecast {
-  ready: boolean;
-  blocks: ForecastBlockFull[];
-  missing: string[];
-  errors: string[];
-  total: ForecastTotal;
-  target_period: Period | null;
-  anchor_period: Period | null;
-  level: number;
-  config: Record<string, unknown>;
-  computed_at: string | null;
-  ghi_chu: string[];
-}
 
 export const BLOCK_LABELS: Record<BlockCode, string> = {
   'J00-J06': 'Hô hấp trên',

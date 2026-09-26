@@ -8,10 +8,10 @@ interface Props {
 }
 
 /**
- * Thẻ tóm tắt trang Danh mục & tồn kho — CÙNG số với trang Cảnh báo (toàn danh mục).
+ * Thẻ tóm tắt trang Danh mục & tồn kho — cùng số với trang Cảnh báo (toàn danh mục).
  *
  * Bốn ô nhãn, mỗi ô nói rõ ngưỡng và ý nghĩa vận hành của màu đó, để người
- * đọc không phải đoán "Xám" là gì. Xám KHÔNG phải an toàn: là mã có tiêu hao
+ * đọc không phải đoán "Xám" là gì. Xám không phải an toàn: là mã có tiêu hao
  * nhưng không có dòng tồn kho nên không tính được DOI.
  */
 export default function InventoryAlertCard({

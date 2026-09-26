@@ -12,7 +12,7 @@ const CONFIG_KEYS = {
 
 // ─── Queries ─────────────────────────────────────────────────────────────────
 
-/** Fetch all system configuration entries */
+/** Toàn bộ cấu hình hệ thống. */
 export function useConfigs() {
   return useQuery({
     queryKey: CONFIG_KEYS.all,
@@ -20,7 +20,7 @@ export function useConfigs() {
   });
 }
 
-/** Fetch a single config entry by key */
+/** Một mục cấu hình theo khoá. */
 export function useConfigByKey(key: string) {
   return useQuery({
     queryKey: CONFIG_KEYS.single(key),
@@ -29,7 +29,7 @@ export function useConfigByKey(key: string) {
   });
 }
 
-/** Fetch audit logs for configuration change history */
+/** Nhật ký thay đổi cấu hình (audit log). */
 export function useAuditLogs(params?: {
   skip?: number;
   limit?: number;
@@ -47,7 +47,7 @@ export function useAuditLogs(params?: {
 
 // ─── Mutations ────────────────────────────────────────────────────────────────
 
-/** Update a single configuration key */
+/** Cập nhật một khoá cấu hình. */
 export function useUpdateConfig() {
   const queryClient = useQueryClient();
 
@@ -57,7 +57,7 @@ export function useUpdateConfig() {
     onSuccess: (_result, { key }) => {
       queryClient.invalidateQueries({ queryKey: CONFIG_KEYS.all });
       queryClient.invalidateQueries({ queryKey: CONFIG_KEYS.single(key) });
-      // Invalidate audit logs so the change history refreshes
+      // Làm mới audit log để lịch sử thay đổi hiện ngay.
       queryClient.invalidateQueries({ queryKey: ['audit-logs'] });
     },
   });

@@ -50,7 +50,7 @@ export default function LoadingSpinner({
   );
 }
 
-// Full-page loading overlay
+// Lớp phủ tải toàn trang
 export function PageLoader({ label = 'Đang tải...' }: { label?: string }) {
   return (
     <div className="flex items-center justify-center min-h-[400px]">

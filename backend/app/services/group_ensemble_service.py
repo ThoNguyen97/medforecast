@@ -1,23 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Dự báo số ca theo NHÓM ICD bằng ensemble đã kiểm chứng — engine cho trang
-Phân tích & Dự báo.
+"""Dự báo số ca theo nhóm ICD (theo tỉnh hoặc toàn quốc) cho trang Phân tích & Dự báo.
 
-VÌ SAO CẦN SERVICE NÀY
-Trang Phân tích trước đây tính bằng công thức cố định "trung bình cùng kỳ 5 năm × hệ
-số" rồi ghi đè bằng MonthlyForecaster — cả hai đều tựa vào mức trung bình
-nhiều năm, nên với chuỗi có DỊCH CHUYỂN MỨC NỀN (J09-J18 tăng 3,66×) chúng bị
-kéo tụt về quá khứ. Đo trên tháng đã có kết quả: dự báo 65 ca cho tháng thực tế
-~110 ca — hụt ~40%.
-
-Ensemble ở app/forecasting (SeasonalTrend + Poisson + Harmonic-thời-tiết +
-SARIMAX + ETS), kết hợp bằng trọng số thích ứng + hệ số lệch (M12,
-group_forecast.py), đã kiểm walk-forward 68 bước trên dữ liệu HIS thật: RelMAE
-mức nhóm 0,52 / 0,38 / 0,54 (ketqua_backtest/nhom.csv). Cùng engine với
-Dashboard — hai màn hình hết cảnh mỗi nơi một số.
-
-CHỐNG RÒ RỈ THỜI GIAN: khi tháng đích nằm trong quá khứ (người dùng chọn để
-đối chiếu), mô hình CHỈ học trên các tháng trước tháng đích — dự báo "như thể
-chưa biết kết quả", so sánh mới công bằng.
+Dùng cùng ensemble mức nhóm với backtest và Dashboard (`group_forecast.forecast_group_next`,
+PRODUCTION_CONFIG). Khi tháng đích nằm trong quá khứ, mô hình chỉ học trên các tháng
+trước tháng đích để tránh rò rỉ thời gian.
 """
 from __future__ import annotations
 
@@ -37,8 +23,8 @@ from app.utils.icd_groups import dieu_kien_benh
 
 logger = logging.getLogger(__name__)
 
-SO_THANG_TOI_THIEU = 18       # dưới mức này ensemble không đáng tin → trả None
-SO_BUOC_DO_CHINH_XAC = 6      # backtest nhanh N bước cuối để hiện "độ chính xác"
+SO_THANG_TOI_THIEU = 18       # dưới ngưỡng này không chạy ensemble, trả None
+SO_BUOC_DO_CHINH_XAC = 6      # số bước walk-forward cuối dùng tính "độ chính xác"
 
 
 def _chuoi_thang(db: Session, disease: str, region: Optional[str]) -> pd.DataFrame:
@@ -62,8 +48,7 @@ def _chuoi_thang(db: Session, disease: str, region: Optional[str]) -> pd.DataFra
 
 
 def _thoi_tiet_thang(db: Session, region: Optional[str]) -> pd.DataFrame:
-    """Trung bình tháng [period, temp, humidity, rainfall] — đúng 3 cột mà
-    HarmonicPoissonForecaster dùng (models.py WCOLS)."""
+    """Trung bình tháng [period, temp, humidity, rainfall], khớp WCOLS của HarmonicPoissonForecaster."""
     q = db.query(
         extract("year", EnvironmentalData.recorded_at).label("y"),
         extract("month", EnvironmentalData.recorded_at).label("m"),
@@ -88,9 +73,8 @@ def _thoi_tiet_thang(db: Session, region: Optional[str]) -> pd.DataFrame:
 def _ky_du_lieu_moi_nhat(db: Session) -> Optional[str]:
     """Tháng mới nhất có mặt trong disease_cases, dạng "YYYY-MM".
 
-    Tra trên TOÀN BỘ bảng (không lọc bệnh/khu vực) vì mức độ đầy đủ của dữ
-    liệu là tính chất của đợt đồng bộ HIS, không phải của riêng chuỗi nào.
-    Nhờ vậy mọi khu vực đều bị cắt tại cùng một mốc lịch.
+    Tra trên toàn bảng (không lọc bệnh/khu vực) vì độ đầy đủ dữ liệu là tính chất của
+    đợt đồng bộ HIS; nhờ vậy mọi khu vực bị cắt tại cùng một mốc lịch.
     """
     moi_nhat = db.query(func.max(DiseaseCase.recorded_at)).scalar()
     if moi_nhat is None:
@@ -100,25 +84,18 @@ def _ky_du_lieu_moi_nhat(db: Session) -> Optional[str]:
 
 def du_bao_nhom(db: Session, disease: str, region: Optional[str],
                 target_year: int, target_month: int) -> Optional[Dict[str, Any]]:
-    """Dự báo 1 tháng cho nhóm/mã × vùng. None = không đủ dữ liệu (để caller
-    rơi về fallback thay vì nhận một con số kém tin cậy)."""
+    """Dự báo 1 tháng cho nhóm/mã × vùng.
+
+    Returns:
+        dict kết quả, hoặc None khi không đủ dữ liệu (để nơi gọi dùng phương án dự phòng).
+    """
     df = _chuoi_thang(db, disease, region)
     moc = f"{target_year}-{target_month:02d}"
 
-    # Tháng mới nhất luôn bị coi là CHƯA CHỐT SỐ và bị loại khỏi chuỗi huấn
-    # luyện. Lý do: đợt đồng bộ HIS gần nhất thường mới nạp một phần tháng đó,
-    # nên nó vào chuỗi như một cú sụt giả và kéo tụt dự báo.
-    #
-    # Đo thật (J00-J06, T10/2026): T9/2026 toàn quốc mới có 1 ca. Giữ lại thì
-    # toàn quốc dự báo 189 ca trong khi riêng TP.HCM 193 ca — phần lớn hơn
-    # toàn thể. Nguyên nhân: TP.HCM tháng đó KHÔNG có dòng nào nên chuỗi của
-    # nó không chứa điểm rác, còn chuỗi toàn quốc thì có. Bỏ tháng cuối:
-    # toàn quốc 244 / TP.HCM 197 — đúng tỷ lệ lịch sử ~78%.
-    #
-    # PHẢI cắt theo mốc lịch CHUNG chứ không phải "bỏ dòng cuối mỗi chuỗi":
-    # chuỗi thiếu hẳn tháng đó sẽ bị cắt nhầm một tháng lành và lệch lại tái
-    # diễn. Với tháng đích nằm trong quá khứ thì `moc` nhỏ hơn, ràng buộc
-    # chống rò rỉ thời gian vẫn giữ nguyên hiệu lực.
+    # Tháng mới nhất trong dữ liệu được coi là chưa chốt và bị loại khỏi chuỗi huấn
+    # luyện: đợt đồng bộ HIS gần nhất thường mới nạp một phần tháng đó (sụt giả).
+    # Cắt theo mốc lịch chung, không "bỏ dòng cuối mỗi chuỗi", vì chuỗi thiếu hẳn
+    # tháng đó sẽ bị cắt nhầm một tháng đủ. Ràng buộc chống rò rỉ vẫn giữ qua `moc`.
     ky_moi_nhat = _ky_du_lieu_moi_nhat(db)
     gioi_han = min(moc, ky_moi_nhat) if ky_moi_nhat else moc
     hist = df[df["period"] < gioi_han].reset_index(drop=True)
@@ -135,13 +112,12 @@ def du_bao_nhom(db: Session, disease: str, region: Optional[str],
     w = _thoi_tiet_thang(db, region)
     if not w.empty:
         hist = hist.merge(w, on="period", how="left")
-    # M1: ngưỡng và cờ thời tiết lấy từ PRODUCTION_CONFIG, không tự đặt 12 nữa
+    # Cờ và ngưỡng số tháng thời tiết lấy từ PRODUCTION_CONFIG.
     dung_thoi_tiet = (PRODUCTION_CONFIG.use_weather and (not w.empty)
                       and hist["temp"].notna().sum() >= PRODUCTION_CONFIG.weather_min_months)
 
-    # M12 (11/09/2026): cùng đường với backtest, Dashboard và trang Kế hoạch —
-    # trọng số thích ứng + hệ số lệch + khoảng thực nghiệm. Walk-forward bên
-    # trong (interval_n_back bước) cũng cho luôn "độ chính xác tại chỗ".
+    # Cùng đường với backtest và Dashboard: trọng số thích ứng + hệ số lệch + khoảng
+    # thực nghiệm; walk-forward bên trong (interval_n_back bước) cho "độ chính xác tại chỗ".
     gf = forecast_group_next(hist, target_month, PRODUCTION_CONFIG)
     predicted = int(round(max(0.0, float(gf["point"]))))
 
@@ -166,7 +142,7 @@ def du_bao_nhom(db: Session, disease: str, region: Optional[str],
         "use_weather": dung_thoi_tiet,
         "n_history_months": int(n),
         "accuracy": accuracy,
-        # M6 / lưu vết: thành viên nào đã đóng góp + cấu hình đã dùng
+        # Lưu vết: thành viên đã đóng góp và cấu hình đã dùng.
         "interval": {"lower": (int(round(gf["lower"])) if gf["lower"] is not None else None),
                      "upper": (int(round(gf["upper"])) if gf["upper"] is not None else None),
                      "level": gf["level"], "n_resid": gf["n_resid"]},

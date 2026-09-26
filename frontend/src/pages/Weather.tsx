@@ -66,23 +66,23 @@ export default function Weather() {
   const [importing, setImporting] = useState(false);
   const [syncingOpenMeteo, setSyncingOpenMeteo] = useState(false);
 
-  // Filters
+  // Bộ lọc
   const [filterYear, setFilterYear] = useState<string>(() =>
     new Date().getFullYear().toString(),
   );
   const [filterMonth, setFilterMonth] = useState<string>('all');
   const [filterProvince, setFilterProvince] = useState<string>('all');
   const [provinces, setProvinces] = useState<string[]>([]);
-  // Map cascade tỉnh → list quận đã có data trong DB
+  // Tỉnh → danh sách quận có dữ liệu trong DB
   const [provinceDistricts, setProvinceDistricts] = useState<Record<string, string[]>>({});
 
-  // Pagination
+  // Phân trang
   const [page, setPage] = useState(1);
 
-  // Trend chart
+  // Biểu đồ xu hướng
   const [trend, setTrend] = useState<TrendPoint[]>([]);
 
-  // Form modal
+  // Hộp thoại thêm/sửa
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<EnvRow | null>(null);
   const [form, setForm] = useState({
@@ -97,7 +97,7 @@ export default function Weather() {
   });
   const [formError, setFormError] = useState<string>('');
 
-  // Import result modal
+  // Hộp thoại kết quả import
   const [importResult, setImportResult] = useState<{
     imported: number;
     updated: number;
@@ -118,10 +118,8 @@ export default function Weather() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterYear, filterMonth, filterProvince]);
 
-  // `items` là ảnh chụp DB lúc mount. Nếu DB đổi ở ngoài app (chạy lại script
-  // nạp dữ liệu, đồng bộ ở máy khác) mà tab vẫn mở thì bảng hiển thị số liệu đã
-  // chết — đã gặp: dòng thời tiết cũ còn trên màn hình dù DB không còn.
-  // Quay lại tab là nạp lại từ DB.
+  // `items` là ảnh chụp DB lúc mount; DB có thể đổi ngoài app (ETL) khi tab
+  // vẫn mở, nên nạp lại mỗi khi tab được hiển thị lại.
   useEffect(() => {
     const napLai = () => {
       if (document.visibilityState === 'visible') {
@@ -141,9 +139,8 @@ export default function Weather() {
   const loadData = async () => {
     setLoading(true);
     try {
-      // Bảng này phải phản ánh ĐÚNG những gì đang nằm trong environmental_data.
-      // DB có thể bị đổi ngoài app (script nạp lại, đồng bộ từ máy khác) nên chặn
-      // cache HTTP, đừng để trình duyệt trả lại bản chụp cũ.
+      // Bảng phải phản ánh đúng environmental_data hiện tại; DB có thể đổi ngoài
+      // app nên chặn cache HTTP.
       const res = await api.get('/environmental/', {
         params: { limit: 50000, _t: Date.now() },
         headers: { 'Cache-Control': 'no-cache' },
@@ -160,7 +157,7 @@ export default function Weather() {
 
   const loadDistinctValues = async () => {
     try {
-      // Merge admin.regions + DB lịch sử + master VN
+      // Gộp admin.regions, giá trị trong DB và master VN
       const [adminRes, distinctRes] = await Promise.all([
         api.get('/admin/regions').catch(() => ({ data: [] as any[] })),
         api.get('/environmental/distinct-values').catch(() => ({
@@ -180,8 +177,8 @@ export default function Weather() {
       const dbCascade: Record<string, string[]> =
         distinctRes.data?.province_districts ?? {};
 
-      // Province dropdown: chỉ giữ các giá trị thực sự là tỉnh
-      // Chuẩn hoá tên ("Thành phố Hồ Chí Minh" → "TP. Hồ Chí Minh") trước khi so master.
+      // Dropdown tỉnh: chỉ giữ giá trị là tỉnh thật; chuẩn hoá tên
+      // ("Thành phố Hồ Chí Minh" → "TP. Hồ Chí Minh") trước khi so master.
       const LEGACY_ALLOW = new Set(['Toàn thành phố']);
       const extraFromAdminDb = [...adminProvinces, ...dbProvinces]
         .map((n) => normalizeProvinceName(n))
@@ -193,10 +190,7 @@ export default function Weather() {
       if (merged.includes('Toàn thành phố')) final.unshift('Toàn thành phố');
       setProvinces(final);
 
-      // (Tuần 3) Bỏ danh sách quận gộp: state `districts` không tồn tại —
-      // `setDistricts` là ReferenceError lúc chạy, làm bước nạp danh mục dừng giữa chừng.
-
-      // Chuẩn hoá key cascade để khớp value dropdown (master)
+      // Chuẩn hoá khoá cascade để khớp giá trị dropdown (master)
       const normCascade: Record<string, string[]> = {};
       for (const [prov, dists] of Object.entries(dbCascade)) {
         const key = normalizeProvinceName(prov);
@@ -206,13 +200,13 @@ export default function Weather() {
       }
       setProvinceDistricts(normCascade);
     } catch {
-      /* ignore */
+      /* bỏ qua */
     }
   };
 
   const loadTrend = async () => {
     try {
-      // Use selected month for trend, or default to current month if "all" is selected
+      // Xu hướng theo tháng đã chọn; chọn "all" thì dùng tháng hiện tại
       const month = filterMonth !== 'all' 
         ? Number(filterMonth) 
         : new Date().getMonth() + 1;
@@ -232,17 +226,17 @@ export default function Weather() {
   // Lọc theo năm / tháng / tỉnh rồi phân trang
   const filtered = useMemo(() => {
     return items.filter((it) => {
-      // Filter by year
+      // Theo năm
       if (filterYear) {
         const year = it.recorded_at?.slice(0, 4);
         if (year !== filterYear) return false;
       }
-      // Filter by specific month if selected (not 'all')
+      // Theo tháng (khi khác 'all')
       if (filterMonth !== 'all') {
         const month = it.recorded_at?.slice(5, 7);
         if (month !== filterMonth) return false;
       }
-      // Filter by province
+      // Theo tỉnh
       if (filterProvince !== 'all' && normalizeProvinceName(it.location) !== normalizeProvinceName(filterProvince)) return false;
       
       return true;
@@ -258,7 +252,7 @@ export default function Weather() {
     setPage(1);
   }, [filtered.length]);
 
-  // Actions
+  // Thao tác
   const downloadTemplate = () => {
     window.open(`${api.defaults.baseURL}/environmental/template`, '_blank');
   };
@@ -367,7 +361,7 @@ export default function Weather() {
         data_source: 'manual',
       };
       if (editing) {
-        // Spec 4.2 #3: PUT để giữ id + created_at
+        // Dùng PUT để giữ nguyên id và created_at
         await api.put(`/environmental/${editing.id}`, payload);
       } else {
         await api.post('/environmental/', payload);
@@ -433,7 +427,7 @@ export default function Weather() {
         }}
       />
 
-      {/* Header */}
+      {/* Tiêu đề trang */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-3xl font-extrabold text-neutral-900">
@@ -471,7 +465,7 @@ export default function Weather() {
         </div>
       </div>
 
-      {/* Filters */}
+      {/* Bộ lọc */}
       <div className="bg-white rounded-2xl border border-neutral-200 p-5">
         <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 items-end">
           <div>
@@ -550,7 +544,7 @@ export default function Weather() {
         </div>
       </div>
 
-      {/* Trend chart */}
+      {/* Biểu đồ xu hướng */}
       <div className="bg-white rounded-2xl border border-neutral-200 p-5">
         <h3 className="font-semibold text-neutral-900 mb-3">
           Xu hướng thay đổi các yếu tố thời tiết ({formatMonthLabel()})
@@ -560,7 +554,7 @@ export default function Weather() {
             Chưa có dữ liệu xu hướng. Hãy thêm hoặc import dữ liệu.
           </div>
         ) : (
-          /* Small multiples: mỗi đại lượng một trục riêng — không dùng trục kép */
+          /* Small multiples: mỗi đại lượng một trục riêng, không dùng trục kép */
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {[
               { key: 'temp', name: 'Nhiệt độ', unit: '°C', color: SERIES.s6 },
@@ -619,7 +613,7 @@ export default function Weather() {
         )}
       </div>
 
-      {/* Data table */}
+      {/* Bảng dữ liệu */}
       <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden">
         {loadError && (
           <div className="px-4 py-2 text-sm text-danger-700 bg-danger-50 border-b border-danger-100">
@@ -706,7 +700,7 @@ export default function Weather() {
               </tbody>
             </table>
 
-            {/* Pagination */}
+            {/* Phân trang */}
             <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-3 border-t border-neutral-100 text-sm text-neutral-500">
               <span>
                 Hiển thị {filtered.length === 0 ? 0 : startIdx + 1} đến{' '}
@@ -750,7 +744,7 @@ export default function Weather() {
         )}
       </div>
 
-      {/* Form modal */}
+      {/* Hộp thoại thêm/sửa */}
       {showForm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-xl">
@@ -939,7 +933,7 @@ export default function Weather() {
         }
       `}</style>
 
-      {/* Import result modal */}
+      {/* Hộp thoại kết quả import */}
       {importResult && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 w-full max-w-2xl shadow-xl max-h-[80vh] overflow-hidden flex flex-col">

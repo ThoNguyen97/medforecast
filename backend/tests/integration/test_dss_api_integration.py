@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Hợp đồng API của DSS trên DB rỗng (vừa dựng lại, chưa đồng bộ HIS).
+"""Hợp đồng API của DSS trên CSDL rỗng (chưa đồng bộ HIS).
 
-Mọi endpoint phải trả 200 với trạng thái "chưa có dữ liệu" nói rõ, không 500;
+Mọi endpoint trả 200 kèm trạng thái "chưa có dữ liệu" rõ ràng, không trả 500;
 PUT /dss/params phải kiểm khoảng và ràng buộc Đỏ < Vàng; các khoá có endpoint
 chuyên biệt không được ghi qua PUT /config/{key}.
 """
@@ -16,7 +16,7 @@ from app.data_pipeline.models import MartMonthlyCasesByBlock  # noqa: F401  (đ�
 
 @pytest.fixture
 def dss_db(db_engine, db_session):
-    """Bảng mart + 6 bảng tự quản + 2 dòng cấu hình + 4 view trên DB test."""
+    """Dựng bảng mart, bảng tự quản, cấu hình DSS và view trên CSDL test."""
     from app.data_pipeline.models import Base as _B          # cùng Base với app
     _B.metadata.create_all(bind=db_engine)
     views.dam_bao_luoc_do(engine=db_engine, db=db_session)
@@ -99,9 +99,8 @@ def test_report_dashboard_summary_db_rong(client, admin_headers, dss_db):
 
 
 def test_report_ton_kho_thuoc_theo_doi(client, admin_headers, dss_db):
-    """Báo cáo "Tồn kho" (13/09/2026) đọc cùng chuỗi DOI với trang Quản lý thuốc,
-    không còn xếp loại theo `inventory.safety_stock`. DB rỗng vẫn phải xuất được
-    cả Excel lẫn PDF (summary có ngưỡng mặc định 18/36, không ném None:.0f)."""
+    """Báo cáo "Tồn kho" dùng cùng chuỗi DOI với trang Quản lý thuốc; CSDL rỗng vẫn
+    xuất được Excel và PDF (summary dùng ngưỡng mặc định 18/36)."""
     for fmt, ct in (("excel", "application/vnd.openxmlformats"), ("pdf", "application/pdf")):
         r = client.post("/api/v1/reports/export", headers=admin_headers,
                         json={"report_type": "inventory", "format": fmt})
@@ -110,7 +109,7 @@ def test_report_ton_kho_thuoc_theo_doi(client, admin_headers, dss_db):
 
 
 def test_alerts_v2_limit_toan_danh_muc(client, admin_headers, dss_db):
-    """Trang Quản lý thuốc lấy toàn danh mục DOI một lần (limit 2000 > 1.476 mã)."""
+    """Trang Quản lý thuốc lấy toàn danh mục DOI trong một lần gọi (limit tối đa 2000)."""
     assert client.get("/api/v1/dashboard/v2/alerts?focus=false&limit=2000",
                       headers=admin_headers).status_code == 200
     assert client.get("/api/v1/dashboard/v2/alerts?focus=false&limit=2001",

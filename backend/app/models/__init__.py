@@ -1,10 +1,4 @@
-"""SQLAlchemy models.
-
-23/09/2026: gỡ 7 model của phân hệ mua sắm / định mức nhập tay / cảnh báo
-lưu bảng (SupplyRequirement, SupplyRecommendation, ConversionRatio,
-CaseSupplyUsage, SeverityRate, DiseaseSupplyNorm, Alert) — xem
-_archive/bang_thua/. Bảng tương ứng đã DROP bằng scripts/don_bang_thua.py.
-"""
+"""Các model SQLAlchemy của CSDL ứng dụng (SQLite)."""
 from app.models.user import User
 from app.models.medical_supply import MedicalSupply
 from app.models.inventory import Inventory

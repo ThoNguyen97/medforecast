@@ -1,7 +1,6 @@
 // Hợp đồng /reports/forecast-accuracy và POST /reports/export.
-// Báo cáo consumption / inventory-turnover đã gỡ 13/09/2026 (đọc bảng đã ngừng sinh dữ liệu).
 
-// ── Report filter types ───────────────────────────────────────────────────────
+// ── Bộ lọc báo cáo ───────────────────────────────────────────────────────
 
 export interface ReportFilters {
   start_date?: string; // YYYY-MM-DD
@@ -12,7 +11,7 @@ export interface ReportFilters {
   model_used?: string;
 }
 
-// ── Forecast accuracy report ──────────────────────────────────────────────────
+// ── Báo cáo độ chính xác dự báo ──────────────────────────────────────────────
 
 export interface ModelPerformanceSummary {
   model: string;
@@ -50,7 +49,7 @@ export interface ForecastAccuracyReport {
   generated_at: string;
 }
 
-// ── Export request ────────────────────────────────────────────────────────────
+// ── Yêu cầu xuất báo cáo ─────────────────────────────────────────────────────
 
 // Đúng danh sách SUPPORTED_TYPES của POST /reports/export (backend reports.py)
 export type ReportType =
@@ -72,14 +71,5 @@ export interface ExportReportRequest {
   model_used?: string;
 }
 
-// ── Monthly performance row (PerformanceTable) ────────────────────────────────
+// ── Dòng hiệu năng theo tháng (PerformanceTable) ─────────────────────────────
 
-export interface MonthlyPerformanceRow {
-  month: string;          // e.g. "2025-01"
-  month_label: string;    // e.g. "Tháng 1/2025"
-  total_forecasts: number;
-  avg_mae: number | null;
-  avg_rmse: number | null;
-  avg_mape: number | null;
-  best_model: string | null;
-}

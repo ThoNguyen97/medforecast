@@ -24,19 +24,9 @@ export interface LoginResponse {
   user: User;
 }
 
-export interface RefreshTokenRequest {
-  refresh_token: string;
-}
-
 export interface RefreshTokenResponse {
   access_token: string;
   token_type: string;
   expires_in: number;
 }
 
-export interface AuthState {
-  user: User | null;
-  token: string | null;
-  refreshToken: string | null;
-  isAuthenticated: boolean;
-}

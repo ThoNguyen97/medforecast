@@ -1,11 +1,11 @@
-"""Disease Forecast model."""
+"""Model kết quả dự báo số ca bệnh."""
 from sqlalchemy import Column, Integer, String, Date, Numeric, DateTime
 from sqlalchemy.sql import func
 from app.database import Base
 
 
 class DiseaseForecast(Base):
-    """Bản ghi dự báo số ca theo nhóm ICD hô hấp — đầu ra của ensemble chuỗi thời gian (walk-forward)."""
+    """Dự báo số ca theo nhóm ICD hô hấp, đầu ra của ensemble chuỗi thời gian (Tầng 1)."""
     
     __tablename__ = "disease_forecasts"
     
@@ -14,14 +14,14 @@ class DiseaseForecast(Base):
     forecast_date = Column(Date, nullable=False, index=True)  # Ngày tạo dự báo
     
     # Thông tin bệnh
-    icd_code = Column(String(20), nullable=False, index=True)  # J20, J06, J02, J01
+    icd_code = Column(String(20), nullable=False, index=True)  # mã ICD 3 ký tự hoặc mã nhóm (J00-J06…)
     disease_name = Column(String(200), nullable=False, index=True)
     disease_type = Column(String(100), index=True)  # respiratory
     
     # Kết quả dự báo
     predicted_cases = Column(Integer, nullable=False)
     
-    # Phân bổ theo mức độ (tính từ severity_rate)
+    # Phân bổ theo mức độ
     predicted_mild = Column(Integer)  # Số ca nhẹ
     predicted_moderate = Column(Integer)  # Số ca trung bình
     predicted_severe = Column(Integer)  # Số ca nặng
@@ -31,7 +31,7 @@ class DiseaseForecast(Base):
     confidence_upper = Column(Integer)
     
     # Thông tin mô hình
-    model_used = Column(String(50))  # xgboost, lstm, prophet, ensemble
+    model_used = Column(String(50))  # ensemble | top_down | cung_ky …
     model_accuracy_mae = Column(Numeric(10, 2))
     model_accuracy_rmse = Column(Numeric(10, 2))
     model_accuracy_mape = Column(Numeric(5, 2))

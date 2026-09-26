@@ -1,4 +1,4 @@
-"""Environmental Data API endpoints."""
+"""API dữ liệu thời tiết/môi trường theo tháng: tra cứu, nhập tay, import CSV và đồng bộ Open-Meteo."""
 import logging
 from typing import List, Optional, Any
 from datetime import datetime
@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request, Query, U
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_user, get_admin_user
+from app.dependencies import get_current_user
 from app.models.user import User
 from app.schemas.base import (
     EnvironmentalDataCreate,
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_client_ip(request: Request) -> str:
-    """Extract client IP address from request."""
+    """Lấy IP client, ưu tiên X-Forwarded-For khi chạy sau proxy."""
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
         return forwarded.split(",")[0].strip()
@@ -31,17 +31,12 @@ def get_client_ip(request: Request) -> str:
 @router.get("/", response_model=List[EnvironmentalDataResponse])
 def list_environmental_data(
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1),  # Bỏ giới hạn tối đa
+    limit: int = Query(100, ge=1),  # không đặt trần: giao diện có thể lấy toàn bộ
     location: Optional[str] = Query(None, description="Filter by location"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> Any:
-    """
-    List environmental data records.
-    
-    Supports filtering by location.
-    All authenticated users can access this endpoint.
-    """
+    """Danh sách bản ghi thời tiết/môi trường, lọc theo khu vực."""
     service = EnvironmentalDataService(db)
     data = service.get_environmental_data(
         skip=skip,
@@ -58,11 +53,7 @@ def create_environmental_data(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> Any:
-    """
-    Create a new environmental data record.
-    
-    All authenticated users can create environmental data records.
-    """
+    """Thêm một bản ghi thời tiết/môi trường."""
     service = EnvironmentalDataService(db)
     client_ip = get_client_ip(request)
     
@@ -84,12 +75,7 @@ def get_latest_environmental_data(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> Any:
-    """
-    Get the latest environmental data record.
-    
-    Optionally filter by location.
-    All authenticated users can access this endpoint.
-    """
+    """Bản ghi thời tiết/môi trường mới nhất, có thể lọc theo khu vực."""
     service = EnvironmentalDataService(db)
     data = service.get_latest_data(location=location)
     return data
@@ -103,11 +89,7 @@ def get_environmental_data_range(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> Any:
-    """
-    Get environmental data for a specific date range.
-    
-    All authenticated users can access this endpoint.
-    """
+    """Bản ghi thời tiết/môi trường trong khoảng thời gian, có thể lọc theo khu vực."""
     service = EnvironmentalDataService(db)
     data = service.get_data_by_date_range(
         start_date=start_date,
@@ -117,7 +99,7 @@ def get_environmental_data_range(
     return data
 
 
-# ── New endpoints theo Smart Medical spec ──────────────────────────────────
+# ── File mẫu, bộ lọc, import CSV, xu hướng ──
 
 @router.get("/template")
 async def download_template():
@@ -142,7 +124,7 @@ async def env_distinct_values(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """Province/city + district/ward duy nhất + cascade map để dropdown filter."""
+    """Tỉnh/thành, quận/phường phân biệt và ánh xạ tỉnh → quận cho bộ lọc phân cấp."""
     from app.models.environmental_data import EnvironmentalData
 
     provinces = (
@@ -179,12 +161,11 @@ async def import_environmental_csv_upload(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Import environmental CSV. Cột mong đợi:
-    month, province_city, district_ward, avg_temp, humidity, rainfall, aqi, pm25
+    """Import dữ liệu môi trường từ CSV, upsert theo (tháng, tỉnh, quận).
 
-    Validate spec 4.4: nhiệt độ 10-45°C, độ ẩm 0-100%, mưa/AQI/PM2.5 ≥ 0.
-    Tự động đăng ký khu vực mới (province_city / district_ward) vào admin.regions.
+    Cột: month, province_city, district_ward, avg_temp, humidity, rainfall, aqi, pm25.
+    Kiểm tra: nhiệt độ 10–45°C, độ ẩm 0–100%, mưa/AQI/PM2.5 ≥ 0. Khu vực mới
+    được tự đăng ký vào admin.regions.
     """
     import csv as _csv
     import io as _io
@@ -208,8 +189,8 @@ async def import_environmental_csv_upload(
 
     for idx, row in enumerate(reader, start=2):
         month = (row.get("month") or "").strip()
-        # Tên CHUẨN ngay tại đường GHI: file nguồn có thể ghi "Thành phố Hồ Chí
-        # Minh", DB/UI dùng "TP. Hồ Chí Minh" — không chuẩn hoá là đẻ dòng trùng.
+        # Chuẩn hoá tên tỉnh khi ghi ("Thành phố Hồ Chí Minh" → "TP. Hồ Chí Minh")
+        # để khoá upsert không sinh dòng trùng.
         prov = ten_chuan((row.get("province_city") or row.get("location") or "").strip())
         dist = (row.get("district_ward") or "").strip()
 
@@ -257,7 +238,6 @@ async def import_environmental_csv_upload(
         aqi = _i("aqi")
         pm25 = _f("pm25")
 
-        # Validate range theo spec 4.4
         row_errors = []
         if temp is not None and (temp < 10 or temp > 45):
             row_errors.append(f"Nhiệt độ {temp} ngoài khoảng 10-45°C")
@@ -307,7 +287,7 @@ async def import_environmental_csv_upload(
             db.add(EnvironmentalData(**values))
             imported += 1
 
-    # Auto-register new regions vào admin.regions (idempotent)
+    # Đăng ký khu vực mới vào admin.regions (idempotent).
     if new_regions:
         cfg = (
             db.query(SystemConfig)
@@ -370,9 +350,9 @@ async def env_trend(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Lấy giá trị các yếu tố thời tiết cho cùng 1 tháng qua các năm.
+    """Trung bình các yếu tố thời tiết của cùng một tháng qua các năm.
 
-    Trả về danh sách points: [{year, temp, humidity, rainfall, aqi, pm25}]
+    Trả danh sách [{year, temp, humidity, rainfall, aqi, pm25}].
     """
     from app.models.environmental_data import EnvironmentalData
     from sqlalchemy import extract, func as _func
@@ -423,7 +403,7 @@ def update_environmental_record(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Cập nhật một bản ghi (PATCH-style)."""
+    """Cập nhật một bản ghi; chỉ ghi các trường khác None, tên tỉnh được chuẩn hoá."""
     from app.models.environmental_data import EnvironmentalData
 
     item = db.query(EnvironmentalData).filter(EnvironmentalData.id == record_id).first()
@@ -464,9 +444,8 @@ def delete_environmental_record(
     return {"message": "deleted"}
 
 
-# ── Open-Meteo integration ────────────────────────────────────────────────
-# Endpoint sync dữ liệu thời tiết + chất lượng không khí từ Open-Meteo public API
-# (https://open-meteo.com — free, không cần API key).
+# ── Open-Meteo ──
+# Thời tiết và chất lượng không khí từ API công khai Open-Meteo (không cần API key).
 
 
 @router.post("/sync-openmeteo")
@@ -486,20 +465,13 @@ def sync_openmeteo(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Đồng bộ dữ liệu thời tiết từ Open-Meteo về bảng environmental_data.
+    """Đồng bộ thời tiết từ Open-Meteo vào environmental_data, gộp theo tháng.
 
-    Logic:
-    - Quá khứ (months_back tháng): dùng historical archive API, gộp theo tháng,
-      ghi vào environmental_data với recorded_at = đầu tháng.
-    - Tương lai (forecast_days ngày): dùng forecast API, gộp theo tháng, ghi
-      tháng kế tiếp nếu có overlap.
-    - AQI/PM2.5 chỉ có cho ~7 ngày forecast (giới hạn của air-quality API miễn phí),
-      sẽ ghi đè vào tháng hiện tại nếu có dữ liệu.
-
-    Tự upsert theo (recorded_at, location).
+    Quá khứ `months_back` tháng lấy từ archive API; `forecast_days` ngày tới lấy
+    từ forecast API; AQI/PM2.5 lấy từ air-quality API (lịch sử + 5 ngày dự báo).
+    Mỗi tháng upsert một dòng cấp tỉnh theo (recorded_at = đầu tháng, location).
     """
     from datetime import date as _date, timedelta as _timedelta
-    from calendar import monthrange as _monthrange
     from app.services.openmeteo_client import OpenMeteoClient
     from app.models.environmental_data import EnvironmentalData
 
@@ -511,15 +483,14 @@ def sync_openmeteo(
                    f"Thêm vào PROVINCE_COORDS trong openmeteo_client.py.",
         )
     lat, lon = coords
-    # lookup_coords nhận mọi biến thể tên; từ đây chỉ dùng tên CHUẨN để câu
-    # dedupe bên dưới (location == province) khớp đúng dòng đã có trong DB.
+    # lookup_coords nhận mọi biến thể tên; khoá upsert bên dưới cần tên chuẩn.
     province = ten_chuan(province)
 
     client = OpenMeteoClient()
 
-    # Bước 1: Historical — group theo (year, month)
+    # Bước 1: dữ liệu lịch sử từ đầu tháng thứ `months_back` trước đến hôm qua.
     today = _date.today()
-    earliest = (today.replace(day=1) - _timedelta(days=1)).replace(day=1)  # tháng trước
+    earliest = (today.replace(day=1) - _timedelta(days=1)).replace(day=1)  # đầu tháng trước
     for _ in range(months_back - 1):
         earliest = (earliest - _timedelta(days=1)).replace(day=1)
 
@@ -533,33 +504,29 @@ def sync_openmeteo(
         logger.error("Open-Meteo archive fetch failed: %s", exc)
         historical_rows = []
 
-    # Bước 2: Forecast (16-day daily)
+    # Bước 2: dự báo theo ngày.
     try:
         forecast_rows = client.get_daily_forecast(lat, lon, forecast_days=forecast_days)
     except Exception as exc:
         logger.error("Open-Meteo forecast fetch failed: %s", exc)
         forecast_rows = []
 
-    # Bước 3: Air quality - dùng historical API để lấy toàn bộ data
-    # Lấy AQI/PM2.5 cho cùng khoảng thời gian với weather historical
+    # Bước 3: AQI/PM2.5 lịch sử cùng khoảng với thời tiết, cộng 5 ngày dự báo.
     try:
-        # Historical AQI/PM2.5
         aq_rows = client.get_air_quality_historical(lat, lon, earliest, historical_end)
     except Exception as exc:
         logger.warning("Open-Meteo air-quality historical fetch failed: %s", exc)
         aq_rows = []
     
-    # Forecast AQI/PM2.5 (5 ngày)
     try:
         aq_forecast = client.get_air_quality_daily(lat, lon, forecast_days=5, past_days=0)
         aq_rows.extend(aq_forecast)
     except Exception as exc:
         logger.warning("Open-Meteo air-quality forecast fetch failed: %s", exc)
 
-    # Build map ngày → AQI cho merge
     aq_map = {r["date"]: r for r in aq_rows}
 
-    # Merge tất cả rows + augment AQI nếu có
+    # Gộp theo (năm, tháng), ghép AQI/PM2.5 theo ngày.
     all_rows = historical_rows + forecast_rows
     monthly: dict[tuple[int, int], dict] = {}
     for r in all_rows:
@@ -584,7 +551,6 @@ def sync_openmeteo(
             bucket["hums"].append(r["humidity"])
         if r.get("rainfall") is not None:
             bucket["rains"].append(r["rainfall"])
-        # Augment AQI nếu có
         aq = aq_map.get(d_str)
         if aq:
             if aq.get("aqi") is not None:
@@ -682,7 +648,7 @@ def openmeteo_forecast_preview(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Preview forecast Open-Meteo cho N ngày tới — KHÔNG ghi DB."""
+    """Xem trước dự báo Open-Meteo cho `days` ngày tới, không ghi DB."""
     from app.services.openmeteo_client import OpenMeteoClient
 
     coords = OpenMeteoClient.lookup_coords(province)

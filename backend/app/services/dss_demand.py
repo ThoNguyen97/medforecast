@@ -1,15 +1,11 @@
-"""TẦNG 2 — QUY ĐỔI CA BỆNH DỰ BÁO SANG NHU CẦU THUỐC.
+"""Tầng 2: quy đổi số ca bệnh dự báo sang nhu cầu thuốc.
 
-Đặt tại: backend/app/services/dss_demand.py
-
-    Ŷ_g  (từ dss_dashboard.forecast_payload — Tầng 1, ensemble M12 mức nhóm)
+    Ŷ_g  (Tầng 1: dự báo mức nhóm đã ghi nhận)
       → Ŷ_g,ro = Ŷ_g × p̂(g,ro)                    phân rã theo rổ chăm sóc
-      → D_i    = Σ_g Σ_ro Ŷ_g,ro × Norm(i,g,ro)    quy đổi qua định mức THỰC NGHIỆM
+      → D_i    = Σ_g Σ_ro Ŷ_g,ro × Norm(i,g,ro)    quy đổi qua định mức thực nghiệm
                + D_i,baseline                       nhu cầu nền không do hô hấp
 
-Đây là đường tính nhu cầu DUY NHẤT (đường "định mức nhập tay" theo Nhẹ/TB/Nặng
-đã archive 12/09/2026 — xem _archive/dinh_muc_nhap_tay/). Chiều phân loại là
-rổ chăm sóc do HIS ghi nhận:
+Rổ chăm sóc do HIS ghi nhận:
 
         NGT  ngoại trú
         NT1  nội trú cấp 1 (nặng nhất)
@@ -17,9 +13,9 @@ rổ chăm sóc do HIS ghi nhận:
         NT3  nội trú cấp 3
         NT0  nội trú chưa gán phân cấp
 
-Toàn bộ núm vặn của tầng này nằm trong `system_config.dss.care_level`:
+Tham số của tầng này nằm trong `system_config.dss.care_level`:
     window_periods        số kỳ của cửa sổ tính p̂ và Norm (mặc định 12)
-    min_period            kỳ sớm nhất được dùng (Đ11: đứt gãy ghi nhận 2025-01)
+    min_period            kỳ sớm nhất được dùng (sau đứt gãy chế độ ghi nhận đầu 2025)
     min_cases_per_bucket  rổ dưới ngưỡng này → dùng định mức gộp nhóm (30)
     shrink_k0             hằng co ngót tỷ trọng rổ mẫu nhỏ (6)
 Ngưỡng Đỏ/Vàng và horizon thuộc Tầng 3: `system_config.dss.thresholds`.
@@ -56,8 +52,10 @@ def _has(db: Session, name: str) -> bool:
 
 
 def care_cfg(db: Session) -> Dict[str, Any]:
-    """`dss.care_level` đã trộn với mặc định. Khoá lạ trong JSON được giữ
-    nguyên (vd `nguon`, `break_detected`) để không mất ghi chú nguồn."""
+    """`dss.care_level` đã trộn với mặc định.
+
+    Khoá không có trong mặc định (vd `nguon`, `break_detected`) được giữ nguyên.
+    """
     out = dict(CARE_LEVEL_DEFAULT)
     r = db.execute(text("SELECT config_value FROM system_config "
                         "WHERE config_key = 'dss.care_level'")).scalar()
@@ -69,39 +67,26 @@ def care_cfg(db: Session) -> Dict[str, Any]:
     return out
 
 
-_care_cfg = care_cfg   # tên cũ, giữ cho script/test còn gọi
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# p̂(g,ro) — tỷ trọng rổ chăm sóc, có co ngót cho rổ mẫu nhỏ
-# ─────────────────────────────────────────────────────────────────────────────
+# ── p̂(g,ro): tỷ trọng rổ chăm sóc, co ngót rổ mẫu nhỏ ──
 
 def care_level_shares(db: Session) -> Dict[str, Dict[str, float]]:
-    """Đọc `v_care_level_share` rồi CO NGÓT những rổ có mẫu quá nhỏ.
+    """Đọc `v_care_level_share` rồi co ngót các rổ có mẫu quá nhỏ.
 
-    View đã tính tỷ trọng trên cửa sổ 12 kỳ từ 2025-04 và đánh dấu
-    `mau_qua_nho = 1` cho rổ dưới ngưỡng (mặc định 30 đợt). Đ11-D đo được có
-    rổ chỉ 5-8 đợt — lấy thẳng tỷ trọng của một rổ 5 đợt thì thêm hai ca là
-    định mức nhảy 40%.
+    View tính tỷ trọng trên cửa sổ kỳ đã chốt và đánh dấu `mau_qua_nho = 1` cho rổ
+    dưới ngưỡng (mặc định 30 đợt); tỷ trọng thô của rổ vài đợt dao động rất mạnh.
 
-    Co ngót CHỈ ÁP TRONG KHỐI NỘI TRÚ (sửa 18/09/2026). Tỷ trọng ngoại trú
-    (NGT) giữ nguyên giá trị đo được; khối lượng nội trú w = 1 − p̂(NGT) cũng
-    giữ nguyên. Phép co ngót chạy trên tỷ trọng CÓ ĐIỀU KIỆN trong khối nội trú:
+    Co ngót chỉ áp trong khối nội trú: tỷ trọng NGT và khối lượng nội trú
+    w = 1 − p̂(NGT) giữ nguyên; phép co ngót chạy trên tỷ trọng có điều kiện:
 
         q_đo = p_đo(ro) / w                    ro ∈ {NT1, NT2, NT3, NT0}
         q̂    = λ · q_đo + (1 − λ) · (1/số_rổ_nội_trú)      λ = n / (n + K₀)
         p̂(ro) = q̂ · w      (sau khi chuẩn hoá Σ q̂ = 1)
 
-    với n = số đợt của rổ. Rổ 5 đợt, K₀ = 6 → λ = 0,45: tỷ trọng đo chỉ được
-    tin 45%. Rổ 300 đợt → λ = 0,98, gần như tin hoàn toàn.
+    với n = số đợt của rổ (vd n = 5, K₀ = 6 → λ = 0,45). Co về phân bố đều trên cả
+    NGT sẽ kéo tỷ trọng nội trú lên nhiều lần và làm phồng nhu cầu thuốc nội trú.
 
-    Bản trước co về phân bố đều trên MỌI rổ kể cả NGT, tức 1/4 cho mỗi rổ. Vì
-    NGT chiếm phần lớn khối lượng còn các rổ nội trú có mẫu nhỏ, phép đó kéo
-    tỷ trọng nội trú lên gấp 3–4 lần (đo 14/09 — J00-J06: NT1 1,51% → 5,3%,
-    NT3 1,40% → 5,5%, NGT 79,6% → 73,1%) và làm phồng nhu cầu thuốc nội trú,
-    vốn có định mức trên một lượt cao hơn hẳn ngoại trú.
-
-    Trả {block_code: {ro: tỷ trọng}}, mỗi nhóm tổng bằng 1.
+    Returns:
+        {block_code: {ro: tỷ trọng}}, mỗi nhóm tổng bằng 1.
     """
     if not _has(db, "v_care_level_share"):
         return {}
@@ -113,7 +98,7 @@ def care_level_shares(db: Session) -> Dict[str, Dict[str, float]]:
         "FROM v_care_level_share")).fetchall()
     if not rows:
         logger.warning("v_care_level_share rỗng — fact_cases_by_care_level chưa "
-                       "được nạp. Chạy scripts/run_dss_load.py.")
+                       "được nạp. Bấm «Nạp dữ liệu DW» ở trang Dữ liệu bệnh.")
         return {}
 
     theo_nhom: Dict[str, List[Any]] = {}
@@ -127,10 +112,10 @@ def care_level_shares(db: Session) -> Dict[str, Dict[str, float]]:
             continue
         p_do = {r.ro: float(r.cases or 0) / tong_ca for r in rs}
         noi_tru = [r for r in rs if r.ro != RO_NGOAI_TRU]
-        w = sum(p_do[r.ro] for r in noi_tru)      # khối lượng nội trú — GIỮ NGUYÊN
+        w = sum(p_do[r.ro] for r in noi_tru)      # khối lượng nội trú, giữ nguyên
         tam: Dict[str, float] = {r.ro: p_do[r.ro] for r in rs if r.ro == RO_NGOAI_TRU}
         if noi_tru and w > 0:
-            deu = 1.0 / len(noi_tru)              # đều TRONG khối nội trú
+            deu = 1.0 / len(noi_tru)              # phân bố đều trong khối nội trú
             q: Dict[str, float] = {}
             for r in noi_tru:
                 n = float(r.cases or 0)
@@ -151,15 +136,14 @@ def care_level_shares(db: Session) -> Dict[str, Dict[str, float]]:
     return out
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Định mức thực nghiệm Norm(i, g, ro)
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Định mức thực nghiệm Norm(i, g, ro) ──
 
 def _cua_so_ky(db: Session, cfg: Dict[str, Any]) -> List[str]:
-    """Các kỳ dùng để tính định mức — CÙNG cửa sổ với v_care_level_share:
-    `window_periods` kỳ ĐÃ CHỐT gần nhất kể từ `min_period`. Tháng hiện tại
-    (dở dang) bị loại: tử số và mẫu số của nó đều mới có vài ngày, giữ lại thì
-    định mức của kỳ đó là nhiễu và kéo lệch cả cửa sổ."""
+    """Các kỳ dùng để tính định mức, cùng cửa sổ với v_care_level_share.
+
+    Lấy `window_periods` kỳ đã chốt gần nhất kể từ `min_period`; loại tháng hiện tại
+    vì tử số và mẫu số mới có vài ngày, gây nhiễu định mức.
+    """
     if not _has(db, "fact_cases_by_care_level"):
         return []
     rows = db.execute(text(
@@ -178,15 +162,15 @@ def empirical_norms(db: Session) -> Dict[str, Any]:
     Tử số: `fact_usage_by_care_level` (MF_TieuHao_PhanCap, khử trùng mức nhóm
     bên PROD). Mẫu số: `fact_cases_by_care_level` (MF_CaBenh_PhanCap).
 
-    Phạm vi là THUỐC (phương án A, 13/09/2026): DayDuLieu chạy @GomVTYT = 0 nên
-    fact_usage_by_care_level không có dòng VTYT. Nhánh quy đổi riêng cho VTYT
-    (mẫu số gộp NT1+NT2+NT3+NT0) đã gỡ — muốn mở lại phải bật @GomVTYT ở CẢ
-    DayDuLieu lẫn DayKhoCungUng và bỏ bộ lọc is_vtyt = 0 trong 3 view local.
+    Phạm vi chỉ gồm thuốc: usp_MedForecast_DayDuLieu chạy @GomVTYT = 0 nên không có
+    dòng VTYT. Đưa VTYT vào cần bật @GomVTYT ở cả DayDuLieu lẫn DayKhoCungUng và bỏ
+    bộ lọc is_vtyt = 0 trong các view SQLite.
 
-    Rổ có ít hơn `min_cases_per_bucket` ca trong cửa sổ → dùng định mức GỘP
-    toàn nhóm cho rổ đó (ghi vào `ro_mau_nho`) thay vì chia cho vài ca.
+    Rổ có ít hơn `min_cases_per_bucket` ca → dùng định mức gộp toàn nhóm (ghi vào
+    `ro_mau_nho`) thay vì chia cho vài ca.
 
-    Trả {"norms": {g: {ro: {code: q}}}, "cases": {g: {ro: n}}, "periods": [...],
+    Returns:
+        {"norms": {g: {ro: {code: q}}}, "cases": {g: {ro: n}}, "periods": [...],
          "ro_mau_nho": {g: [ro]}, "usage": {g: {ro: {code: q}}} (tử số thô),
          "gop": {g: {code: q}} (định mức gộp nhóm), "cfg": {...}}
     """
@@ -227,7 +211,7 @@ def empirical_norms(db: Session) -> Dict[str, Any]:
     norms: Dict[str, Dict[str, Dict[str, float]]] = {}
     for g, ro_cases in cases.items():
         tong_ca_g = sum(ro_cases.values())
-        # định mức GỘP toàn nhóm (dự phòng cho rổ mẫu nhỏ)
+        # định mức gộp toàn nhóm (dự phòng cho rổ mẫu nhỏ)
         gop: Dict[str, float] = {}
         for ro, codes in usage.get(g, {}).items():
             for code, q in codes.items():
@@ -246,8 +230,7 @@ def empirical_norms(db: Session) -> Dict[str, Any]:
 
 
 def chan_doan_dinh_muc(db: Session) -> Dict[str, Any]:
-    """Định mức thực nghiệm có THẬT SỰ khác nhau theo rổ không, và nhóm nào
-    thiếu dữ liệu? Phải biết điều này TRƯỚC khi trình bày kết quả."""
+    """Chẩn đoán định mức: có khác nhau theo rổ không và nhóm nào thiếu dữ liệu."""
     emp = empirical_norms(db)
     ket_emp: Dict[str, Any] = {"co": bool(emp["norms"]), "so_ky": len(emp["periods"]),
                                "ky": (emp["periods"][0], emp["periods"][-1]) if emp["periods"] else None,
@@ -280,17 +263,13 @@ def chan_doan_dinh_muc(db: Session) -> Dict[str, Any]:
     return ket
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Nhu cầu nền
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Nhu cầu nền ──
 
 def baseline_demand(db: Session) -> Dict[str, float]:
-    """`d_baseline_thang` trung bình 12 kỳ — nhu cầu KHÔNG do hô hấp.
+    """Nhu cầu nền 30 ngày (không do hô hấp), từ tiêu hao trung bình 12 kỳ.
 
-    Đây là phần quan trọng nhất và dễ bị bỏ quên nhất. Đo được ở Đ10: trung vị
-    tỷ trọng hô hấp toàn danh mục chỉ 3,23%. Nếu chỉ cộng phần quy đổi từ ca hô
-    hấp thì với đại đa số mã, nhu cầu dự báo sẽ gần bằng 0 — và DOI sẽ ra vô
-    cực, tức toàn bộ kho hiện màu Xanh một cách vô nghĩa.
+    Tỷ trọng hô hấp của đa số mã rất thấp; thiếu phần nền thì nhu cầu dự báo gần 0
+    và DOI tiến tới vô cực.
     """
     if not _has(db, "v_supply_daily_demand"):
         return {}
@@ -305,9 +284,7 @@ def baseline_demand(db: Session) -> Dict[str, float]:
     return out
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Quy đổi
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Quy đổi ──
 
 def demand_by_supply(db: Session,
                      forecast_by_block: Dict[str, float],
@@ -315,14 +292,12 @@ def demand_by_supply(db: Session,
                      include_baseline: bool = True) -> Dict[str, Any]:
     """D_i = Σ_g Σ_ro (Ŷ_g × p̂(g,ro) × Norm(i,g,ro)) + D_i,baseline.
 
-    `forecast_by_block` là số ca dự báo của MỘT kỳ (tháng) cho từng nhóm — lấy
-    từ Tầng 1 (dss_dashboard.forecast_payload — ensemble M12 mức nhóm).
+    Args:
+        forecast_by_block: số ca dự báo của một kỳ (tháng) cho từng nhóm (Tầng 1).
+        horizon_days: cửa sổ quy đổi; phần bệnh và phần nền co giãn cùng hệ số.
 
-    `horizon_days` cho phép quy về cửa sổ khác 30 ngày; phần quy đổi từ ca bệnh
-    và phần nền được co giãn CÙNG một hệ số.
-
-    Rổ có tỷ trọng nhưng không có định mức (vd NT0 chưa có ca trong cửa sổ):
-    dùng trung bình định mức của các rổ nội trú còn lại.
+    Rổ có tỷ trọng nhưng không có định mức (vd NT0 chưa có ca trong cửa sổ) dùng
+    trung bình định mức của các rổ nội trú còn lại.
     """
     p_gc = care_level_shares(db)
     emp = empirical_norms(db)
@@ -403,18 +378,14 @@ def demand_by_supply(db: Session,
     }
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Bảng tra định mức thực nghiệm cho màn Quản trị (chỉ đọc)
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Bảng tra định mức thực nghiệm cho màn Quản trị (chỉ đọc) ──
 
 def norms_payload(db: Session, block: str, q: Optional[str] = None,
                   limit: int = 50, offset: int = 0) -> Dict[str, Any]:
-    """Một dòng cho mỗi mã thuốc của một nhóm: tử số, mẫu số và Norm theo
-    từng rổ — đúng những con số mà `demand_by_supply` nhân với Ŷ_g × p̂.
+    """Tử số, mẫu số và Norm theo rổ cho từng mã của một nhóm.
 
-    Sắp theo tổng tiêu hao giảm dần (mã tiêu thụ nhiều đứng đầu); `q` lọc
-    theo mã hoặc tên hoạt chất. `limit`/`offset` phân trang phía server để
-    không đẩy 3.000 mã × 4 rổ lên trình duyệt mỗi lần bấm.
+    Là đúng các hệ số `demand_by_supply` nhân với Ŷ_g × p̂. Sắp theo tổng tiêu hao
+    giảm dần; `q` lọc theo mã hoặc tên hoạt chất; `limit`/`offset` phân trang.
     """
     if block not in BLOCKS:
         raise ValueError(f"block phải thuộc {BLOCKS}")
@@ -460,7 +431,7 @@ def norms_payload(db: Session, block: str, q: Optional[str] = None,
             "nhom": m.group_name if m else None,
             "tieu_hao_tong": round(tong, 1),
             "norm_gop": round(float(emp["gop"].get(block, {}).get(code, 0.0)), 4),
-            # Σ_ro p̂ · Norm — lượng cần cho MỘT ca dự báo của nhóm này
+            # Σ_ro p̂ · Norm: lượng cần cho một ca dự báo của nhóm
             "norm_hieu_dung": round(sum(
                 float(shares.get(ro, 0.0)) * float(norms.get(ro, {}).get(code, 0.0))
                 for ro in ro_list), 4),

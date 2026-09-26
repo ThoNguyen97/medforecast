@@ -72,14 +72,14 @@ export default function UsersSection() {
 
   return (
     <div className="space-y-5">
-      {/* Mini KPIs */}
+      {/* KPI tóm tắt */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <KpiTile label="Tổng tài khoản" value={counts.total} />
         <KpiTile label="Đang hoạt động" value={counts.active} tone="success" />
         <KpiTile label="Đã khoá" value={counts.locked} tone={counts.locked > 0 ? 'warning' : 'default'} />
       </div>
 
-      {/* Toolbar + table */}
+      {/* Thanh công cụ + bảng */}
       <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b border-neutral-100">
           <div className="flex flex-wrap items-center gap-2.5 flex-1">
@@ -203,7 +203,7 @@ export default function UsersSection() {
         </div>
       </div>
 
-      {/* Form dialog */}
+      {/* Dialog biểu mẫu */}
       <UserFormDialog
         open={dialogOpen}
         initial={editing}
@@ -211,7 +211,7 @@ export default function UsersSection() {
         onSubmit={onSubmitForm}
       />
 
-      {/* Confirm delete */}
+      {/* Xác nhận xoá */}
       {confirmDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">

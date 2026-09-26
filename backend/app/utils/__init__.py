@@ -1,1 +1,1 @@
-# Utility functions
+# Hàm tiện ích dùng chung

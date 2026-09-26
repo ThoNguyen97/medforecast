@@ -1,11 +1,11 @@
-"""System Log model."""
+"""Model log hệ thống."""
 from sqlalchemy import Column, Integer, String, Text, DateTime
 from sqlalchemy.sql import func
 from app.database import Base
 
 
 class SystemLog(Base):
-    """System logs for errors, warnings, and info messages."""
+    """Log hệ thống mức ERROR/WARNING/INFO."""
     
     __tablename__ = "system_logs"
     

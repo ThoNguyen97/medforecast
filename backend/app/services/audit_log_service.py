@@ -1,16 +1,9 @@
-"""
-Audit & System Log Service.
-
-Provides read access to audit_logs and system_logs tables with filtering,
-pagination, and a log-retention cleanup utility that removes entries older
-than 90 days.
-"""
+"""Truy vấn audit_logs và system_logs (lọc, phân trang) và dọn log quá hạn lưu giữ."""
 
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
 
-from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
 from app.models.audit_log import AuditLog
@@ -19,14 +12,13 @@ from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
-# Log retention period in days (Requirement 12.4)
+# Số ngày lưu giữ log.
 LOG_RETENTION_DAYS = 90
-# Default page size
 DEFAULT_PAGE_SIZE = 50
 
 
 class AuditLogService:
-    """Service for querying and maintaining audit and system logs."""
+    """Truy vấn và bảo trì audit log, system log."""
 
     def __init__(self, db: Session) -> None:
         self.db = db
@@ -44,11 +36,10 @@ class AuditLogService:
         page: int = 1,
         page_size: int = DEFAULT_PAGE_SIZE,
     ) -> Tuple[int, list]:
-        """
-        Return a paginated, filtered list of audit log entries.
+        """Danh sách audit log đã lọc và phân trang.
 
-        Returns a (total_count, items) tuple so the caller can build a
-        PaginatedResponse without a second query.
+        Returns:
+            (total, items) để dựng PaginatedResponse mà không cần truy vấn thứ hai.
         """
         query = self.db.query(AuditLog)
 
@@ -59,7 +50,7 @@ class AuditLogService:
         if user_id is not None:
             query = query.filter(AuditLog.user_id == user_id)
         if action:
-            # Case-insensitive partial match
+            # Khớp một phần, không phân biệt hoa thường.
             query = query.filter(AuditLog.action.ilike(f"%{action}%"))
         if table_name:
             query = query.filter(AuditLog.table_name.ilike(f"%{table_name}%"))
@@ -77,7 +68,7 @@ class AuditLogService:
         return total, items
 
     def _enrich_audit_log(self, log: AuditLog) -> dict:
-        """Add username to an audit log dict for response enrichment."""
+        """Chuyển audit log thành dict kèm username."""
         username: Optional[str] = None
         if log.user_id is not None:
             user = self.db.query(User).filter(User.id == log.user_id).first()
@@ -108,11 +99,7 @@ class AuditLogService:
         page: int = 1,
         page_size: int = DEFAULT_PAGE_SIZE,
     ) -> Tuple[int, list]:
-        """
-        Return a paginated, filtered list of system log entries.
-
-        Returns a (total_count, items) tuple.
-        """
+        """Danh sách system log đã lọc và phân trang; trả (total, items)."""
         query = self.db.query(SystemLog)
 
         if start_date:
@@ -145,9 +132,7 @@ class AuditLogService:
         page: int = 1,
         page_size: int = DEFAULT_PAGE_SIZE,
     ) -> Tuple[int, list]:
-        """
-        Shortcut that returns only ERROR-level system log entries.
-        """
+        """System log mức ERROR."""
         return self.get_system_logs(
             start_date=start_date,
             end_date=end_date,
@@ -160,14 +145,10 @@ class AuditLogService:
     # ── Retention Cleanup ─────────────────────────────────────────────────────
 
     def delete_old_logs(self, retention_days: int = LOG_RETENTION_DAYS) -> dict:
-        """
-        Delete audit and system log entries older than *retention_days* days.
+        """Xoá audit log và system log cũ hơn *retention_days* ngày.
 
-        This implements Requirement 12.4: logs older than 90 days are
-        automatically deleted.
-
-        Returns a dict with the number of deleted rows for each table so the
-        caller can log or surface the result.
+        Returns:
+            dict số dòng đã xoá của từng bảng, mốc cắt và số ngày lưu giữ.
         """
         cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
 

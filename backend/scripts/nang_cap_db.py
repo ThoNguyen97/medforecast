@@ -1,30 +1,21 @@
-"""NÂNG CẤP LƯỢC ĐỒ DB CHO MÁY ĐÃ CHẠY TRƯỚC ĐÓ (11/09/2026).
+"""Nâng cấp lược đồ SQLite (`data/medforecast.db`) cho khớp với mã nguồn.
 
-Vì sao cần file này: file DB (`data/medforecast.db`) KHÔNG nằm trong git, nên khi
-mã nguồn đổi bảng thì mỗi máy phải tự nâng cấp DB của mình. Khi khởi động,
-`main.py` gọi `Base.metadata.create_all` — lệnh đó TẠO BẢNG CÒN THIẾU nhưng
-KHÔNG BAO GIỜ THÊM CỘT vào bảng đã tồn tại, và cũng không báo lỗi. Hậu quả là
-backend chạy được nhưng truy vấn nào chạm cột mới sẽ chết với
-"no such column: ..." — dự án đã dính đúng lỗi này một lần (xem ghi chú ở
-`app/services/sync_service.py` quanh cột `disease_group`).
-
-Script này so lược đồ khai báo trong code (`Base.metadata` + bảng mart/fact của
-data_pipeline) với lược đồ thật trong file SQLite rồi:
+`Base.metadata.create_all` chỉ tạo bảng còn thiếu, không thêm cột vào bảng đã có,
+nên truy vấn chạm cột mới sẽ lỗi "no such column". Script so lược đồ khai báo
+(`Base.metadata` + bảng mart/fact của data_pipeline) với file SQLite rồi:
   • tạo bảng còn thiếu,
   • sinh `ALTER TABLE ... ADD COLUMN` cho cột còn thiếu,
-  • BÁO CÁO (không tự sửa) những khác biệt SQLite không làm an toàn được:
-    xoá cột, đổi kiểu, đổi khoá — các việc đó phải chép bảng thủ công.
+  • chỉ báo cáo các khác biệt SQLite không xử lý an toàn được (xoá cột, đổi kiểu,
+    đổi khoá); các việc này phải chép bảng thủ công.
 
-Mặc định chỉ IN RA KẾ HOẠCH (chạy khô). Thêm `--ap-dung` mới thực thi, và khi
-thực thi script tự sao lưu file DB trước.
+Mặc định chỉ in kế hoạch (chạy khô); `--ap-dung` mới thực thi và tự sao lưu file DB trước.
 
     cd backend
     python -m scripts.nang_cap_db              # xem sẽ đổi gì
     python -m scripts.nang_cap_db --ap-dung    # thực thi + sao lưu
 
-Nếu máy có thể làm lại từ đầu thì dùng `scripts/khoi_tao_moi.py` đơn giản hơn:
-xoá DB rồi dựng lại toàn bộ từ `dataset/v1`. Chỉ dùng script này khi DB đang
-chứa dữ liệu đã đồng bộ từ HIS mà không muốn nạp lại.
+Nếu có thể dựng lại từ đầu, dùng `scripts/khoi_tao_moi.py`; script này dành cho
+CSDL đang chứa dữ liệu đã đồng bộ từ HIS.
 """
 from __future__ import annotations
 
@@ -45,9 +36,8 @@ from sqlalchemy import inspect, text    # noqa: E402
 from app.database import Base, engine   # noqa: E402
 import app.models                       # noqa: F401,E402  (đăng ký bảng nghiệp vụ)
 
-# Tầng dữ liệu (mart_/dim_/stg_/fact_/sync_state) khai báo trên MỘT declarative_base
-# KHÁC — `app.data_pipeline.db.Base`. Thiếu dòng này là bỏ sót 13 bảng: DB vẫn mở
-# được, đăng nhập được, nhưng Dashboard dịch tễ và Phân tích & Dự báo trắng trơn.
+# Tầng dữ liệu (mart_/dim_/stg_/fact_/sync_state) khai báo trên một declarative_base
+# riêng (`app.data_pipeline.db.Base`) nên phải nạp thêm để không bỏ sót bảng.
 try:
     from app.data_pipeline.db import Base as PipelineBase   # noqa: E402
     import app.data_pipeline.models                         # noqa: F401,E402
@@ -101,7 +91,7 @@ def _duong_dan_db() -> Path | None:
 # ── So sánh ──────────────────────────────────────────────────────────────────
 
 def _khao_sat():
-    """Trả về (bảng_thiếu, cột_thiếu, canh_báo) — chưa đụng vào DB."""
+    """Trả về (bảng_thiếu, cột_thiếu, cảnh_báo); không ghi gì vào CSDL."""
     insp = inspect(engine)
     co_trong_db = set(insp.get_table_names())
 
@@ -134,7 +124,7 @@ def _khao_sat():
                     cau += " NOT NULL"
             cot_thieu.append((ten, cau, f"{ten}.{col.name} ({kieu})"))
 
-        # Cột thừa / lệch kiểu: chỉ báo, KHÔNG tự xoá — dữ liệu là của bệnh viện.
+        # Cột thừa / lệch kiểu: chỉ báo cáo, không tự xoá dữ liệu.
         trong_model = {c.name for c in bang.columns}
         thua = sorted(set(thuc_te) - trong_model)
         if thua:
@@ -164,11 +154,10 @@ def main() -> int:
 
     bang_thieu, cot_thieu, canh_bao = _khao_sat()
 
-    # 6 bảng tự quản + 4 view phải được kiểm ngay cả khi bảng ORM đã đủ: chúng
-    # không nằm trong Base.metadata nên _khao_sat() không thấy, mà thiếu chúng
-    # thì Dashboard hiện "0 mã có mẫu số" mà không báo lỗi. Tất cả đều là
-    # CREATE ... IF NOT EXISTS / DROP VIEW rồi CREATE nên không đụng dữ liệu,
-    # làm luôn, không cần --ap-dung.
+    # Bảng tự quản và view nằm ngoài Base.metadata nên _khao_sat() không thấy;
+    # thiếu chúng thì Dashboard trả rỗng mà không báo lỗi. Các lệnh đều là
+    # CREATE ... IF NOT EXISTS / DROP VIEW + CREATE, không đụng dữ liệu, nên chạy
+    # luôn mà không cần --ap-dung.
     try:
         from app.data_pipeline.views import dam_bao_luoc_do
         kq_view = dam_bao_luoc_do(engine)
@@ -204,14 +193,14 @@ def main() -> int:
         shutil.copy2(db, luu)
         print(f"\n✓ Đã sao lưu: {luu.name}")
 
-    # 1) Bảng còn thiếu — create_all của cả hai metadata.
+    # 1) Bảng còn thiếu: create_all trên cả hai metadata.
     if bang_thieu:
         Base.metadata.create_all(bind=engine)
         if PipelineBase is not None:
             PipelineBase.metadata.create_all(bind=engine)
         print(f"✓ Đã tạo {len(bang_thieu)} bảng.")
 
-    # 2) Cột còn thiếu — ALTER TABLE từng cột một.
+    # 2) Cột còn thiếu: ALTER TABLE từng cột.
     ok = 0
     with engine.begin() as conn:
         for _, cau, mo_ta in cot_thieu:

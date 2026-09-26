@@ -1,9 +1,7 @@
-"""
-Shared fixtures for integration tests.
+"""Fixture dùng chung cho test tích hợp.
 
-Each test module gets a fresh in-memory SQLite database and a TestClient
-wired to that database through FastAPI's dependency injection system.
-This ensures full isolation between tests.
+Mỗi test dùng một CSDL SQLite in-memory mới và TestClient gắn với CSDL đó qua
+dependency injection của FastAPI, bảo đảm cô lập giữa các test.
 """
 
 import pytest
@@ -18,10 +16,10 @@ from app.models.user import User
 from app.core.security import hash_password, create_access_token
 
 
-# ── Database helpers ──────────────────────────────────────────────────────────
+# ── Tiện ích CSDL ──────────────────────────────────────────────────────────
 
 def build_test_engine():
-    """Create a fresh in-memory SQLite engine."""
+    """Tạo engine SQLite in-memory mới (đã tạo bảng)."""
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -35,11 +33,11 @@ def build_session_factory(engine):
     return sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
-# ── Shared fixtures ───────────────────────────────────────────────────────────
+# ── Fixture dùng chung ───────────────────────────────────────────────────────────
 
 @pytest.fixture(scope="function")
 def db_engine():
-    """Provide a fresh engine (tables created) per test."""
+    """Engine mới cho mỗi test; xoá bảng khi kết thúc."""
     engine = build_test_engine()
     yield engine
     Base.metadata.drop_all(bind=engine)
@@ -48,7 +46,7 @@ def db_engine():
 
 @pytest.fixture(scope="function")
 def db_session(db_engine):
-    """Provide a database session bound to the test engine."""
+    """Phiên CSDL gắn với engine test."""
     SessionLocal = build_session_factory(db_engine)
     session = SessionLocal()
     try:
@@ -59,7 +57,7 @@ def db_session(db_engine):
 
 @pytest.fixture(scope="function")
 def client(db_session):
-    """Return a TestClient wired to the test DB session."""
+    """TestClient dùng phiên CSDL test."""
     def override_get_db():
         try:
             yield db_session
@@ -72,11 +70,11 @@ def client(db_session):
     app.dependency_overrides.pop(get_db, None)
 
 
-# ── User fixtures ─────────────────────────────────────────────────────────────
+# ── Fixture người dùng ─────────────────────────────────────────────────────────────
 
 @pytest.fixture
 def admin_user(db_session):
-    """Create and return an Administrator user."""
+    """Tạo người dùng vai trò Administrator."""
     user = User(
         username="admin",
         email="admin@test.com",
@@ -93,7 +91,7 @@ def admin_user(db_session):
 
 @pytest.fixture
 def pharmacist_user(db_session):
-    """Create and return a Pharmacist user."""
+    """Tạo người dùng vai trò Pharmacist."""
     user = User(
         username="pharmacist",
         email="pharmacist@test.com",
@@ -110,7 +108,7 @@ def pharmacist_user(db_session):
 
 @pytest.fixture
 def inventory_manager_user(db_session):
-    """Create and return an Inventory_Manager user."""
+    """Tạo người dùng vai trò Inventory_Manager."""
     user = User(
         username="invmanager",
         email="invmanager@test.com",
@@ -125,7 +123,7 @@ def inventory_manager_user(db_session):
     return user
 
 
-# ── Token fixtures ────────────────────────────────────────────────────────────
+# ── Fixture token ────────────────────────────────────────────────────────────
 
 @pytest.fixture
 def admin_token(admin_user):

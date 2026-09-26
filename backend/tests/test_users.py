@@ -1,4 +1,4 @@
-"""Tests for user management endpoints."""
+"""Test các endpoint quản lý người dùng."""
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -10,7 +10,7 @@ from app.database import Base, get_db
 from app.models.user import User
 from app.core.security import get_password_hash
 
-# Create test database
+# CSDL test dạng file
 SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
@@ -37,11 +37,10 @@ client = TestClient(app)
 
 @pytest.fixture
 def test_db():
-    """Create a fresh database for each test."""
+    """Tạo CSDL mới cho mỗi test."""
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     
-    # Create test admin user
     db = TestingSessionLocal()
     admin_user = User(
         username="admin",
@@ -62,7 +61,7 @@ def test_db():
 
 @pytest.fixture
 def admin_token(test_db):
-    """Get admin access token."""
+    """Access token của admin."""
     response = client.post(
         "/api/v1/auth/login",
         json={"username": "admin", "password": "admin123"}
@@ -72,12 +71,12 @@ def admin_token(test_db):
 
 @pytest.fixture
 def auth_headers(admin_token):
-    """Get authorization headers."""
+    """Header Authorization cho admin."""
     return {"Authorization": f"Bearer {admin_token}"}
 
 
 def test_create_user(auth_headers):
-    """Test creating a new user."""
+    """Tạo người dùng mới."""
     user_data = {
         "username": "testuser",
         "email": "test@example.com",
@@ -100,9 +99,9 @@ def test_create_user(auth_headers):
 
 
 def test_create_user_duplicate_username(auth_headers):
-    """Test creating user with duplicate username."""
+    """Tạo người dùng trùng username bị từ chối."""
     user_data = {
-        "username": "admin",  # Already exists
+        "username": "admin",  # đã tồn tại
         "email": "test2@example.com",
         "password": "testpass123",
         "full_name": "Test User 2",
@@ -116,23 +115,21 @@ def test_create_user_duplicate_username(auth_headers):
 
 
 def test_list_users(auth_headers):
-    """Test listing users."""
+    """Liệt kê người dùng."""
     response = client.get("/api/v1/users/", headers=auth_headers)
     
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, list)
-    assert len(data) >= 1  # At least the admin user
+    assert len(data) >= 1  # ít nhất có admin
     
-    # Check admin user is in the list
     admin_user = next((user for user in data if user["username"] == "admin"), None)
     assert admin_user is not None
     assert admin_user["role"] == "Administrator"
 
 
 def test_get_user_by_id(auth_headers):
-    """Test getting user by ID."""
-    # First create a user
+    """Lấy người dùng theo ID."""
     user_data = {
         "username": "gettest",
         "email": "gettest@example.com",
@@ -144,7 +141,6 @@ def test_get_user_by_id(auth_headers):
     create_response = client.post("/api/v1/users/", json=user_data, headers=auth_headers)
     user_id = create_response.json()["id"]
     
-    # Get the user
     response = client.get(f"/api/v1/users/{user_id}", headers=auth_headers)
     
     assert response.status_code == 200
@@ -155,7 +151,7 @@ def test_get_user_by_id(auth_headers):
 
 
 def test_get_user_not_found(auth_headers):
-    """Test getting non-existent user."""
+    """Lấy người dùng không tồn tại."""
     response = client.get("/api/v1/users/999", headers=auth_headers)
     
     assert response.status_code == 404
@@ -163,8 +159,7 @@ def test_get_user_not_found(auth_headers):
 
 
 def test_update_user(auth_headers):
-    """Test updating user."""
-    # First create a user
+    """Cập nhật người dùng."""
     user_data = {
         "username": "updatetest",
         "email": "updatetest@example.com",
@@ -176,7 +171,6 @@ def test_update_user(auth_headers):
     create_response = client.post("/api/v1/users/", json=user_data, headers=auth_headers)
     user_id = create_response.json()["id"]
     
-    # Update the user
     update_data = {
         "full_name": "Updated Test User",
         "role": "Inventory_Manager"
@@ -191,8 +185,7 @@ def test_update_user(auth_headers):
 
 
 def test_delete_user(auth_headers):
-    """Test deleting user (soft delete)."""
-    # First create a user
+    """Xoá người dùng (xoá mềm)."""
     user_data = {
         "username": "deletetest",
         "email": "deletetest@example.com",
@@ -204,26 +197,24 @@ def test_delete_user(auth_headers):
     create_response = client.post("/api/v1/users/", json=user_data, headers=auth_headers)
     user_id = create_response.json()["id"]
     
-    # Delete the user
     response = client.delete(f"/api/v1/users/{user_id}", headers=auth_headers)
     
     assert response.status_code == 204
     
-    # Verify user is soft deleted
+    # Xoá mềm: bản ghi vẫn còn nhưng bị vô hiệu
     get_response = client.get(f"/api/v1/users/{user_id}", headers=auth_headers)
     assert get_response.status_code == 200
     assert get_response.json()["is_active"] is False
 
 
 def test_unauthorized_access():
-    """Test accessing endpoints without authentication."""
+    """Gọi endpoint khi chưa xác thực."""
     response = client.get("/api/v1/users/")
     assert response.status_code == 401
 
 
 def test_non_admin_cannot_list_users(test_db):
-    """Test that non-admin users cannot list users."""
-    # Create a pharmacist user
+    """Người dùng không phải admin không được liệt kê người dùng."""
     db = TestingSessionLocal()
     pharmacist = User(
         username="pharmacist",
@@ -237,7 +228,6 @@ def test_non_admin_cannot_list_users(test_db):
     db.commit()
     db.close()
     
-    # Login as pharmacist
     login_response = client.post(
         "/api/v1/auth/login",
         json={"username": "pharmacist", "password": "pharma123"}
@@ -245,15 +235,13 @@ def test_non_admin_cannot_list_users(test_db):
     pharmacist_token = login_response.json()["access_token"]
     pharmacist_headers = {"Authorization": f"Bearer {pharmacist_token}"}
     
-    # Try to list users (should be forbidden)
     response = client.get("/api/v1/users/", headers=pharmacist_headers)
     assert response.status_code == 403
     assert "Not enough permissions" in response.json()["detail"]
 
 
 def test_user_can_view_own_profile(test_db):
-    """Test that users can view their own profile."""
-    # Create a pharmacist user
+    """Người dùng xem được hồ sơ của chính mình."""
     db = TestingSessionLocal()
     pharmacist = User(
         username="selfview",
@@ -268,7 +256,6 @@ def test_user_can_view_own_profile(test_db):
     user_id = pharmacist.id
     db.close()
     
-    # Login as pharmacist
     login_response = client.post(
         "/api/v1/auth/login",
         json={"username": "selfview", "password": "selfview123"}
@@ -276,7 +263,6 @@ def test_user_can_view_own_profile(test_db):
     pharmacist_token = login_response.json()["access_token"]
     pharmacist_headers = {"Authorization": f"Bearer {pharmacist_token}"}
     
-    # View own profile
     response = client.get(f"/api/v1/users/{user_id}", headers=pharmacist_headers)
     assert response.status_code == 200
     data = response.json()
@@ -284,8 +270,7 @@ def test_user_can_view_own_profile(test_db):
 
 
 def test_user_cannot_change_own_role(test_db):
-    """Test that users cannot change their own role."""
-    # Create a pharmacist user
+    """Người dùng không tự đổi được vai trò."""
     db = TestingSessionLocal()
     pharmacist = User(
         username="norole",
@@ -300,7 +285,6 @@ def test_user_cannot_change_own_role(test_db):
     user_id = pharmacist.id
     db.close()
     
-    # Login as pharmacist
     login_response = client.post(
         "/api/v1/auth/login",
         json={"username": "norole", "password": "norole123"}
@@ -308,7 +292,6 @@ def test_user_cannot_change_own_role(test_db):
     pharmacist_token = login_response.json()["access_token"]
     pharmacist_headers = {"Authorization": f"Bearer {pharmacist_token}"}
     
-    # Try to change role
     response = client.put(
         f"/api/v1/users/{user_id}",
         json={"role": "Administrator"},

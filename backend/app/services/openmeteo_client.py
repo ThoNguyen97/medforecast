@@ -1,19 +1,16 @@
-"""Open-Meteo public API client.
+"""Client Open-Meteo (https://open-meteo.com): API công khai, không cần API key, CC BY 4.0.
 
-Open-Meteo (https://open-meteo.com) cung cấp dữ liệu thời tiết miễn phí cho mục
-đích phi thương mại, không cần API key, có CORS, license CC BY 4.0.
-
-Module này wrap 3 API:
+Bao ba API:
 - Forecast API:        https://api.open-meteo.com/v1/forecast
 - Historical Archive:  https://archive-api.open-meteo.com/v1/archive
 - Air Quality:         https://air-quality-api.open-meteo.com/v1/air-quality
 
-Toạ độ tỉnh/thành VN được hard-code (không gọi geocoding để tránh dependency).
+Toạ độ tỉnh/thành được khai báo cứng, không gọi geocoding.
 """
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
@@ -21,7 +18,7 @@ import requests
 logger = logging.getLogger(__name__)
 
 
-# Toạ độ tâm địa lý của các tỉnh/thành phục vụ truy vấn Open-Meteo (TP.HCM và các tỉnh lân cận)
+# Toạ độ tâm tỉnh/thành dùng khi truy vấn Open-Meteo.
 PROVINCE_COORDS: Dict[str, Tuple[float, float]] = {
     "TP. Hồ Chí Minh": (10.7769, 106.7009),
     "Thành phố Hồ Chí Minh": (10.7769, 106.7009),
@@ -37,7 +34,6 @@ PROVINCE_COORDS: Dict[str, Tuple[float, float]] = {
     "Cần Thơ": (10.0452, 105.7469),
 }
 
-# Endpoints
 URL_FORECAST = "https://api.open-meteo.com/v1/forecast"
 URL_ARCHIVE = "https://archive-api.open-meteo.com/v1/archive"
 URL_AIR_QUALITY = "https://air-quality-api.open-meteo.com/v1/air-quality"
@@ -46,22 +42,22 @@ DEFAULT_TIMEOUT = 15
 
 
 class OpenMeteoClient:
-    """Client gọi Open-Meteo public API."""
+    """Client gọi Open-Meteo."""
 
     def __init__(self, timeout: int = DEFAULT_TIMEOUT) -> None:
         self.timeout = timeout
 
-    # ── Helpers ─────────────────────────────────────────────────────────────
+    # ── Tiện ích ──
 
     @staticmethod
     def lookup_coords(province: str) -> Optional[Tuple[float, float]]:
-        """Tìm lat/lon từ tên tỉnh/thành (case-insensitive, fuzzy)."""
+        """Tìm lat/lon theo tên tỉnh/thành (khớp chính xác, rồi khớp chuỗi con không phân biệt hoa thường)."""
         if not province:
             return None
         key = province.strip()
         if key in PROVINCE_COORDS:
             return PROVINCE_COORDS[key]
-        # Fallback: bỏ qua dấu tiếng Việt (đơn giản) và so sánh case-insensitive
+        # Dự phòng: so khớp chuỗi con, không phân biệt hoa thường.
         norm = key.lower()
         for name, coords in PROVINCE_COORDS.items():
             if name.lower() == norm or norm in name.lower() or name.lower() in norm:
@@ -77,7 +73,7 @@ class OpenMeteoClient:
             )
         return resp.json()
 
-    # ── Forecast (16-day) ──────────────────────────────────────────────────
+    # ── Dự báo (tối đa 16 ngày) ──
 
     def get_daily_forecast(
         self,
@@ -85,9 +81,10 @@ class OpenMeteoClient:
         longitude: float,
         forecast_days: int = 16,
     ) -> List[Dict[str, Any]]:
-        """Forecast hằng ngày (max 16 ngày).
+        """Dự báo hằng ngày (tối đa 16 ngày).
 
-        Returns list[{date, temp_max, temp_min, temp_mean, rainfall, humidity}]
+        Returns:
+            list[{date, temperature, temperature_max, temperature_min, humidity, rainfall}]
         """
         params = {
             "latitude": latitude,
@@ -128,7 +125,7 @@ class OpenMeteoClient:
             })
         return out
 
-    # ── Historical archive ─────────────────────────────────────────────────
+    # ── Lịch sử ──
 
     def get_historical_daily(
         self,
@@ -137,9 +134,10 @@ class OpenMeteoClient:
         start_date: date,
         end_date: date,
     ) -> List[Dict[str, Any]]:
-        """Lịch sử hằng ngày (đến ~80 năm).
+        """Dữ liệu lịch sử hằng ngày.
 
-        Returns list[{date, temperature, humidity, rainfall}]
+        Returns:
+            list[{date, temperature, humidity, rainfall}]
         """
         params = {
             "latitude": latitude,
@@ -166,7 +164,7 @@ class OpenMeteoClient:
             for i, t in enumerate(times)
         ]
 
-    # ── Air Quality ────────────────────────────────────────────────────────
+    # ── Chất lượng không khí ──
 
     def get_air_quality_daily(
         self,
@@ -175,10 +173,10 @@ class OpenMeteoClient:
         forecast_days: int = 5,
         past_days: int = 0,
     ) -> List[Dict[str, Any]]:
-        """AQI + PM2.5 hằng ngày (aggregated từ hourly).
-        
-        Note: forecast_days và past_days bị giới hạn bởi API.
-        Để lấy historical data dài hơn, dùng get_air_quality_historical().
+        """AQI + PM2.5 hằng ngày (trung bình từ số liệu theo giờ).
+
+        forecast_days và past_days bị API giới hạn; khoảng dài hơn dùng
+        get_air_quality_historical().
         """
         params = {
             "latitude": latitude,
@@ -198,7 +196,7 @@ class OpenMeteoClient:
         start_date: date,
         end_date: date,
     ) -> List[Dict[str, Any]]:
-        """AQI + PM2.5 historical data cho date range cụ thể."""
+        """AQI + PM2.5 hằng ngày trong khoảng ngày cho trước."""
         params = {
             "latitude": latitude,
             "longitude": longitude,
@@ -211,17 +209,12 @@ class OpenMeteoClient:
         return self._aggregate_hourly_to_daily(data)
 
     def _aggregate_hourly_to_daily(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """AQI + PM2.5 hằng ngày (aggregated từ hourly).
-        
-        Note: forecast_days và past_days bị giới hạn bởi API.
-        Để lấy historical data dài hơn, dùng get_air_quality_historical().
-        """
+        """Gộp AQI + PM2.5 theo giờ thành trung bình ngày."""
         hourly = data.get("hourly", {}) or {}
         times = hourly.get("time", [])
         aqis = hourly.get("us_aqi", []) or []
         pm25s = hourly.get("pm2_5", []) or []
 
-        # Aggregate hourly → daily (mean)
         buckets: Dict[str, Dict[str, List[float]]] = {}
         for t, aqi, pm in zip(times, aqis, pm25s):
             day = t.split("T")[0] if "T" in t else t
@@ -241,7 +234,7 @@ class OpenMeteoClient:
             })
         return out
 
-    # ── Combined: monthly aggregate cho 1 tháng ────────────────────────────
+    # ── Ước lượng theo tháng ──
 
     def get_monthly_estimate(
         self,
@@ -250,32 +243,26 @@ class OpenMeteoClient:
         target_month: int,
         target_year: int,
     ) -> Dict[str, Any]:
-        """Trả về thời tiết trung bình cho 1 tháng cụ thể.
+        """Thời tiết trung bình của một tháng.
 
-        Tự động chọn:
-        - Tháng đã qua / hiện tại đã có data → dùng archive API
-        - Tháng tương lai → dùng forecast nếu trong 16 ngày, ngược lại
-          dùng cùng tháng năm trước (long-range climatology).
+        Tháng đã qua → archive API; tháng bắt đầu sau 16 ngày tới → cùng tháng năm
+        trước; còn lại → ghép archive (phần đã qua) và forecast (phần còn lại).
         """
         today = date.today()
-        # Mục tiêu: đầu tháng → cuối tháng
         from calendar import monthrange
         first = date(target_year, target_month, 1)
         last = date(target_year, target_month, monthrange(target_year, target_month)[1])
 
         if last < today:
-            # Hoàn toàn trong quá khứ → archive
             return self._aggregate(self.get_historical_daily(latitude, longitude, first, last))
 
         if first > today + timedelta(days=16):
-            # Quá xa tương lai → fallback dùng cùng tháng năm trước
             prev_first = date(target_year - 1, target_month, 1)
             prev_last = date(target_year - 1, target_month, monthrange(target_year - 1, target_month)[1])
             agg = self._aggregate(self.get_historical_daily(latitude, longitude, prev_first, prev_last))
             agg["source"] = "open-meteo-archive-prev-year"
             return agg
 
-        # Hỗn hợp: archive cho phần đã qua + forecast cho phần còn lại
         merged: List[Dict[str, Any]] = []
         if first < today:
             try:
@@ -311,7 +298,7 @@ class OpenMeteoClient:
 
 
 def _safe_get(d: Dict[str, List[Any]], key: str, idx: int) -> Optional[float]:
-    """Lấy phần tử thứ idx của d[key] nếu tồn tại + không null."""
+    """Phần tử thứ idx của d[key] dạng float; None nếu thiếu hoặc null."""
     arr = d.get(key)
     if not arr or idx >= len(arr):
         return None

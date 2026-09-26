@@ -151,7 +151,7 @@ interface DongTooltip {
 }
 
 /**
- * Cột số ca của năm đang dự báo và của các năm đã ghi nhận là HAI thứ khác
+ * Cột số ca của năm đang dự báo và của các năm đã ghi nhận là hai thứ khác
  * nhau — biểu đồ đã tô hai màu, tooltip phải gọi đúng tên thì người đọc mới
  * không nhầm số dự báo thành số thực tế.
  */

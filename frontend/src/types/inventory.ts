@@ -1,5 +1,5 @@
 /**
- * Hợp đồng dữ liệu — /api/v1/inventory (backend app/schemas/base.py:
+ * Hợp đồng dữ liệu /api/v1/inventory (backend app/schemas/base.py:
  * MedicalSupplyResponse, InventoryResponse, InventoryUpdate).
  *
  * Không có trường mua sắm (reorder_point, storage_capacity, MOQ, lead time):

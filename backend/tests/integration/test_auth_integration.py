@@ -1,14 +1,7 @@
-"""
-Integration tests for Authentication & Authorization flows.
+"""Test tích hợp luồng xác thực và phân quyền.
 
-Covers:
-- POST /api/v1/auth/login
-- POST /api/v1/auth/logout
-- GET  /api/v1/auth/me
-- POST /api/v1/auth/refresh
-- JWT token validation
-- Inactive user handling
-- Protected route enforcement
+Phạm vi: POST /api/v1/auth/login, /logout, /refresh; GET /api/v1/auth/me; kiểm tra
+JWT, tài khoản bị khoá và bảo vệ route theo vai trò.
 """
 
 import pytest
@@ -23,7 +16,7 @@ from app.models.user import User
 from app.core.security import hash_password, create_access_token
 
 
-# ── Test DB Setup ─────────────────────────────────────────────────────────────
+# ── CSDL test ──
 
 @pytest.fixture(scope="function")
 def db_session():
@@ -87,7 +80,7 @@ def inactive_user(db_session):
     return user
 
 
-# ── Login Tests ───────────────────────────────────────────────────────────────
+# ── Đăng nhập ──
 
 class TestLogin:
     def test_login_success_returns_token(self, client, active_admin):
@@ -137,7 +130,7 @@ class TestLogin:
         assert resp.status_code in [401, 422]
 
 
-# ── Get Current User Tests ────────────────────────────────────────────────────
+# ── Người dùng hiện tại ──
 
 class TestGetCurrentUser:
     def test_get_me_with_valid_token(self, client, active_admin):
@@ -172,11 +165,11 @@ class TestGetCurrentUser:
         assert resp.status_code == 401
 
 
-# ── Refresh Token Tests ───────────────────────────────────────────────────────
+# ── Refresh token ──
 
 class TestRefreshToken:
     def test_refresh_token_returns_new_token(self, client, active_admin):
-        # /refresh chỉ nhận REFRESH token (type = "refresh")
+        # /refresh chỉ nhận refresh token (type = "refresh")
         token = create_access_token(data={"sub": active_admin.username, "type": "refresh"})
         resp = client.post(
             "/api/v1/auth/refresh",
@@ -211,7 +204,7 @@ class TestRefreshToken:
         assert resp.status_code == 401
 
 
-# ── Logout Tests ──────────────────────────────────────────────────────────────
+# ── Đăng xuất ──
 
 class TestLogout:
     def test_logout_with_valid_token(self, client, active_admin):
@@ -228,11 +221,11 @@ class TestLogout:
         assert resp.status_code == 401
 
 
-# ── RBAC / Protected Routes ───────────────────────────────────────────────────
+# ── Phân quyền / route được bảo vệ ──
 
 class TestProtectedRoutes:
     def test_protected_route_requires_authentication(self, client):
-        """Inventory list requires auth."""
+        """Danh sách tồn kho yêu cầu xác thực."""
         resp = client.get("/api/v1/inventory/")
         assert resp.status_code == 401
 
@@ -242,7 +235,7 @@ class TestProtectedRoutes:
             "/api/v1/inventory/",
             headers={"Authorization": f"Bearer {token}"},
         )
-        # 200 (no supplies) — authenticated access granted
+        # 200 với danh sách rỗng: đã xác thực
         assert resp.status_code == 200
 
     def test_admin_can_access_audit_logs(self, client, active_admin):
@@ -254,7 +247,6 @@ class TestProtectedRoutes:
         assert resp.status_code == 200
 
     def test_non_admin_cannot_access_audit_logs(self, client, db_session):
-        # Create pharmacist
         pharmacist = User(
             username="pharm",
             email="pharm@test.com",

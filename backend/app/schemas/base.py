@@ -1,4 +1,4 @@
-"""Base Pydantic schemas shared across the application."""
+"""Schema Pydantic dùng chung cho toàn ứng dụng."""
 from datetime import date, datetime
 from enum import Enum
 from typing import Generic, List, Optional, TypeVar
@@ -13,31 +13,10 @@ class UserRole(str, Enum):
     INVENTORY_MANAGER = "Inventory_Manager"
 
 
-class DiseaseType(str, Enum):
-    """4 bệnh hô hấp đơn giản dùng để dự báo nhu cầu kho."""
-    J20 = "J20"  # Viêm phế quản cấp
-    J06 = "J06"  # Nhiễm trùng đường hô hấp trên cấp
-    J02 = "J02"  # Viêm họng cấp
-    J01 = "J01"  # Viêm xoang cấp
-
-
-class SeverityLevel(str, Enum):
-    """Mức độ nặng của bệnh."""
-    MILD = "mild"  # Nhẹ
-    MODERATE = "moderate"  # Trung bình
-    SEVERE = "severe"  # Nặng
-
-
-class LogLevel(str, Enum):
-    ERROR = "ERROR"
-    WARNING = "WARNING"
-    INFO = "INFO"
-
-
-# ── Shared config ─────────────────────────────────────────────────────────────
+# ── Cấu hình chung ─────────────────────────────────────────────────────────────
 
 class ORMBase(BaseModel):
-    """Base schema that enables ORM mode (from_attributes) for all response models."""
+    """Lớp nền bật from_attributes (đọc từ ORM) cho các schema response."""
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -47,7 +26,7 @@ T = TypeVar("T")
 
 
 class PaginatedResponse(BaseModel, Generic[T]):
-    """Generic paginated response wrapper."""
+    """Khung response phân trang tổng quát."""
     total: int
     page: int
     page_size: int
@@ -68,10 +47,6 @@ class LoginResponse(BaseModel):
     token_type: str = "bearer"
     expires_in: int
     user: "UserResponse"
-
-
-class TokenData(BaseModel):
-    username: Optional[str] = None
 
 
 # ── User schemas ──────────────────────────────────────────────────────────────
@@ -118,21 +93,6 @@ class MedicalSupplyBase(BaseModel):
     description: Optional[str] = None
 
 
-class MedicalSupplyCreate(MedicalSupplyBase):
-    pass
-
-
-class MedicalSupplyUpdate(BaseModel):
-    supply_code: Optional[str] = None
-    drug_code: Optional[str] = None
-    ten_hoat_chat: Optional[str] = None
-    unit: Optional[str] = None
-    group_name: Optional[str] = None
-    category: Optional[str] = None
-    unit_price: Optional[float] = None
-    description: Optional[str] = None
-
-
 class MedicalSupplyResponse(ORMBase, MedicalSupplyBase):
     id: int
     created_at: datetime
@@ -159,11 +119,9 @@ class InventoryResponse(ORMBase, InventoryBase):
     id: int
     last_updated: datetime
     supply: Optional[MedicalSupplyResponse] = None
-    # KHO ÂM có thật trong dữ liệu HIS (xuất trước – nhập bù sau; đã gặp:
-    # Metoprolol tồn -30). Ràng buộc ge=0 ở InventoryBase là để chặn NHẬP sai
-    # từ người dùng; response thì phải phản ánh đúng thực tế kho — giữ ge=0 ở
-    # đây làm MỘT dòng âm đánh sập nguyên endpoint danh sách (ResponseValidationError
-    # → 500, trang Thuốc trống trơn). Ghi đè để bỏ ràng buộc ở chiều trả ra.
+    # Tồn âm có thật trong dữ liệu HIS (xuất trước, nhập bù sau). ge=0 ở
+    # InventoryBase chỉ để chặn nhập sai; ở chiều trả ra phải bỏ ràng buộc, nếu
+    # không một dòng âm gây ResponseValidationError (500) cho cả danh sách.
     current_stock: int
     safety_stock: int
 
@@ -173,7 +131,7 @@ class InventoryResponse(ORMBase, InventoryBase):
 class EnvironmentalDataBase(BaseModel):
     recorded_at: datetime
     location: str = Field(..., min_length=1)
-    # Spec 4.4 — validate range
+    # Kiểm tra miền giá trị hợp lệ
     temperature: Optional[float] = Field(None, ge=10, le=45, description="°C, 10-45")
     humidity: Optional[float] = Field(None, ge=0, le=100, description="%, 0-100")
     rainfall: Optional[float] = Field(None, ge=0, description="mm, ≥ 0")
@@ -187,7 +145,7 @@ class EnvironmentalDataCreate(EnvironmentalDataBase):
 
 
 class EnvironmentalDataUpdate(BaseModel):
-    """Cập nhật một phần — tất cả field optional, vẫn validate range."""
+    """Cập nhật một phần: mọi trường tuỳ chọn, vẫn kiểm tra miền giá trị."""
     recorded_at: Optional[datetime] = None
     location: Optional[str] = Field(None, min_length=1)
     temperature: Optional[float] = Field(None, ge=10, le=45)
@@ -207,7 +165,7 @@ class EnvironmentalDataResponse(ORMBase, EnvironmentalDataBase):
 
 class DiseaseCaseBase(BaseModel):
     recorded_at: datetime
-    icd_code: str = Field(..., min_length=1, description="Mã ICD: J20, J06, J02, J01")
+    icd_code: str = Field(..., min_length=1, description="Mã ICD 3 ký tự thuộc ba nhóm J00-J06, J09-J18, J20-J22")
     disease_name: str = Field(..., min_length=1, description="Tên bệnh")
     disease_group: Optional[str] = Field(None, description="Nhóm ICD: J00-J06 / J09-J18 / J20-J22")
     disease_type: Optional[str] = Field(None, description="Loại bệnh (respiratory)")
@@ -245,31 +203,11 @@ class DiseaseCaseResponse(ORMBase, DiseaseCaseBase):
 
 # ── Forecast schemas ──────────────────────────────────────────────────────────
 
-class ForecastRequest(BaseModel):
-    disease_type: DiseaseType
-    forecast_period_days: int = Field(..., ge=7, le=30)
-    location: Optional[str] = None
-
-
-class DiseaseForecastResponse(ORMBase):
-    id: int
-    forecast_date: date
-    disease_type: str
-    predicted_cases: int
-    confidence_lower: Optional[int] = None
-    confidence_upper: Optional[int] = None
-    model_used: Optional[str] = None
-    model_accuracy_mae: Optional[float] = None
-    model_accuracy_rmse: Optional[float] = None
-    model_accuracy_mape: Optional[float] = None
-    forecast_period_days: Optional[int] = None
-    created_at: datetime
-
 
 # ── Supply Requirement schemas ────────────────────────────────────────────────
 
 class SupplyRequirementSummaryItem(BaseModel):
-    """Summary of requirements aggregated by supply type."""
+    """Tổng hợp nhu cầu theo loại thuốc/vật tư."""
     supply_id: int
     supply_name: str
     supply_category: Optional[str] = None
@@ -282,36 +220,13 @@ class SupplyRequirementSummaryItem(BaseModel):
 
 
 class SupplyRequirementSummaryResponse(BaseModel):
-    """Response for supply requirement summary endpoint."""
+    """Response của endpoint tổng hợp nhu cầu thuốc/vật tư."""
     total_supplies: int
     supplies_with_shortage: int
     items: List[SupplyRequirementSummaryItem]
 
 
 # ── Dashboard schemas ─────────────────────────────────────────────────────────
-
-class DashboardOverview(BaseModel):
-    total_supplies: int
-    total_value: float
-    high_risk_shortages: int
-    predicted_demand_30d: int
-    disease_outbreaks: int
-    supply_risk_percentage: float
-    safe_stock_items: int
-    low_stock_items: int
-    critical_risk_items: int
-
-
-class SupplyDemandPoint(BaseModel):
-    date: date
-    actual: Optional[int] = None
-    forecast: Optional[int] = None
-
-
-class SupplyDemandForecast(BaseModel):
-    supply_id: int
-    supply_name: str
-    data_points: List[SupplyDemandPoint]
 
 
 # ── System Config schemas ─────────────────────────────────────────────────────
@@ -332,26 +247,14 @@ class SystemConfigUpdate(BaseModel):
 
 # ── Threshold schemas ─────────────────────────────────────────────────────────
 
-class ThresholdConfig(BaseModel):
-    """Shortage threshold configuration (days until projected shortage)."""
-    critical_days: int = Field(..., ge=1, description="Days threshold for critical severity")
-    high_days: int = Field(..., ge=1, description="Days threshold for high severity")
-    medium_days: int = Field(..., ge=1, description="Days threshold for medium severity")
-
-
-class ThresholdResponse(BaseModel):
-    critical_days: int
-    high_days: int
-    medium_days: int
-
 
 # ── Audit Log schemas ─────────────────────────────────────────────────────────
 
 class AuditLogResponse(ORMBase):
-    """Schema for a single audit log entry."""
+    """Một bản ghi nhật ký kiểm toán."""
     id: int
     user_id: Optional[int] = None
-    username: Optional[str] = None  # enriched from user relationship
+    username: Optional[str] = None  # lấy từ quan hệ user
     action: str
     table_name: Optional[str] = None
     record_id: Optional[int] = None
@@ -362,7 +265,7 @@ class AuditLogResponse(ORMBase):
 
 
 class AuditLogListResponse(BaseModel):
-    """Paginated list of audit log entries."""
+    """Danh sách nhật ký kiểm toán có phân trang."""
     total: int
     page: int
     page_size: int
@@ -372,7 +275,7 @@ class AuditLogListResponse(BaseModel):
 # ── System Log schemas ────────────────────────────────────────────────────────
 
 class SystemLogResponse(ORMBase):
-    """Schema for a single system log entry."""
+    """Một bản ghi log hệ thống."""
     id: int
     log_level: str
     module_name: Optional[str] = None
@@ -382,7 +285,7 @@ class SystemLogResponse(ORMBase):
 
 
 class SystemLogListResponse(BaseModel):
-    """Paginated list of system log entries."""
+    """Danh sách log hệ thống có phân trang."""
     total: int
     page: int
     page_size: int

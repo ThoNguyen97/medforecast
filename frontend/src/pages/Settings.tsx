@@ -23,12 +23,6 @@ import HisConnectionSection from '../components/admin/HisConnectionSection';
 import DssParamsSection from '../components/admin/DssParamsSection';
 import EmpiricalNormsSection from '../components/admin/EmpiricalNormsSection';
 
-// 12/09/2026: ba tab "Tỷ lệ Nhẹ/TB/Nặng", "Định mức thuốc", "Ngưỡng cảnh
-// báo" đã gỡ — chúng sửa ba bảng mà DSS thật không đọc (định mức thực nghiệm
-// thay cho nhập tay; ngưỡng thật là dss.thresholds 18/36 ngày DOI, không phải
-// 3/7/14). Thay bằng "Tham số DSS" (sửa được) và "Định mức thực nghiệm" (chỉ đọc).
-// Mã cũ ở _archive/dinh_muc_nhap_tay/.
-
 type TabKey =
   | 'users'
   | 'roles'
@@ -64,7 +58,7 @@ export default function Settings() {
 
   return (
     <div className="space-y-5">
-      {/* Page header */}
+      {/* Tiêu đề trang */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
@@ -86,7 +80,7 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* Tab nav */}
+      {/* Thanh tab */}
       <div className="bg-white rounded-2xl border border-neutral-200 p-1.5 flex flex-wrap gap-1">
         {TABS.map((t) => {
           const Icon = t.icon;
@@ -110,7 +104,7 @@ export default function Settings() {
         })}
       </div>
 
-      {/* Tab content */}
+      {/* Nội dung tab */}
       <div>
         {activeTab === 'users' && <UsersSection />}
         {activeTab === 'roles' && <RolesPermissionsSection />}

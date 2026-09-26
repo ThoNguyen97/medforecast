@@ -3,12 +3,12 @@ import { render, screen } from '@testing-library/react';
 import { useAuthStore } from '../store/authStore';
 import type { User } from '../types/auth';
 
-// Test ProtectedRoute and PublicRoute logic by simulating routes
-// Using MemoryRouter to avoid BrowserRouter window.location issues
+// Kiểm tra logic ProtectedRoute/PublicRoute bằng MemoryRouter
+// (tránh phụ thuộc window.location của BrowserRouter).
 
 import { MemoryRouter, Routes, Route, Navigate } from 'react-router-dom';
 
-// Simplified versions of the route guards from App.tsx
+// Bản rút gọn của các route guard trong App.tsx
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuthStore();
   if (!isAuthenticated) return <Navigate to="/login" replace />;

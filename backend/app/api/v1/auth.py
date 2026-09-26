@@ -1,4 +1,4 @@
-"""Authentication API endpoints."""
+"""API xác thực: đăng nhập, đăng xuất, thông tin người dùng hiện tại, làm mới token JWT."""
 from datetime import timedelta
 from typing import Any
 
@@ -19,12 +19,7 @@ security = HTTPBearer()
 
 @router.post("/login", response_model=LoginResponse)
 def login(user_credentials: UserLogin, db: Session = Depends(get_db)) -> Any:
-    """
-    User login endpoint.
-    
-    Authenticates user with username/password and returns JWT token.
-    """
-    # Find user by username
+    """Đăng nhập bằng tên đăng nhập/mật khẩu; trả access token, refresh token và hồ sơ người dùng."""
     user = db.query(User).filter(User.username == user_credentials.username).first()
     
     if not user:
@@ -34,7 +29,6 @@ def login(user_credentials: UserLogin, db: Session = Depends(get_db)) -> Any:
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    # Verify password
     if not verify_password(user_credentials.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -42,20 +36,18 @@ def login(user_credentials: UserLogin, db: Session = Depends(get_db)) -> Any:
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    # Check if user is active
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Inactive user"
         )
     
-    # Create access token
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
     
-    # Create refresh token (same as access token for now, but with longer expiry)
+    # Refresh token cùng cơ chế JWT, phân biệt bằng claim type = "refresh", hạn 7 ngày.
     refresh_token_expires = timedelta(days=7)
     refresh_token = create_access_token(
         data={"sub": user.username, "type": "refresh"}, expires_delta=refresh_token_expires
@@ -65,35 +57,26 @@ def login(user_credentials: UserLogin, db: Session = Depends(get_db)) -> Any:
         "access_token": access_token,
         "refresh_token": refresh_token,
         "token_type": "bearer",
-        "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,  # Convert to seconds
+        "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,  # giây
         "user": user
     }
 
 
 @router.post("/logout")
 def logout(current_user: User = Depends(get_current_user)) -> Any:
-    """
-    User logout endpoint.
-    
-    Note: Since we're using stateless JWT tokens, logout is handled client-side
-    by removing the token. This endpoint serves as a confirmation.
-    """
+    """Xác nhận đăng xuất; JWT không lưu trạng thái nên phía client tự xoá token."""
     return {"message": "Successfully logged out"}
 
 
 @router.get("/me", response_model=UserResponse)
 def get_current_user_info(current_user: User = Depends(get_current_user)) -> Any:
-    """
-    Get current user information.
-    
-    Returns the authenticated user's profile information.
-    """
+    """Hồ sơ của người dùng đang đăng nhập."""
     return current_user
 
 
 @router.post("/refresh", response_model=Token)
 def refresh_token(current_user: User = Depends(get_user_from_refresh_token)) -> Any:
-    """Cấp access token mới. Header Authorization phải mang REFRESH token
+    """Cấp access token mới. Header Authorization phải mang refresh token
     (type = "refresh"); access token hết hạn không đổi được token mới."""
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
@@ -103,5 +86,5 @@ def refresh_token(current_user: User = Depends(get_user_from_refresh_token)) -> 
     return {
         "access_token": access_token,
         "token_type": "bearer",
-        "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60  # Convert to seconds
+        "expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60  # giây
     }

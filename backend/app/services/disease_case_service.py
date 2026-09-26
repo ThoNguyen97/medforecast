@@ -1,4 +1,4 @@
-"""Disease Case service layer."""
+"""Nghiệp vụ ca bệnh: kiểm tra, nhập tay, thống kê và chuỗi thời gian theo mã ICD."""
 import logging
 from typing import List, Optional, Dict, Any
 from datetime import datetime
@@ -8,44 +8,33 @@ from fastapi import HTTPException, status
 
 from app.models.disease_case import DiseaseCase
 from app.models.audit_log import AuditLog
-from app.schemas.base import DiseaseCaseCreate, DiseaseType
+from app.schemas.base import DiseaseCaseCreate
+from app.utils.icd_groups import NHOM_ICD, ma_thuoc_nhom
 
 logger = logging.getLogger(__name__)
 
 
 class DiseaseCaseService:
-    """Service for managing disease case data."""
+    """Quản lý dữ liệu ca bệnh."""
     
-    # 4 bệnh hô hấp được chọn để dự báo
-    VALID_DISEASE_TYPES = [
-        DiseaseType.J20.value,  # Viêm phế quản cấp
-        DiseaseType.J06.value,  # Nhiễm trùng đường hô hấp trên cấp
-        DiseaseType.J02.value,  # Viêm họng cấp
-        DiseaseType.J01.value,  # Viêm xoang cấp
-    ]
+    # 20 mã ICD thuộc ba nhóm hô hấp trong phạm vi hệ thống
+    VALID_DISEASE_TYPES = [ma for nhom in NHOM_ICD for ma in ma_thuoc_nhom(nhom)]
     
     def __init__(self, db: Session):
         self.db = db
     
     def validate_disease_case_data(self, data: DiseaseCaseCreate) -> None:
-        """
-        Validate disease case data.
-        
-        Raises HTTPException if validation fails.
-        """
+        """Kiểm tra dữ liệu ca bệnh; HTTP 400 kèm danh sách lỗi nếu không hợp lệ."""
         errors = []
         
-        # Validate non-negative case count
         if data.case_count < 0:
             errors.append("Case count must be non-negative")
         
-        # Validate ICD code (mã bệnh)
         if data.icd_code not in self.VALID_DISEASE_TYPES:
             errors.append(
                 f"Invalid ICD code. Must be one of: {', '.join(self.VALID_DISEASE_TYPES)}"
             )
         
-        # Validate location is not empty
         if not data.location or not data.location.strip():
             errors.append("Location must not be empty")
         
@@ -62,16 +51,14 @@ class DiseaseCaseService:
         icd_code: Optional[str] = None,
         location: Optional[str] = None
     ) -> List[DiseaseCase]:
-        """Get list of disease case records with optional filtering."""
+        """Danh sách ca bệnh, lọc tuỳ chọn theo mã ICD và địa điểm."""
         query = self.db.query(DiseaseCase).order_by(
             desc(DiseaseCase.recorded_at)
         )
         
-        # Filter by ICD code
         if icd_code:
             query = query.filter(DiseaseCase.icd_code == icd_code)
         
-        # Filter by location
         if location:
             query = query.filter(DiseaseCase.location == location)
         
@@ -84,11 +71,9 @@ class DiseaseCaseService:
         created_by_user_id: int,
         ip_address: str
     ) -> DiseaseCase:
-        """Create a new disease case record."""
-        # Validate data
+        """Tạo bản ghi ca bệnh và ghi audit log."""
         self.validate_disease_case_data(data)
         
-        # Create record
         disease_case = DiseaseCase(
             recorded_at=data.recorded_at,
             icd_code=data.icd_code,
@@ -106,7 +91,6 @@ class DiseaseCaseService:
         self.db.add(disease_case)
         self.db.flush()
         
-        # Log the action
         audit_log = AuditLog(
             user_id=created_by_user_id,
             action="CREATE_DISEASE_CASE",
@@ -138,11 +122,7 @@ class DiseaseCaseService:
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None
     ) -> List[Dict[str, Any]]:
-        """
-        Get statistics by ICD code.
-        
-        Returns total case counts grouped by ICD code.
-        """
+        """Tổng số ca và số bản ghi theo mã ICD."""
         query = self.db.query(
             DiseaseCase.icd_code,
             DiseaseCase.disease_name,
@@ -151,7 +131,6 @@ class DiseaseCaseService:
             func.max(DiseaseCase.recorded_at).label("latest_record")
         ).group_by(DiseaseCase.icd_code, DiseaseCase.disease_name)
         
-        # Apply filters
         if location:
             query = query.filter(DiseaseCase.location == location)
         
@@ -163,7 +142,6 @@ class DiseaseCaseService:
         
         results = query.all()
         
-        # Format results
         statistics = []
         for row in results:
             statistics.append({
@@ -184,11 +162,7 @@ class DiseaseCaseService:
         end_date: Optional[datetime] = None,
         limit: int = 100
     ) -> List[Dict[str, Any]]:
-        """
-        Get trend data (time series) for disease cases.
-        
-        Returns case counts over time, optionally filtered by ICD code and location.
-        """
+        """Chuỗi thời gian số ca theo ngày, lọc tuỳ chọn theo mã ICD và địa điểm."""
         query = self.db.query(
             func.date(DiseaseCase.recorded_at).label("date"),
             DiseaseCase.icd_code,
@@ -202,7 +176,6 @@ class DiseaseCaseService:
             DiseaseCase.location
         ).order_by(desc(func.date(DiseaseCase.recorded_at)))
         
-        # Apply filters
         if icd_code:
             query = query.filter(DiseaseCase.icd_code == icd_code)
         
@@ -217,10 +190,9 @@ class DiseaseCaseService:
         
         results = query.limit(limit).all()
         
-        # Format results
         trends = []
         for row in results:
-            # SQLite's func.date() returns a string, not a date object
+            # Trên SQLite func.date() trả chuỗi, không phải date.
             date_str = row.date if isinstance(row.date, str) else (row.date.isoformat() if row.date else None)
             trends.append({
                 "date": date_str,

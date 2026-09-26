@@ -1,7 +1,6 @@
-"""Schema DB trung gian 3 tầng: STAGING → CLEAN (dim/fact) → MART.
+"""Schema DB trung gian: CLEAN (dim/fact) → MART.
 
-Tất cả bảng prefix rõ tầng để dễ đọc:
-  stg_*   : dữ liệu thô vừa nạp (landing), gần như nguyên trạng nguồn
+Tiền tố bảng theo tầng:
   dim_*   : bảng chiều đã chuẩn hóa (ICD phân cấp, vật tư, địa bàn)
   fact_*  : bảng sự kiện đã làm sạch (ca bệnh, tiêu thụ vật tư, tồn kho)
   mart_*  : bảng tổng hợp sẵn dùng cho mô hình & báo cáo
@@ -10,19 +9,18 @@ Tất cả bảng prefix rõ tầng để dễ đọc:
 from __future__ import annotations
 
 from sqlalchemy import (
-    Column, Integer, BigInteger, String, Float, Boolean, Date, DateTime, Text,
-    UniqueConstraint, Index,
+    Column, Integer, String, Float, Boolean, Date, DateTime, Text,
+    UniqueConstraint,
 )
 from sqlalchemy.sql import func
 
 from .db import Base
 
-# PK tự tăng chạy được cả SQLite lẫn Postgres. Dùng Integer cho tương thích
-# (SQLite chỉ auto-increment với INTEGER PRIMARY KEY; Postgres -> SERIAL).
+# PK tự tăng dùng Integer: SQLite chỉ auto-increment với INTEGER PRIMARY KEY, Postgres ánh xạ SERIAL.
 PK = Integer
 
 
-# ───────────────────────── DIMENSIONS ─────────────────────────
+# ── Dimensions ──
 class DimIcd(Base):
     """Danh mục ICD phân cấp Mã → Nhóm → Chương (từ TM_ICD)."""
     __tablename__ = "dim_icd"
@@ -51,7 +49,7 @@ class DimRegion(Base):
     region = Column(String(120), primary_key=True)
 
 
-# ───────────────────────── FACTS ─────────────────────────
+# ── Facts ──
 class FactDiseaseCase(Base):
     """Số ca theo tháng × mã ICD × địa bàn (đã khử trùng số ca lặp theo vật tư)."""
     __tablename__ = "fact_disease_case"
@@ -71,9 +69,9 @@ class FactDiseaseCase(Base):
     )
 
 
-# ───────────────────────── MARTS ─────────────────────────
+# ── Marts ──
 class MartMonthlyCasesByBlock(Base):
-    """Tổng số ca theo tháng × NHÓM ICD — đầu vào huấn luyện (dự báo phân cấp B1)."""
+    """Tổng số ca theo tháng × nhóm ICD, đầu vào huấn luyện mô hình tầng nhóm."""
     __tablename__ = "mart_monthly_cases_by_block"
     id = Column(PK, primary_key=True, autoincrement=True)
     period = Column(String(7), index=True)
@@ -91,7 +89,7 @@ class MartMonthlyCasesByBlock(Base):
 
 
 class MartIcdShareInBlock(Base):
-    """Tỷ trọng từng mã trong nhóm — dùng để chia ngược (dự báo phân cấp B2/B3)."""
+    """Tỷ trọng từng mã trong nhóm, dùng để phân bổ top-down dự báo nhóm xuống mã."""
     __tablename__ = "mart_icd_share_in_block"
     id = Column(PK, primary_key=True, autoincrement=True)
     block_code = Column(String(20), index=True)
@@ -105,7 +103,7 @@ class MartIcdShareInBlock(Base):
 
 
 class MartInventory(Base):
-    """Snapshot tồn kho mới nhất — phục vụ báo cáo tồn kho."""
+    """Snapshot tồn kho mới nhất phục vụ báo cáo tồn kho."""
     __tablename__ = "mart_inventory"
     supply_code = Column(String(60), primary_key=True)
     name = Column(String(400))
@@ -137,9 +135,9 @@ class MartMonthlyWeather(Base):
     )
 
 
-# ───────────────────────── SYNC STATE ─────────────────────────
+# ── Sync state ──
 class SyncState(Base):
-    """Watermark + nhật ký mỗi lần đồng bộ (để nạp tăng dần & truy vết)."""
+    """Watermark và nhật ký mỗi lần đồng bộ, phục vụ nạp tăng dần và truy vết."""
     __tablename__ = "sync_state"
     id = Column(Integer, primary_key=True, autoincrement=True)
     source = Column(String(40), index=True)
@@ -149,4 +147,3 @@ class SyncState(Base):
     status = Column(String(20))                     # ok / failed
     message = Column(Text)
     run_at = Column(DateTime(timezone=True), server_default=func.now())
-# end of models

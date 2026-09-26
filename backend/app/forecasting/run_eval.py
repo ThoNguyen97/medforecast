@@ -1,21 +1,20 @@
-"""CLI: backtest walk-forward chính thức — sinh bảng số cho chương 4.
+"""CLI backtest walk-forward, sinh các bảng kết quả đánh giá mô hình.
 
-Chạy từ thư mục backend/ (Windows, venv đã cài statsmodels):
+Chạy từ thư mục backend/ (cần statsmodels để có SARIMAX/ETS):
 
-    python -m app.forecasting.run_eval --db data/medforecast.db --out ketqua/
+    python -m app.forecasting.run_eval --db data/medforecast.db --out ketqua_backtest
 
 Sinh ra trong --out:
-    phancap.csv        4 hướng phân cấp × 3 nhóm, đủ chỉ số (M3/M5/M7)
-    nhom.csv           mức nhóm + độ phủ khoảng dự báo (M9)
-    thoitiet.csv       ensemble CÓ vs KHÔNG thời tiết — cùng cấu hình sản xuất
-    smearing.csv       ensemble CÓ vs KHÔNG smearing (M8, đối chứng)
-    ket_hop.csv        M12: cách kết hợp thành viên (mean / inv_mae / +bias, có/không ETS)
-    thanhvien.csv      thành viên nào đóng góp bao nhiêu % bước, rớt bao nhiêu (M6)
-    cau_hinh.json      PRODUCTION_CONFIG đã dùng + ngày chạy + có statsmodels không
+    phancap.csv        4 hướng phân cấp × các nhóm, đủ chỉ số
+    nhom.csv           mức nhóm + độ phủ khoảng dự báo
+    thoitiet.csv       ensemble có/không thời tiết, cùng cấu hình sản xuất
+    smearing.csv       ensemble có/không smearing (đối chứng)
+    ket_hop.csv        cách kết hợp thành viên (mean / inv_mae / +bias, có/không ETS)
+    thanhvien.csv      tỷ lệ bước mỗi thành viên đóng góp và số lần rớt
+    cau_hinh.json      PRODUCTION_CONFIG đã dùng, thời điểm chạy, có statsmodels không
 
-MỌI tham số mô hình đến từ config.PRODUCTION_CONFIG (M1). Cờ --no-weather /
---smearing / --lam / --from-period chỉ để ĐỐI CHỨNG — kết quả ghi rõ là biến
-thể, không được đưa vào bảng chính thức.
+Tham số mô hình lấy từ config.PRODUCTION_CONFIG. Cờ --no-weather / --smearing /
+--lam / --from-period chỉ để đối chứng; kết quả được ghi là biến thể.
 """
 from __future__ import annotations
 import argparse
@@ -40,13 +39,9 @@ CHI_SO = ["MAE", "RMSE", "RelMAE", "ME", "MPE_pct", "sMAPE_pct", "WAPE_pct"]
 
 
 def _tat_canh_bao():
-    # Từng lần một thành viên rớt đã được ĐẾM vào thanhvien.csv — không cần
-    # in hàng chục dòng warning giống nhau ra màn hình nữa.
+    # Chỉ lọc cảnh báo trong CLI: số lần thành viên rớt đã được đếm vào thanhvien.csv.
     import logging
     logging.getLogger("app.forecasting.models").setLevel(logging.ERROR)
-    """Chỉ lọc trong CLI cho dễ đọc — KHÔNG lọc trong app. ConvergenceWarning là
-    SARIMAX báo không hội tụ trên chuỗi thưa; giờ nó đã được ghi vào cột
-    members_failed nên không cần đọc từng dòng cảnh báo nữa."""
     warnings.filterwarnings("ignore", category=RuntimeWarning)
     warnings.filterwarnings("ignore", category=UserWarning)
     try:
@@ -131,7 +126,7 @@ def main():
     pd.DataFrame(rows_tt).round(3).to_csv(out / "thoitiet.csv", index=False, encoding="utf-8-sig")
     pd.DataFrame(rows_sm).round(3).to_csv(out / "smearing.csv", index=False, encoding="utf-8-sig")
 
-    # M12: cách kết hợp — thành viên ghi một lần, combiner chạy lại
+    # Cách kết hợp: thành viên ghi một lần, combiner chạy lại.
     rows_kh = []
     for b in blocks:
         ce = combine_effect(db, b, cfg)
@@ -155,7 +150,7 @@ def main():
         "config": cfg.as_record(),
     }, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    # ── in ra màn hình ─────────────────────────────────────────────────
+    # ── In ra màn hình ──
     pd.set_option("display.width", 160)
     pd.set_option("display.float_format", lambda x: f"{x:,.3f}")
     pd.set_option("display.max_colwidth", 60)
@@ -168,10 +163,10 @@ def main():
     if rows_tt:
         print("\n=== THỜI TIẾT (ensemble sản xuất, có vs không) ===")
         print(pd.DataFrame(rows_tt)[["nhom", "khong_RelMAE", "co_RelMAE", "khong_MPE_pct", "co_MPE_pct", "giam_MAE_pct"]].round(3).to_string(index=False))
-    print("\n=== SMEARING (đối chứng M8) ===")
+    print("\n=== SMEARING (đối chứng) ===")
     print(pd.DataFrame(rows_sm).round(3).to_string(index=False))
     if not df_kh.empty:
-        print("\n=== KẾT HỢP THÀNH VIÊN (M12) — RelMAE nhóm theo biến thể ===")
+        print("\n=== KẾT HỢP THÀNH VIÊN — RelMAE nhóm theo biến thể ===")
         print(df_kh.pivot_table(index="bien_the", columns="nhom", values="RelMAE").round(3).to_string())
     best = tong.loc[tong["RelMAE"].idxmin(), "phuong_an"]
     print(f"\n>> RelMAE thấp nhất: {best}")

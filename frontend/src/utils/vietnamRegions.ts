@@ -11,9 +11,9 @@ const MAJOR_CITIES = ['TP. Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng', 'Hải P
 /**
  * Chuẩn hoá tên tỉnh/thành về dạng dùng trong master VN_REGIONS.
  *
- * Data thật (data_HM) dùng tên đầy đủ "Thành phố Hồ Chí Minh", "Thành phố Hà Nội"...
- * còn master dùng dạng ngắn "TP. Hồ Chí Minh", "Hà Nội". Hàm này map 2 biến thể
- * về 1 key chung để dropdown + cascade phường/xã khớp nhau.
+ * Dữ liệu nguồn dùng tên đầy đủ ("Thành phố Hồ Chí Minh", "Thành phố Hà Nội"...),
+ * master dùng dạng ngắn ("TP. Hồ Chí Minh", "Hà Nội"); quy về một khoá chung để
+ * dropdown và cascade quận/huyện khớp nhau.
  */
 const PROVINCE_ALIASES: Record<string, string> = {
   'Thành phố Hồ Chí Minh': 'TP. Hồ Chí Minh',
@@ -35,7 +35,7 @@ export function normalizeProvinceName(name: string): string {
 }
 
 // Map tỉnh/thành → list đơn vị hành chính cấp huyện
-export const VN_REGIONS: Record<string, string[]> = {
+const VN_REGIONS: Record<string, string[]> = {
   // ── 5 thành phố trực thuộc trung ương ──────────────────────────────
   'TP. Hồ Chí Minh': [
     'Quận 1', 'Quận 3', 'Quận 4', 'Quận 5', 'Quận 6', 'Quận 7', 'Quận 8',
@@ -442,8 +442,8 @@ export const VN_REGIONS: Record<string, string[]> = {
 
 /**
  * Trả về danh sách quận/huyện cho 1 tỉnh/thành.
- * - Ưu tiên master data (chính xác, theo thứ tự tự nhiên).
- * - Bổ sung những quận/huyện DB đã có nhưng master chưa liệt kê (chống lệch khi master out-of-date).
+ * Ưu tiên master data (theo thứ tự tự nhiên), bổ sung quận/huyện có trong DB
+ * nhưng master chưa liệt kê.
  */
 export function getDistrictsForRegion(
   region: string,

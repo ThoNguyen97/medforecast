@@ -1,10 +1,9 @@
 /**
  * Chart theme chuẩn hóa cho toàn hệ thống (recharts).
  *
- * Palette categorical đã VALIDATE bằng bộ kiểm tra dataviz (CVD ΔE ≥ 8,
- * normal-vision ΔE ≥ 15, lightness band, chroma floor) trên nền trắng.
- * Quy tắc: gán màu theo THỨ TỰ CỐ ĐỊNH, không xoay vòng; màu trạng thái
- * (status) dành riêng cho cảnh báo, không dùng làm màu series.
+ * Palette categorical đã kiểm định trên nền trắng (CVD ΔE ≥ 8, normal-vision
+ * ΔE ≥ 15, lightness band, chroma floor). Gán màu theo thứ tự cố định, không
+ * xoay vòng; màu trạng thái dành riêng cho cảnh báo, không dùng làm màu series.
  */
 
 /** Series categorical — thứ tự cố định slot 1→5 */
@@ -15,22 +14,6 @@ export const SERIES = {
   s4: '#eda100', // yellow   — series 4
   s5: '#1baf7a', // aqua     — series 5
   s6: '#eb6834', // orange   — series 6
-} as const;
-
-export const SERIES_ORDER: string[] = [
-  SERIES.s1,
-  SERIES.s2,
-  SERIES.s3,
-  SERIES.s4,
-  SERIES.s5,
-];
-
-/** Màu trạng thái — chỉ dùng cho cảnh báo/badge, luôn kèm icon hoặc nhãn */
-export const STATUS = {
-  good: '#16a34a',
-  warning: '#d97706',
-  serious: '#ea580c',
-  critical: '#dc2626',
 } as const;
 
 /** Màu phụ trợ trung tính cho trục/lưới/nhãn — grid phải "lùi về sau" */
@@ -48,13 +31,6 @@ export const gridProps = {
   vertical: false,
 } as const;
 
-export const axisProps = {
-  stroke: 'transparent',
-  tickLine: false,
-  axisLine: false,
-  tick: { fill: INK.axis, fontSize: 12 },
-} as const;
-
 export const tooltipStyle = {
   contentStyle: {
     background: '#ffffff',
@@ -69,11 +45,3 @@ export const tooltipStyle = {
   cursor: { stroke: '#cbd5e1', strokeWidth: 1 },
 } as const;
 
-export const legendStyle = {
-  iconSize: 8,
-  wrapperStyle: { fontSize: 12, color: '#4b5563' },
-} as const;
-
-/** Độ dày line chuẩn 2px, marker ≥ 3px radius */
-export const LINE_WIDTH = 2;
-export const DOT_RADIUS = 3;

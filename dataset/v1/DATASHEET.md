@@ -25,9 +25,9 @@ thực hiện đồ án; không có tài trợ.
 ## 3. Quy trình thu thập
 
 - Số lượt lấy từ bảng khám/điều trị của HIS bằng thủ tục T-SQL
-  `usp_MedForecast_DayDuLieu` (mã trong `sql_his/`), đếm DISTINCT lượt theo
-  (tháng, khối) và (tháng, mã), đẩy sang cơ sở trung gian STA; app nạp về
-  bằng tài khoản chỉ đọc.
+  `usp_MedForecast_DayDuLieu` (`sql_his/prod/02_usp_MedForecast_DayDuLieu.sql`), đếm DISTINCT lượt theo
+  (tháng, khối) và (tháng, mã), đẩy sang CSDL `MEDFORECAST_DW` trên máy chủ
+  trung gian STA; ứng dụng đọc về bằng tài khoản chỉ đọc.
 - Thời tiết tải từ Open-Meteo archive API theo ngày rồi gộp tháng.
 - Thời điểm xuất ghi trong `manifest.json`; sha256 từng file để đối chiếu.
 
@@ -38,8 +38,8 @@ thực hiện đồ án; không có tài trợ.
 - Cờ `is_covid` cho 2020-01 → 2021-12; các thành viên hồi quy loại các tháng
   này khỏi ước lượng (không xoá khỏi file).
 - Cờ `is_complete` để loại kỳ đang mở khỏi huấn luyện.
-- Không nội suy, không làm mượt, không cắt ngoại lai — mô hình nhìn đúng số
-  HIS ghi.
+- Không nội suy, không làm mượt, không cắt ngoại lai; mô hình dùng đúng số liệu
+  HIS ghi nhận.
 - Không có bước "chia train/test" cố định trong file: giao thức chia là
   walk-forward mở rộng cửa sổ (xem README) và được thực thi trong `train.py`.
 
@@ -54,30 +54,30 @@ thực hiện đồ án; không có tài trợ.
   Nếu phát hành ra ngoài bệnh viện kèm theo tách tỉnh hoặc tuổi/giới thì phải
   áp ngưỡng k = 5.
 - Dữ liệu thuộc bệnh viện; điều kiện sử dụng và công bố do bệnh viện quyết
-  định — ghi rõ căn cứ cho phép khi nộp đồ án. Không dùng để suy đoán về cá
-  nhân hay cơ sở khác.
+  định; căn cứ cho phép sử dụng được ghi rõ trong đồ án. Không dùng để suy đoán
+  về cá nhân hay cơ sở khác.
 
 ## 6. Hạn chế đã biết
 
-- **Đứt gãy chế độ ghi nhận đầu 2025** (Đ11): phân cấp chăm sóc và cách nhập
-  chẩn đoán thay đổi, kéo mức nền J09-J18 lên ~3,7×; mô hình học được nhờ xu
-  hướng + hệ số lệch nhưng người dùng phải biết đây là thay đổi hành chính, không
-  phải dịch.
+- **Đứt gãy chế độ ghi nhận đầu 2025**: phân cấp chăm sóc và cách nhập chẩn
+  đoán thay đổi, kéo mức nền J09-J18 lên ~3,7×; mô hình thích nghi nhờ xu hướng
+  và hệ số lệch, nhưng người dùng cần hiểu đây là thay đổi hành chính, không
+  phải dịch bệnh.
 - **Giai đoạn COVID 2020–2021** không đại diện; đã gắn cờ.
 - Một bệnh viện, một trạm thời tiết: không suy rộng cho địa bàn khác nếu không
   huấn luyện lại.
 - Chuỗi ngắn (92 tháng, 7 chu kỳ mùa): đủ cho mô hình thống kê, **không đủ cho
-  deep learning** — đó là lý do không dùng LSTM.
+  deep learning**; đây là lý do không dùng LSTM.
 - Số lượt ≠ số bệnh nhân: một người khám hai lần trong tháng là hai lượt.
 - Kỳ đang mở luôn thấp hơn thật; không dùng để so xu hướng.
 
 ## 7. Bảo trì và phiên bản
 
-- Phiên bản `1.0` (11/09/2026). Xuất lại khi có tháng mới bằng
+- Phiên bản `1.0`. Xuất lại khi có tháng mới bằng
   `python -m app.forecasting.dataset`; tăng phiên bản khi đổi định nghĩa cột
   hoặc quy tắc gộp, không tăng khi chỉ thêm tháng.
 - Kết quả huấn luyện chính thức trên bản này: RelMAE mức mã 0,500 (top-down
-  động), mức nhóm 0,516 / 0,377 / 0,541 — `docs/KetQua_Backtest_ChonCauHinh.md`.
+  động), mức nhóm 0,516 / 0,377 / 0,541 (`backend/ketqua_backtest/`).
 
 ## 8. Cách trích dẫn
 

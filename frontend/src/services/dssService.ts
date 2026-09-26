@@ -3,8 +3,8 @@ import type { AlertsPayload, AlertsQuery, DssParams, DssParamsUpdate, NormsPaylo
 import type { BlockCode } from '../types/dashboardV2';
 
 /**
- * Một công thức, một bộ tham số (12/09/2026).
- * Cảnh báo thiếu hụt, tham số DSS và bảng tra định mức thực nghiệm đều đi qua đây.
+ * API DSS dùng chung một công thức và một bộ tham số: cảnh báo thiếu hụt,
+ * tham số DSS và bảng tra định mức thực nghiệm.
  */
 export const dssService = {
   /** Toàn bộ dòng cảnh báo — cùng chuỗi Tầng 1→2→3 với Tổng quan, phân trang server. */

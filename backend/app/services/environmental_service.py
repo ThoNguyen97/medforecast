@@ -1,4 +1,4 @@
-"""Environmental Data service layer."""
+"""Nghiệp vụ dữ liệu môi trường (thời tiết, chất lượng không khí): kiểm tra, nhập tay, truy vấn."""
 import logging
 from typing import List, Optional
 from datetime import datetime
@@ -15,15 +15,15 @@ logger = logging.getLogger(__name__)
 
 
 class EnvironmentalDataService:
-    """Service for managing environmental data."""
+    """Quản lý dữ liệu môi trường."""
     
-    # Validation ranges for environmental data
-    TEMP_MIN = -50.0  # Celsius
-    TEMP_MAX = 60.0   # Celsius
-    HUMIDITY_MIN = 0.0  # Percentage
-    HUMIDITY_MAX = 100.0  # Percentage
+    # Miền giá trị hợp lệ.
+    TEMP_MIN = -50.0  # °C
+    TEMP_MAX = 60.0   # °C
+    HUMIDITY_MIN = 0.0  # %
+    HUMIDITY_MAX = 100.0  # %
     RAINFALL_MIN = 0.0  # mm
-    RAINFALL_MAX = 1000.0  # mm (per day)
+    RAINFALL_MAX = 1000.0  # mm/ngày
     AQI_MIN = 0
     AQI_MAX = 500
     
@@ -31,42 +31,34 @@ class EnvironmentalDataService:
         self.db = db
     
     def validate_environmental_data(self, data: EnvironmentalDataCreate) -> None:
-        """
-        Validate environmental data for reasonable value ranges.
-        
-        Raises HTTPException if validation fails.
-        """
+        """Kiểm tra miền giá trị; HTTP 400 kèm danh sách lỗi nếu không hợp lệ."""
         errors = []
         
-        # Validate temperature
         if data.temperature is not None:
             if not (self.TEMP_MIN <= data.temperature <= self.TEMP_MAX):
                 errors.append(
                     f"Temperature must be between {self.TEMP_MIN}°C and {self.TEMP_MAX}°C"
                 )
         
-        # Validate humidity
         if data.humidity is not None:
             if not (self.HUMIDITY_MIN <= data.humidity <= self.HUMIDITY_MAX):
                 errors.append(
                     f"Humidity must be between {self.HUMIDITY_MIN}% and {self.HUMIDITY_MAX}%"
                 )
         
-        # Validate rainfall
         if data.rainfall is not None:
             if not (self.RAINFALL_MIN <= data.rainfall <= self.RAINFALL_MAX):
                 errors.append(
                     f"Rainfall must be between {self.RAINFALL_MIN}mm and {self.RAINFALL_MAX}mm"
                 )
         
-        # Validate air quality index
         if data.air_quality_index is not None:
             if not (self.AQI_MIN <= data.air_quality_index <= self.AQI_MAX):
                 errors.append(
                     f"Air Quality Index must be between {self.AQI_MIN} and {self.AQI_MAX}"
                 )
         
-        # Check if at least one measurement is provided
+        # Cần ít nhất một chỉ số đo.
         if all(v is None for v in [
             data.temperature,
             data.humidity,
@@ -87,12 +79,11 @@ class EnvironmentalDataService:
         limit: int = 100,
         location: Optional[str] = None
     ) -> List[EnvironmentalData]:
-        """Get list of environmental data records with optional filtering."""
+        """Danh sách dữ liệu môi trường, lọc tuỳ chọn theo địa điểm."""
         query = self.db.query(EnvironmentalData).order_by(
             desc(EnvironmentalData.recorded_at)
         )
         
-        # Filter by location
         if location:
             query = query.filter(EnvironmentalData.location == location)
         
@@ -105,11 +96,9 @@ class EnvironmentalDataService:
         created_by_user_id: int,
         ip_address: str
     ) -> EnvironmentalData:
-        """Create a new environmental data record."""
-        # Validate data
+        """Tạo bản ghi môi trường (chuẩn hoá tên tỉnh) và ghi audit log."""
         self.validate_environmental_data(data)
         
-        # Create record
         env_data = EnvironmentalData(
             recorded_at=data.recorded_at,
             location=ten_chuan(data.location),
@@ -124,7 +113,6 @@ class EnvironmentalDataService:
         self.db.add(env_data)
         self.db.flush()
         
-        # Log the action
         audit_log = AuditLog(
             user_id=created_by_user_id,
             action="CREATE_ENVIRONMENTAL_DATA",
@@ -151,7 +139,7 @@ class EnvironmentalDataService:
         return env_data
     
     def get_latest_data(self, location: Optional[str] = None) -> EnvironmentalData:
-        """Get the latest environmental data record."""
+        """Bản ghi môi trường mới nhất; 404 nếu không có."""
         query = self.db.query(EnvironmentalData).order_by(
             desc(EnvironmentalData.recorded_at)
         )
@@ -176,8 +164,7 @@ class EnvironmentalDataService:
         end_date: datetime,
         location: Optional[str] = None
     ) -> List[EnvironmentalData]:
-        """Get environmental data for a specific date range."""
-        # Validate date range
+        """Dữ liệu môi trường trong khoảng ngày."""
         if start_date > end_date:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

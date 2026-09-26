@@ -52,9 +52,7 @@ def db():
     engine.dispose()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Tầng 3 — FEFO và nhãn
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Tầng 3 — FEFO và nhãn ──
 
 def test_fefo_lo_het_han_khong_huu_dung():
     hom = date(2026, 9, 13)
@@ -124,12 +122,12 @@ def test_alert_rows_gan_nhan_dung(db):
 
     out = dss_alerts.alert_rows(s, demand={"A": 600.0})
     theo_ma = {r["supply_code"]: r for r in out["rows"]}
-    # A có nhu cầu dự báo 600/30 ngày → mẫu số 20/ngày (KHÔNG phải d_daily 10)
+    # A có nhu cầu dự báo 600/30 ngày → mẫu số 20/ngày (không phải d_daily 10)
     assert theo_ma["A"]["d_eff"] == pytest.approx(20.0)
     assert theo_ma["A"]["d_daily"] == pytest.approx(10.0)
     assert theo_ma["A"]["doi"] == pytest.approx(5.0) and theo_ma["A"]["muc"] == "red"
     assert theo_ma["A"]["delta_need"] == pytest.approx(500.0)
-    # B không có D_i → KHÔNG lùi về tiêu hao lịch sử: không mẫu số → Xám
+    # B không có D_i → không lùi về tiêu hao lịch sử: không mẫu số → Xám
     assert theo_ma["B"]["d_eff"] == pytest.approx(0.0)
     assert theo_ma["B"]["doi"] is None and theo_ma["B"]["muc"] == "grey"
     # còn xuất trong 12 kỳ (d_daily 10) nên lý do là "chưa có dự báo",
@@ -154,10 +152,9 @@ def _fixture_mot_ma(s, engine, ton=100.0, han="2030-01-01"):
 
 
 def test_so_ca_du_bao_tang_thi_nhan_doi_mau(db):
-    """KHOÁ phương án B (19/09/2026): màu cảnh báo PHẢI đổi khi số ca dự báo
-    đổi. Cùng một tồn 100, tiêu hao lịch sử 10/ngày; dự báo thấp → Xanh, dự
-    báo cao → Đỏ. Trước 19/09 cả hai đều ra DOI = 10 (Đỏ) vì mẫu số là
-    d_daily, tức Tầng 1 không lái Tầng 3."""
+    """Màu cảnh báo đổi theo số ca dự báo (mẫu số DOI là nhu cầu dự báo, không phải
+    d_daily). Cùng tồn 100, tiêu hao lịch sử 10/ngày: dự báo thấp → Xanh, dự báo
+    cao → Đỏ."""
     s, engine = db
     _fixture_mot_ma(s, engine, ton=100.0)
     thap = {r["supply_code"]: r for r in dss_alerts.alert_rows(s, demand={"A": 60.0})["rows"]}
@@ -167,9 +164,8 @@ def test_so_ca_du_bao_tang_thi_nhan_doi_mau(db):
 
 
 def test_khong_co_du_bao_thi_xam_chu_khong_lui_ve_lich_su(db):
-    """KHOÁ quyết định 20/09: một công thức DOI duy nhất. Không truyền demand
-    thì KHÔNG có mẫu số — trả Xám, chứ không âm thầm chia cho tiêu hao lịch sử
-    (giữ nhánh đó thì trên cùng một bảng tồn tại hai công thức DOI)."""
+    """Chỉ có một công thức DOI: không truyền demand thì không có mẫu số và trả
+    Xám, không chia cho tiêu hao lịch sử."""
     s, engine = db
     _fixture_mot_ma(s, engine, ton=100.0)
     khong = {r["supply_code"]: r for r in dss_alerts.alert_rows(s)["rows"]}
@@ -179,7 +175,7 @@ def test_khong_co_du_bao_thi_xam_chu_khong_lui_ve_lich_su(db):
 
 
 def test_fefo_dung_cung_mau_so_du_bao(db):
-    """FEFO và DOI phải nói về cùng một tốc độ tiêu thụ. Lô 100 viên còn 10
+    """FEFO và DOI dùng cùng một tốc độ tiêu thụ. Lô 100 viên còn 10
     ngày hạn: dự báo 2/ngày → chỉ 20 viên kịp dùng (s_usable 20, DOI 10);
     dự báo 20/ngày → dùng kịp cả 100 (s_usable 100, DOI 5)."""
     s, engine = db
@@ -193,16 +189,14 @@ def test_fefo_dung_cung_mau_so_du_bao(db):
 
 def test_het_hang_that_khong_dem_ma_con_hang(db):
     """`het_hang` chỉ khi tồn hữu dụng = 0; mã còn 1 viên với DOI 0,05 (hiển thị
-    0,0) KHÔNG được đếm là hết hàng."""
+    0,0) không được đếm là hết hàng."""
     s, engine = db
     _fixture_mot_ma(s, engine, ton=1.0)
     r = {x["supply_code"]: x for x in dss_alerts.alert_rows(s, demand={"A": 600.0})["rows"]}["A"]
     assert r["doi"] is not None and 0 < r["doi"] < 0.2 and r["het_hang"] is False
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Bốn view — loại kỳ dở dang, chỉ thuốc
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Bốn view — loại kỳ dở dang, chỉ thuốc ──
 
 def test_views_loai_ky_do_va_vtyt(db):
     s, engine = db
@@ -243,9 +237,7 @@ def test_focus_loai_ma_da_ngung_dung(db):
     assert [r[0] for r in s.execute(text("SELECT supply_code FROM v_supply_focus"))] == ["A"]
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Tầng 2 — định mức và quy đổi
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Tầng 2 — định mức và quy đổi ──
 
 def test_demand_by_supply_cong_thuc(db):
     s, engine = db
@@ -284,9 +276,7 @@ def test_demand_khong_chia_0_khi_ca_bang_0(db):
     assert dm["so_ma"] == 0
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Đồng bộ danh mục vật tư từ mart
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Đồng bộ danh mục vật tư từ mart ──
 
 class _Gia:
     """Đối tượng giả cho một dòng MartInventory / MedicalSupply."""
@@ -295,10 +285,9 @@ class _Gia:
 
 
 def test_dong_bo_cap_nhat_category():
-    """Phân loại tính lại bên PROD phải tới được mã ĐÃ TỒN TẠI.
+    """Đồng bộ danh mục cập nhật cả `category` cho mã đã tồn tại.
 
-    13/09/2026: nhánh cập nhật thiếu `category` nên sau khi sửa #DrugMeta trên
-    PROD và đồng bộ, 3.001 mã vẫn giữ nhãn 'Dịch truyền' cũ.
+    Phân loại được tính lại bên PROD (#DrugMeta) phải ghi đè nhãn cũ trong SQLite.
     """
     s = _Gia(drug_code="D1", ten_hoat_chat="Paracetamol", unit="Viên",
              group_name="2. GIẢM ĐAU", category="Dịch truyền")
@@ -323,9 +312,7 @@ def test_dong_bo_khong_doi_thi_khong_ghi():
     assert sync_service.cap_nhat_thuoc_tinh_vat_tu(s, t) == []
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Tầng 1 — kết hợp thích ứng
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Tầng 1 — kết hợp thích ứng ──
 
 def test_combiner_trong_so_nghich_dao_mae():
     c = AdaptiveCombiner("inv_mae", window=12, power=1, min_hist=2)
@@ -356,9 +343,7 @@ def test_combiner_khong_lich_su_la_trung_binh_deu():
     assert final == 15.0 and w == {"a": 0.5, "b": 0.5} and b == 1.0
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Nạp dữ liệu — xoá-rồi-chèn
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Nạp dữ liệu — xoá-rồi-chèn ──
 
 def test_replace_periods_idempotent_va_giu_ky_khac(db):
     s, _ = db
@@ -408,17 +393,13 @@ def test_prepare_don_ro_la_va_gop_trung_khoa():
     assert int(out.loc[out["ro"] == "NGT", "cases"].iloc[0]) == 7
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Khoá hai lỗi sửa ngày 18/09/2026
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Mẫu số d_daily và co ngót tỷ trọng rổ ──
 
 def test_d_daily_chia_so_ky_cua_so_khong_phai_so_ky_co_dong(db):
-    """d_daily lấy mẫu số là SỐ KỲ CỦA CỬA SỔ, giống nhau cho mọi mã.
+    """d_daily lấy mẫu số là số kỳ của cửa sổ, giống nhau cho mọi mã.
 
-    Trước 18/09 mẫu số là COUNT(*) — số kỳ mà RIÊNG mã đó có xuất — nên mã chỉ
-    xuất 1 trong 3 kỳ có d_daily ngang mã xuất đều cả 3 kỳ, và tồn ít của nó
-    thành Đỏ giả. Đo 14/09 trên toàn danh mục: 284 mã Đỏ có 8 mã chỉ 1 kỳ,
-    19 mã 2 kỳ, 10 mã 3 kỳ.
+    Nếu chia cho số kỳ riêng mã đó có xuất (COUNT(*)), mã xuất thưa sẽ bị thổi
+    phồng d_daily và báo Đỏ giả.
     """
     s, engine = db
     rows = [(_ky(i), "DEU", 0, 300.0, 100.0, 200.0) for i in (1, 2, 3)]
@@ -434,16 +415,15 @@ def test_d_daily_chia_so_ky_cua_so_khong_phai_so_ky_co_dong(db):
         "SELECT supply_code, d_daily, so_ky FROM v_supply_daily_demand"))}
     assert d["DEU"][0] == pytest.approx(900 / 3 / 30.0)       # 3 kỳ, tổng 900
     assert d["LE"][0] == pytest.approx(300 / 3 / 30.0)        # 1 kỳ có dòng, vẫn chia 3
-    assert d["LE"][0] * 3 == pytest.approx(d["DEU"][0])       # KHÔNG bằng nhau
-    assert d["DEU"][1] == 3 and d["LE"][1] == 1               # cột so_ky giữ nghĩa cũ
+    assert d["LE"][0] * 3 == pytest.approx(d["DEU"][0])       # không bằng nhau
+    assert d["DEU"][1] == 3 and d["LE"][1] == 1               # so_ky vẫn là số kỳ có dòng
 
 
 def test_co_ngot_p_mu_chi_ap_trong_khoi_noi_tru(db):
-    """Co ngót tỷ trọng rổ mẫu nhỏ KHÔNG được đụng tới tỷ trọng ngoại trú.
+    """Co ngót tỷ trọng rổ mẫu nhỏ chỉ áp trong khối nội trú, không đụng tới NGT.
 
-    Trước 18/09 phép co ngót co về phân bố đều trên MỌI rổ kể cả NGT, kéo tỷ
-    trọng nội trú lên 3–4 lần (J00-J06: NGT 79,6% → 73,1%) và phồng nhu cầu
-    thuốc nội trú, vốn có định mức trên một lượt cao hơn hẳn ngoại trú.
+    Co về phân bố đều trên mọi rổ (kể cả NGT) sẽ kéo tỷ trọng nội trú lên và
+    thổi phồng nhu cầu thuốc nội trú, vốn có định mức trên một lượt cao hơn.
     """
     s, engine = db
     k = _ky(1)
@@ -454,7 +434,7 @@ def test_co_ngot_p_mu_chi_ap_trong_khoi_noi_tru(db):
     views.tao_views(engine)
 
     p = dss_demand.care_level_shares(s)["J00-J06"]
-    assert p["NGT"] == pytest.approx(1000 / 1020)             # ngoại trú GIỮ NGUYÊN tỷ trọng thô
+    assert p["NGT"] == pytest.approx(1000 / 1020)             # ngoại trú giữ nguyên tỷ trọng thô
     assert p["NT1"] + p["NT2"] == pytest.approx(20 / 1020)    # khối nội trú giữ nguyên khối lượng
     assert sum(p.values()) == pytest.approx(1.0)
     # trong khối nội trú, rổ mẫu nhỏ hơn được kéo về phía phân bố đều

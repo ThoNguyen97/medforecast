@@ -1,1 +1,1 @@
-# Integration tests package
+# Gói test tích hợp

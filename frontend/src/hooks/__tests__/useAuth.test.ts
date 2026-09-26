@@ -16,7 +16,6 @@ vi.mock('react-router-dom', async () => {
   };
 });
 
-// Provide MemoryRouter context for the hook
 import { createElement, type ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -111,7 +110,7 @@ describe('useAuth', () => {
       await result.current.logout();
     });
 
-    // Still clears auth despite API error
+    // API lỗi vẫn phải xoá trạng thái đăng nhập
     expect(useAuthStore.getState().isAuthenticated).toBe(false);
   });
 
@@ -134,12 +133,11 @@ describe('useAuth', () => {
   });
 
   it('checkAndRefreshToken refreshes when token is expired', async () => {
-    // Set expired token
     useAuthStore.setState({
       user: mockUser,
       isAuthenticated: true,
       token: 'expired-tok',
-      tokenExpiry: Date.now() - 1000, // already expired
+      tokenExpiry: Date.now() - 1000,
     });
     vi.mocked(authService.refreshToken).mockResolvedValueOnce({
       access_token: 'refreshed-tok',

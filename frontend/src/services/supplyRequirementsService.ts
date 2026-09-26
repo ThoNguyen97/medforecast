@@ -1,6 +1,6 @@
 import api from './api';
 
-export interface SupplyRequirementSummaryItem {
+interface SupplyRequirementSummaryItem {
   supply_id: number;
   supply_name: string;
   supply_category?: string | null;
@@ -12,7 +12,7 @@ export interface SupplyRequirementSummaryItem {
   requirement_count: number;
 }
 
-export interface SupplyRequirementSummaryResponse {
+interface SupplyRequirementSummaryResponse {
   total_supplies: number;
   supplies_with_shortage: number;
   items: SupplyRequirementSummaryItem[];

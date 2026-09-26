@@ -1,4 +1,4 @@
-"""Configuration service layer."""
+"""Đọc/ghi cấu hình hệ thống (system_config) kèm audit log."""
 import json
 import logging
 from typing import List, Optional
@@ -13,7 +13,7 @@ from app.schemas.base import SystemConfigUpdate
 logger = logging.getLogger(__name__)
 
 class ConfigService:
-    """Service for managing system configuration."""
+    """Quản lý cấu hình hệ thống."""
 
     def __init__(self, db: Session):
         self.db = db
@@ -21,7 +21,7 @@ class ConfigService:
     # ── SystemConfig helpers ──────────────────────────────────────────────────
 
     def get_all_configs(self) -> List[SystemConfig]:
-        """Mọi dòng system_config, mật khẩu HIS đã che (xem `_che_mat_khau`)."""
+        """Mọi dòng system_config, mật khẩu HIS đã che."""
         rows = self.db.query(SystemConfig).order_by(SystemConfig.config_key).all()
         return [self._che_mat_khau(r) for r in rows]
 
@@ -40,9 +40,11 @@ class ConfigService:
         return self._che_mat_khau(cfg)
 
     def _che_mat_khau(self, cfg: SystemConfig) -> SystemConfig:
-        """`his_sync.connection` chứa `password_enc`. Endpoint /config đọc được
-        bởi mọi người dùng đã đăng nhập, nên trả về bản đã bỏ khoá đó (tách
-        khỏi session để không vô tình ghi đè). Bản đầy đủ chỉ SyncService đọc."""
+        """Bỏ `password_enc` khỏi `his_sync.connection` trước khi trả qua /config.
+
+        Endpoint /config mở cho mọi người dùng đã đăng nhập; bản ghi được expunge khỏi
+        session để không ghi đè giá trị gốc. Bản đầy đủ chỉ SyncService đọc.
+        """
         if cfg.config_key != "his_sync.connection":
             return cfg
         try:
@@ -63,7 +65,7 @@ class ConfigService:
         updated_by_user_id: int,
         ip_address: str,
     ) -> SystemConfig:
-        """Update (or create) a config entry and write an audit log."""
+        """Cập nhật (hoặc tạo) một khoá cấu hình và ghi audit log."""
         cfg = (
             self.db.query(SystemConfig)
             .filter(SystemConfig.config_key == key)
@@ -90,7 +92,7 @@ class ConfigService:
                 updated_by=updated_by_user_id,
             )
             self.db.add(cfg)
-            self.db.flush()  # populate cfg.id before audit log
+            self.db.flush()  # cần cfg.id cho audit log
 
         new_value = {
             "config_key": key,
@@ -115,7 +117,3 @@ class ConfigService:
             f"Config key='{key}' updated by user_id={updated_by_user_id}"
         )
         return cfg
-
-    # 12/09/2026: get/update_conversion_ratios và get/update_thresholds (3/7/14
-    # ngày) đã gỡ — không service nào đọc chúng; ngưỡng thật là `dss.thresholds`
-    # (Đỏ ≤ 18 / Vàng ≤ 36 ngày DOI), sửa qua /api/v1/dss/params.

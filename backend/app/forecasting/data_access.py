@@ -23,17 +23,11 @@ def list_blocks(db_path: str, region: str = "TOAN_QUOC") -> List[str]:
 def group_series(db_path: str, block: str, region: str = "TOAN_QUOC",
                  complete_only: bool = True,
                  from_period: str | None = None) -> pd.DataFrame:
-    """Chuỗi tháng của cả NHÓM: [period, year, month, cases, is_covid].
+    """Chuỗi tháng của cả nhóm: [period, year, month, cases, is_covid].
 
-    `from_period` dạng 'YYYY-MM' cắt lịch sử từ mốc đó trở đi.
-
-    Vì sao cần: chuỗi có DỊCH CHUYỂN MỨC NỀN thì học trên giai đoạn mức cũ sẽ
-    kéo dự báo xuống và hụt liên tục — sai một chiều, không tự sửa qua các kỳ.
-    Đo mức dịch chuyển bằng mục 7 của `sql_his/06_danh_gia_du_lieu.sql`; tỷ số
-    gần đây / trước đó vượt 2,0 là dấu hiệu phải cắt.
-
-    Đánh đổi: cắt càng gần thì càng ít chu kỳ mùa vụ để học. Đừng chọn bằng cảm
-    tính — chạy `run_eval.py --from-period` vài mốc rồi so MASE.
+    `from_period` ('YYYY-MM') cắt lịch sử từ mốc đó, dùng khi chuỗi dịch chuyển mức nền
+    (học trên mức cũ gây lệch một chiều). Cắt càng gần càng ít chu kỳ mùa để học;
+    chọn mốc bằng `run_eval.py --from-period` và so MASE.
     """
     sql = ("select period, year, month, cases, is_covid, is_complete "
            "from mart_monthly_cases_by_block where region=? and block_code=? "
@@ -53,7 +47,7 @@ def group_series(db_path: str, block: str, region: str = "TOAN_QUOC",
 def code_series(db_path: str, block: str,
                 complete_only: bool = True,
                 from_period: str | None = None) -> Dict[str, pd.DataFrame]:
-    """Chuỗi tháng cho từng MÃ trong nhóm (gộp toàn quốc từ fact_disease_case)."""
+    """Chuỗi tháng cho từng mã trong nhóm (gộp toàn quốc từ fact_disease_case)."""
     sql = ("select period, year, month, icd_code, sum(cases) as cases, "
            "max(is_covid) as is_covid, min(is_complete) as is_complete "
            "from fact_disease_case where block_code=? "

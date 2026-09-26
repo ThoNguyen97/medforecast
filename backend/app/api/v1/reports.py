@@ -1,4 +1,4 @@
-"""Báo cáo — xem trước JSON và xuất PDF/Excel.
+"""API báo cáo: xem trước JSON và xuất PDF/Excel.
 
 Routes
 ------
@@ -6,10 +6,8 @@ GET  /api/v1/reports/forecast-accuracy   độ lệch dự báo/thực tế theo
 POST /api/v1/reports/export              xuất một trong 6 loại: epidemic, forecast, inventory,
                                          shortage, forecast-accuracy, dashboard-summary
 
-Mọi con số về ca bệnh neo vào kỳ ĐÃ CHỐT (period_service); mọi con số về thiếu
-hụt đi qua đúng chuỗi Tầng 1→2→3 của dss_dashboard/dss_alerts — báo cáo xuất ra
-không được lệch với màn hình. Hai báo cáo cũ `consumption` và `inventory-turnover`
-(đọc bảng supply_requirements đã ngừng sinh dữ liệu) gỡ 13/09/2026.
+Số ca bệnh neo vào kỳ đã chốt (period_service); số thiếu hụt đi qua cùng chuỗi
+Tầng 1→2→3 của dss_dashboard/dss_alerts, để báo cáo xuất ra khớp với màn hình.
 """
 
 import io
@@ -25,27 +23,19 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.disease_forecast import DiseaseForecast
-from app.models.inventory import Inventory
-from app.models.medical_supply import MedicalSupply
 from app.models.user import User
 
 
 def _month_expr(col, fmt: str):
-    """Định dạng tháng trên SQLite ('%m/%Y' hoặc '%Y-%m'). Hệ thống chỉ chạy
-    SQLite (Postgres đã archive), không còn nhánh dialect."""
+    """Biểu thức định dạng tháng ('%m/%Y' hoặc '%Y-%m') theo strftime của SQLite."""
     return func.strftime(fmt, col)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["reports"])
 
-# Ngưỡng DOI mặc định — chỉ dùng làm nhãn trong báo cáo tồn kho khi chưa đọc
-# được dss.thresholds; phân loại thiếu hụt thật đi qua dss_alerts.
-DOI_DO_NGAY = 18
-DOI_VANG_NGAY = 36
 
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── Helpers ──
 
 def _default_date_range(
     start_date: Optional[date],
@@ -60,38 +50,25 @@ def _default_date_range(
     return start, end
 
 
-# ── Consumption Report ────────────────────────────────────────────────────────
-
-# ── Forecast Accuracy Report ──────────────────────────────────────────────────
+# ── Báo cáo độ chính xác dự báo ──
 
 @router.get("/forecast-accuracy")
 async def get_forecast_accuracy_report(
-    start_date: Optional[date] = Query(None, description="Report start date (YYYY-MM-DD)"),
-    end_date: Optional[date] = Query(None, description="Report end date (YYYY-MM-DD)"),
+    start_date: Optional[date] = Query(None, description="Ngày bắt đầu (YYYY-MM-DD)"),
+    end_date: Optional[date] = Query(None, description="Ngày kết thúc (YYYY-MM-DD)"),
     disease_type: Optional[str] = Query(
         None,
-        description="Filter by disease type: dengue_fever, seasonal_flu, respiratory_disease",
+        description="Lọc theo disease_type của bản dự báo (hiện chỉ có 'respiratory')",
     ),
     model_used: Optional[str] = Query(
         None,
-        description="Filter by model: xgboost, lstm, prophet, ensemble",
+        description="Lọc theo model_used của bản dự báo (ensemble, top_down, cung_ky…)",
     ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Dict:
-    """
-    Return forecast accuracy metrics over time.
-
-    Shows MAE, RMSE, and MAPE trends for each model, broken down by disease
-    type.  Useful for monitoring model performance degradation over time.
-
-    Filters
-    -------
-    start_date   : start of the reporting period (default: 30 days ago)
-    end_date     : end of the reporting period (default: today)
-    disease_type : restrict to a specific disease
-    model_used   : restrict to a specific model name
-    """
+    """Chỉ số MAE/RMSE/MAPE của các bản dự báo đã ghi nhận theo thời gian, tổng hợp
+    theo mô hình. Khoảng mặc định: 30 ngày trước đến 60 ngày tới."""
     start, end = _default_date_range(start_date, end_date)
 
     logger.info(
@@ -125,7 +102,6 @@ async def get_forecast_accuracy_report(
 
     rows = query.order_by(DiseaseForecast.forecast_date).all()
 
-    # Aggregate per model
     model_stats: Dict[str, Dict] = {}
     time_series: List[Dict] = []
 
@@ -160,7 +136,6 @@ async def get_forecast_accuracy_report(
             "mape": float(row.model_accuracy_mape) if row.model_accuracy_mape is not None else None,
         })
 
-    # Compute averages per model
     model_summary = []
     for model, stats in model_stats.items():
         mae_vals = stats["mae_values"]
@@ -176,7 +151,7 @@ async def get_forecast_accuracy_report(
             "min_rmse": round(min(rmse_vals), 4) if rmse_vals else None,
         })
 
-    # Best model by lowest avg MAPE
+    # Mô hình tốt nhất theo MAPE trung bình thấp nhất.
     best_model = None
     if model_summary:
         ranked = sorted(
@@ -201,12 +176,7 @@ async def get_forecast_accuracy_report(
     }
 
 
-# ── Inventory Turnover Report ─────────────────────────────────────────────────
-
-# ── Export Report ─────────────────────────────────────────────────────────────
-
-class ReportExportRequest:
-    """Simple holder – we use a Pydantic model below."""
+# ── Xuất báo cáo ──
 
 
 from pydantic import BaseModel
@@ -307,12 +277,12 @@ async def export_report(
             else _render_shortage_excel(data, start, end)
         )
 
-    # Không tới được: SUPPORTED_TYPES đã chặn từ đầu hàm. Giữ 400 để tường minh.
+    # Không tới được do SUPPORTED_TYPES đã chặn; giữ để hàm luôn trả hoặc raise.
     raise HTTPException(status_code=400,
                         detail=f"Loại báo cáo không hỗ trợ: {payload.report_type}")
 
 
-# ── Internal data-fetching helpers (reused by export) ────────────────────────
+# ── Lấy dữ liệu cho báo cáo xuất ──
 
 async def _build_accuracy_data(
     db: Session,
@@ -332,10 +302,10 @@ async def _build_accuracy_data(
     return query.order_by(DiseaseForecast.forecast_date).all()
 
 
-# ── PDF rendering helpers ─────────────────────────────────────────────────────
+# ── Dựng PDF ──
 
-# Đăng ký font Unicode (DejaVu Sans) một lần khi module load — hỗ trợ tiếng Việt.
-# Nếu register thất bại, các renderer sẽ tự fallback về Helvetica (không có dấu).
+# Font Unicode (DejaVu Sans) đăng ký lười một lần để hiển thị tiếng Việt;
+# đăng ký thất bại thì giữ Helvetica (không có dấu).
 PDF_FONT_REGULAR = "Helvetica"
 PDF_FONT_BOLD = "Helvetica-Bold"
 _FONT_REGISTERED = False
@@ -344,9 +314,8 @@ _FONT_REGISTERED = False
 def _register_unicode_fonts() -> None:
     """Đăng ký DejaVu Sans (Regular + Bold) nếu chưa đăng ký.
 
-    Các font này đi kèm matplotlib (là dependency hiện có) nên không cần
-    phụ thuộc vào font hệ thống. Nếu không tìm thấy, giữ font Helvetica
-    mặc định và log cảnh báo.
+    Ưu tiên font đi kèm matplotlib để không phụ thuộc font hệ thống; không tìm
+    thấy thì giữ Helvetica và ghi cảnh báo.
     """
     global _FONT_REGISTERED, PDF_FONT_REGULAR, PDF_FONT_BOLD
     if _FONT_REGISTERED:
@@ -356,7 +325,6 @@ def _register_unicode_fonts() -> None:
         from reportlab.pdfbase import pdfmetrics
         from reportlab.pdfbase.ttfonts import TTFont
 
-        # Tìm thư mục font DejaVu trong matplotlib
         try:
             import matplotlib  # type: ignore
 
@@ -371,7 +339,7 @@ def _register_unicode_fonts() -> None:
         except Exception:
             regular = bold = ""
 
-        # Fallback: font hệ thống macOS / Linux
+        # Dự phòng: font hệ thống macOS / Linux.
         if not (os.path.exists(regular) and os.path.exists(bold)):
             for candidate in (
                 "/Library/Fonts/Arial Unicode.ttf",
@@ -379,7 +347,7 @@ def _register_unicode_fonts() -> None:
             ):
                 if os.path.exists(candidate):
                     regular = candidate
-                    bold = candidate  # cùng file dùng cho cả bold (sẽ bold giả lập)
+                    bold = candidate  # cùng file cho cả bold
                     break
 
         if not (regular and os.path.exists(regular)):
@@ -397,7 +365,7 @@ def _register_unicode_fonts() -> None:
             PDF_FONT_BOLD = "DejaVuSans"
         PDF_FONT_REGULAR = "DejaVuSans"
 
-        # Map family để các style có thể dùng <b>...</b> trong Paragraph
+        # Khai báo family để Paragraph dùng được <b>...</b>.
         from reportlab.pdfbase.pdfmetrics import registerFontFamily
 
         registerFontFamily(
@@ -415,7 +383,7 @@ def _register_unicode_fonts() -> None:
 
 
 def _get_reportlab():
-    """Import reportlab or raise a clean 500 error."""
+    """Import reportlab; thiếu thư viện thì trả lỗi 500 rõ ràng."""
     try:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import A4, landscape
@@ -428,7 +396,6 @@ def _get_reportlab():
             Paragraph,
             Spacer,
         )
-        # Đăng ký font Unicode (idempotent)
         _register_unicode_fonts()
         return colors, A4, landscape, getSampleStyleSheet, cm, SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
     except ImportError:
@@ -439,7 +406,7 @@ def _get_reportlab():
 
 
 def _patch_styles_for_unicode(styles) -> None:
-    """Áp dụng font Unicode lên tất cả các paragraph styles (Title, Heading, Normal, Italic...)."""
+    """Gán font Unicode cho các paragraph style chuẩn (Title/Heading dùng bold)."""
     for name in (
         "Normal",
         "BodyText",
@@ -452,7 +419,6 @@ def _patch_styles_for_unicode(styles) -> None:
     ):
         try:
             style = styles[name]
-            # Dùng bold hay regular tuỳ tên style
             if "Heading" in name or name == "Title":
                 style.fontName = PDF_FONT_BOLD
             else:
@@ -462,7 +428,7 @@ def _patch_styles_for_unicode(styles) -> None:
 
 
 def _base_table_style(colors):
-    """Return a shared base TableStyle list."""
+    """Danh sách TableStyle dùng chung: header xanh đậm, dòng xen màu, lưới mảnh."""
     return [
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F4E79")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -534,17 +500,16 @@ def _render_accuracy_pdf(forecasts: list, start: date, end: date) -> Response:
     )
 
 
-# ── Dashboard Summary Export ─────────────────────────────────────────────────
+# ── Báo cáo tổng quan (dashboard-summary) ──
 
 
 async def _build_dashboard_summary_data(db: Session) -> Dict:
     """Toàn bộ chỉ số của trang Tổng quan cho báo cáo `dashboard-summary`.
 
-    Số ca neo vào KỲ ĐÃ CHỐT gần nhất (period_service ← mart_monthly_cases_by_block,
-    is_complete = 1), không phải tháng lịch hiện tại: tháng đang chạy mới có vài
-    ngày dữ liệu, so với nó thì "xu hướng" và "dự báo/thực tế" đều ra hàng
-    nghìn phần trăm. Nhu cầu và cảnh báo đi đúng chuỗi Tầng 1→2→3 của
-    dss_dashboard để báo cáo không lệch màn hình.
+    Số ca neo vào kỳ đã chốt gần nhất (period_service ← mart_monthly_cases_by_block,
+    is_complete = 1), không phải tháng lịch hiện tại vốn chỉ có vài ngày dữ liệu
+    và làm các tỷ lệ xu hướng sai lệch lớn. Nhu cầu và cảnh báo đi cùng chuỗi
+    Tầng 1→2→3 của dss_dashboard để khớp màn hình.
     """
     from app.services import dss_dashboard, dss_alerts, period_service as ps
 
@@ -568,7 +533,7 @@ async def _build_dashboard_summary_data(db: Session) -> Dict:
     muc_canh_bao = ps.danh_gia_muc_canh_bao(
         dem_focus, (al_focus.get("tong_hop") or {}).get("nguong"), last_closed)
 
-    # Xu hướng 6 kỳ đã chốt, kèm cùng kỳ năm trước — cùng nguồn mart.
+    # Xu hướng 6 kỳ đã chốt kèm cùng kỳ năm trước, cùng nguồn mart.
     trend_rows = []
     for row in ps.case_series(db, n_periods=6, end_period=last_closed):
         p = row["period"]
@@ -578,9 +543,8 @@ async def _build_dashboard_summary_data(db: Session) -> Dict:
             "last_year": int(ps.cases_in_period(db, ps.shift_period(p, -12)) or 0),
         })
 
-    # Top 5 thuốc demand vs stock — cùng bảng "Nhu cầu 30 ngày" của Cảnh báo
-    # thiếu hụt (delta_need = max(0, d_forecast - s_usable)), không phải
-    # SupplyRequirement (đã dừng sinh dữ liệu — xem _archive/README.md).
+    # Top 5 thuốc theo thiếu hụt delta_need = max(0, d_forecast − s_usable),
+    # cùng nguồn với trang Cảnh báo thiếu hụt.
     focus_rows = list(al_focus.get("rows") or [])
     top_demand = sorted(
         (r for r in focus_rows if r.get("d_forecast") is not None),
@@ -596,7 +560,7 @@ async def _build_dashboard_summary_data(db: Session) -> Dict:
         for r in top_demand
     ]
 
-    # Bảng cảnh báo top 5 (Đỏ trước, Vàng sau) — cùng thứ tự với trang Cảnh báo.
+    # Top 5 cảnh báo (Đỏ trước, Vàng sau, DOI tăng dần), cùng thứ tự với trang Cảnh báo.
     _thu_tu = {"red": 0, "amber": 1, "green": 2, "grey": 3}
     _severity_vi = {"red": "critical", "amber": "high"}
     top_alerts = sorted(
@@ -636,7 +600,7 @@ async def _build_dashboard_summary_data(db: Session) -> Dict:
 
 
 def _render_dashboard_summary_pdf(data: Dict) -> Response:
-    """Render báo cáo tổng quan Dashboard ra file PDF."""
+    """Dựng PDF báo cáo tổng quan."""
     colors, A4, landscape, getSampleStyleSheet, cm, SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer = _get_reportlab()
 
     buf = io.BytesIO()
@@ -652,7 +616,6 @@ def _render_dashboard_summary_pdf(data: Dict) -> Response:
     _patch_styles_for_unicode(styles)
     story = []
 
-    # Title
     story.append(Paragraph(
         f"Báo cáo Dashboard tổng quan - tháng {data['month_label']}",
         styles["Title"],
@@ -666,7 +629,6 @@ def _render_dashboard_summary_pdf(data: Dict) -> Response:
 
     base_style = _base_table_style(colors)
 
-    # 1. KPI table
     story.append(Paragraph("<b>I. Chỉ số tổng quan (KPI)</b>", styles["Heading2"]))
     kpi = data["kpi"]
     kpi_table = Table(
@@ -696,7 +658,6 @@ def _render_dashboard_summary_pdf(data: Dict) -> Response:
     story.append(kpi_table)
     story.append(Spacer(1, 0.5 * cm))
 
-    # 2. Case trend table
     story.append(Paragraph("<b>II. Xu hướng ca bệnh 6 tháng</b>", styles["Heading2"]))
     trend_data = [["Tháng", "Năm nay", "Năm trước"]]
     for r in data["case_trend"]:
@@ -706,10 +667,9 @@ def _render_dashboard_summary_pdf(data: Dict) -> Response:
     story.append(trend_table)
     story.append(Spacer(1, 0.5 * cm))
 
-    # 3. Demand vs Stock table
     story.append(Paragraph("<b>III. Nhu cầu vs Tồn kho (Top 5)</b>", styles["Heading2"]))
 
-    # Style nhỏ cho text dài trong cell, tự wrap
+    # Style ô bảng cỡ nhỏ, tự xuống dòng cho tên thuốc dài.
     from reportlab.lib.styles import ParagraphStyle
 
     cell_style = ParagraphStyle(
@@ -718,7 +678,7 @@ def _render_dashboard_summary_pdf(data: Dict) -> Response:
         fontName=PDF_FONT_REGULAR,
         fontSize=8,
         leading=10,
-        wordWrap="CJK",  # cho phép wrap ở mọi vị trí, kể cả không có space
+        wordWrap="CJK",  # cho phép xuống dòng ở mọi vị trí, kể cả không có khoảng trắng
     )
 
     if data["demand_vs_stock"]:
@@ -737,7 +697,6 @@ def _render_dashboard_summary_pdf(data: Dict) -> Response:
         story.append(Paragraph("Không có dữ liệu nhu cầu trong 60 ngày tới.", styles["Normal"]))
     story.append(Spacer(1, 0.5 * cm))
 
-    # 4. Alerts table
     story.append(Paragraph("<b>IV. Cảnh báo thiếu hụt thuốc (Top 5)</b>", styles["Heading2"]))
     if data["alerts"]:
         severity_label = {"critical": "Nguy hiểm", "high": "Thiếu hụt", "medium": "Cảnh báo"}
@@ -751,7 +710,6 @@ def _render_dashboard_summary_pdf(data: Dict) -> Response:
             ])
         a_table = Table(a_data, colWidths=[8.5 * cm, 2.5 * cm, 2.5 * cm, 2.5 * cm], repeatRows=1)
         style = list(base_style)
-        # Color severity column
         for row_num, a in enumerate(data["alerts"], 1):
             sev = a["severity"]
             if sev == "critical":
@@ -776,10 +734,7 @@ def _render_dashboard_summary_pdf(data: Dict) -> Response:
     )
 
 
-
-# ═══════════════════════════════════════════════════════════════════════════
-# Module 8 — Smart Medical Reports: Data Builders cho 5 loại mới
-# ═══════════════════════════════════════════════════════════════════════════
+# ── Lấy dữ liệu cho các báo cáo nghiệp vụ ──
 
 
 async def _build_epidemic_data(
@@ -789,7 +744,7 @@ async def _build_epidemic_data(
     disease_type: Optional[str],
     location: Optional[str],
 ) -> Dict:
-    """Báo cáo Tình hình dịch bệnh: số ca theo tháng × bệnh × khu vực."""
+    """Báo cáo tình hình dịch bệnh: số ca theo tháng × bệnh × khu vực."""
     from app.models.disease_case import DiseaseCase
 
     q = db.query(
@@ -839,7 +794,7 @@ async def _build_forecast_data(
     disease_type: Optional[str],
     location: Optional[str],
 ) -> Dict:
-    """Báo cáo Dự báo ca bệnh: predicted_cases + risk + explanation."""
+    """Báo cáo dự báo ca bệnh: số dự báo, thực tế, độ lệch, mức rủi ro và giải thích."""
     from app.models.disease_forecast import DiseaseForecast
 
     q = db.query(DiseaseForecast).filter(
@@ -862,7 +817,7 @@ async def _build_forecast_data(
     from app.services.actual_case_service import do_lech_pct, so_ca_thuc_te
 
     def _thuc_te(r) -> Optional[int]:
-        # Ưu tiên số nhập tay (nếu có), còn lại lấy từ disease_cases.
+        # Ưu tiên số nhập tay, còn lại lấy từ disease_cases.
         if r.actual_cases is not None:
             return int(r.actual_cases)
         if r.forecast_date is None:
@@ -899,20 +854,14 @@ async def _build_inventory_data(
     db: Session,
     category: Optional[str],
 ) -> Dict:
-    """Báo cáo Tồn kho thuốc — CÙNG chuỗi với trang Quản lý thuốc và Cảnh báo
+    """Báo cáo tồn kho thuốc, cùng chuỗi với trang Quản lý thuốc và Cảnh báo
     (dss_alerts.alert_rows, toàn danh mục): tồn hữu dụng FEFO, tiêu hao/ngày,
-    DOI và nhãn Đỏ/Vàng/Xanh/Xám. Trước 13/09/2026 báo cáo này xếp loại theo
-    `inventory.safety_stock` — cột chỉ có giá trị ở 34/5.051 dòng — nên ra một
-    hệ nhãn thứ hai mâu thuẫn với trang Cảnh báo.
-
-    Chỉ gồm mã có tiêu hao trong 12 kỳ đã chốt (mã chưa từng xuất không có
-    mẫu số nên không đo được DOI, không đưa vào báo cáo).
+    DOI và nhãn Đỏ/Vàng/Xanh/Xám. Không xếp loại theo `inventory.safety_stock`
+    vì cột này hầu như không có dữ liệu từ HIS.
     """
     from app.services import dss_alerts, dss_dashboard
 
-    # CÙNG chuỗi Tầng 1→2→3 với trang web: truyền nhu cầu dự báo để DOI dùng
-    # mẫu số D_i/horizon như mọi nơi khác (19/09/2026). Trước đó báo cáo này
-    # gọi alert_rows không có demand → DOI của báo cáo lệch với DOI trên web.
+    # Truyền nhu cầu dự báo để DOI dùng mẫu số D_i/horizon như trên giao diện.
     _, _, nhu_cau, _ = dss_dashboard.tang1_tang2(db)
     al = dss_alerts.alert_rows(db, demand=nhu_cau, only_focus=False)
     th = al.get("tong_hop") or {}
@@ -962,14 +911,12 @@ async def _build_shortage_data(
     end: date,
     disease_type: Optional[str],
 ) -> Dict:
-    """Báo cáo Thiếu hụt thuốc — đọc từ CÙNG tầng Cảnh báo thiếu hụt
-    (dss_dashboard.tang1_tang2 → dss_alerts.alert_rows) thay vì SupplyRequirement
-    (bảng đã dừng sinh dữ liệu — xem _archive/README.md).
+    """Báo cáo thiếu hụt thuốc, cùng nguồn với trang Cảnh báo thiếu hụt
+    (dss_dashboard.tang1_tang2 → dss_alerts.alert_rows).
 
-    Đây là ảnh chụp TẠI THỜI ĐIỂM XUẤT báo cáo (Đỏ/Vàng theo DOI, nhu cầu dự
-    báo `horizon_days` ngày tới), không phải tổng dồn theo khoảng [start, end]
-    như bản cũ — công thức DSS hợp nhất không tách thuốc theo từng bệnh nên
-    `disease_type` không còn áp dụng để lọc (bỏ qua nếu có truyền).
+    Là ảnh chụp tại thời điểm xuất (Đỏ/Vàng theo DOI, nhu cầu `horizon_days`
+    ngày tới), không phải tổng theo khoảng [start, end]. Nhu cầu thuốc không
+    tách theo bệnh nên `disease_type` bị bỏ qua.
     """
     from app.services import dss_dashboard, dss_alerts
 
@@ -1001,42 +948,24 @@ async def _build_shortage_data(
     }
 
 
-
-
 def _ascii_filename(s: str) -> str:
-    """Chuyển string tiếng Việt sang dạng ASCII không dấu để dùng trong HTTP header."""
+    """Bỏ dấu tiếng Việt, chỉ giữ ký tự ASCII để dùng trong HTTP header."""
     import unicodedata
     nfkd = unicodedata.normalize("NFKD", s)
     ascii_only = "".join(c for c in nfkd if not unicodedata.combining(c))
-    # Bỏ ký tự đặc biệt không phải ASCII còn lại
     return ascii_only.encode("ascii", errors="ignore").decode("ascii") or "report"
 
 
 def _vi_disease(key: str) -> str:
-    return {
-        "dengue_fever": "Sốt xuất huyết",
-        "seasonal_flu": "Cúm mùa",
-        "respiratory_disease": "Bệnh hô hấp",
-        "viral_infection": "Nhiễm virus",
-    }.get(key or "", key or "—")
+    return {"respiratory": "Bệnh hô hấp"}.get(key or "", key or "—")
 
 
 def _vi_category(key: str) -> str:
-    return {
-        "medicine": "Thuốc",
-        "mask": "Khẩu trang",
-        "glove": "Găng tay",
-        "test_kit": "Kit XN",
-        "disinfectant": "Hoá chất",
-        "iv_fluid": "Dịch truyền",
-        "other": "Khác",
-    }.get(key or "", key or "—")
+    """Nhãn danh mục: giá trị từ PROD đã là tiếng Việt; chỉ ánh xạ các khoá kỹ thuật."""
+    return {"medicine": "Thuốc", "iv_fluid": "Dịch truyền", "other": "Khác"}.get(key or "", key or "—")
 
 
-
-# ═══════════════════════════════════════════════════════════════════════════
-# PDF Renderers cho 4 loại (epidemic / forecast / inventory / shortage)
-# ═══════════════════════════════════════════════════════════════════════════
+# ── PDF: epidemic / forecast / inventory / shortage ──
 
 
 def _generic_pdf(
@@ -1048,10 +977,7 @@ def _generic_pdf(
     summary_lines: Optional[list[str]] = None,
     landscape_mode: bool = True,
 ) -> Response:
-    """Helper: render bảng đơn giản ra PDF với font Unicode.
-
-    col_widths_cm: list số float — đơn vị cm (sẽ được nhân với 1*cm bên trong).
-    """
+    """Dựng PDF một bảng với font Unicode; `col_widths_cm` tính bằng cm."""
     colors, A4, _landscape, getSampleStyleSheet, cm, SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer = _get_reportlab()
 
     pagesize = _landscape(A4) if landscape_mode else A4
@@ -1075,7 +1001,6 @@ def _generic_pdf(
         Spacer(1, 0.4 * cm),
     ]
 
-    # Wrap text dài trong cell bằng Paragraph
     from reportlab.lib.styles import ParagraphStyle
     cell_style = ParagraphStyle(
         "TableCell",
@@ -1089,9 +1014,8 @@ def _generic_pdf(
     if not rows:
         story.append(Paragraph("Không có dữ liệu trong kỳ báo cáo này.", styles["Normal"]))
     else:
-        # Convert col_widths_cm sang ReportLab unit
         col_widths = [w * cm for w in col_widths_cm]
-        # Convert rows: nếu cell quá dài thì wrap
+        # Ô dài hơn 30 ký tự bọc trong Paragraph để tự xuống dòng.
         formatted_rows: list[list] = [headers]
         for r in rows:
             formatted_rows.append([
@@ -1110,7 +1034,7 @@ def _generic_pdf(
     doc.build(story)
     buf.seek(0)
     safe = title.replace(" ", "_").replace("/", "-")[:40]
-    # Encode tên file theo RFC 5987 vì HTTP headers chỉ chấp nhận Latin-1
+    # Tên file theo RFC 5987 vì HTTP header chỉ chấp nhận Latin-1.
     from urllib.parse import quote as _quote
     filename_ascii = _ascii_filename(safe) + f"_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
     filename_utf8 = _quote(safe + f"_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf")
@@ -1226,11 +1150,7 @@ def _render_shortage_pdf(data: Dict, start: date, end: date) -> Response:
     )
 
 
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# Excel Renderers — dùng openpyxl
-# ═══════════════════════════════════════════════════════════════════════════
+# ── Excel (openpyxl) ──
 
 
 def _generic_excel(
@@ -1241,7 +1161,7 @@ def _generic_excel(
     filename_prefix: str,
     title_line: Optional[str] = None,
 ) -> Response:
-    """Helper: render bảng đơn giản ra Excel."""
+    """Dựng file Excel một bảng, có dòng tiêu đề tuỳ chọn."""
     try:
         import openpyxl
         from openpyxl.styles import Font, PatternFill, Alignment
@@ -1295,9 +1215,6 @@ def _generic_excel(
             )
         },
     )
-
-
-# ── Excel: 5 loại mới ──────────────────────────────────────────────────────
 
 
 def _render_epidemic_excel(data: Dict, start: date, end: date) -> Response:
@@ -1392,11 +1309,6 @@ def _render_shortage_excel(data: Dict, start: date, end: date) -> Response:
     )
 
 
-
-
-# ── Excel cho 4 loại legacy ─────────────────────────────────────────────────
-
-
 def _render_accuracy_excel(forecasts, start: date, end: date) -> Response:
     rows = [
         [
@@ -1421,10 +1333,10 @@ def _render_accuracy_excel(forecasts, start: date, end: date) -> Response:
 
 
 def _render_dashboard_summary_excel(data: Dict) -> Response:
-    """Dashboard summary có 4 phần — gộp vào 1 sheet với section."""
+    """Excel báo cáo tổng quan: 4 phần (KPI, xu hướng, nhu cầu/tồn, cảnh báo) trên một sheet."""
     try:
         import openpyxl
-        from openpyxl.styles import Font, PatternFill, Alignment
+        from openpyxl.styles import Font, PatternFill
         from openpyxl.utils import get_column_letter
     except ImportError:
         raise HTTPException(
@@ -1444,7 +1356,6 @@ def _render_dashboard_summary_excel(data: Dict) -> Response:
     ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
     row += 2
 
-    # Phần I: KPI
     ws.cell(row=row, column=1, value="I. Chỉ số tổng quan (KPI)").font = section_font
     row += 1
     kpi_headers = ["Chỉ số", "Giá trị", "Xu hướng"]
@@ -1466,7 +1377,6 @@ def _render_dashboard_summary_excel(data: Dict) -> Response:
         row += 1
     row += 1
 
-    # Phần II: Xu hướng 6 tháng
     ws.cell(row=row, column=1, value="II. Xu hướng ca bệnh 6 tháng").font = section_font
     row += 1
     for c, h in enumerate(["Tháng", "Năm nay", "Năm trước"], 1):
@@ -1481,7 +1391,6 @@ def _render_dashboard_summary_excel(data: Dict) -> Response:
         row += 1
     row += 1
 
-    # Phần III: Demand vs Stock
     ws.cell(row=row, column=1, value="III. Nhu cầu vs Tồn kho (Top 5)").font = section_font
     row += 1
     for c, h in enumerate(["Thuốc", "ĐVT", "Tồn kho", "Nhu cầu"], 1):
@@ -1497,7 +1406,6 @@ def _render_dashboard_summary_excel(data: Dict) -> Response:
         row += 1
     row += 1
 
-    # Phần IV: Cảnh báo
     ws.cell(row=row, column=1, value="IV. Cảnh báo thiếu hụt thuốc (Top 5)").font = section_font
     row += 1
     for c, h in enumerate(["Thuốc", "Tồn hiện tại", "Định mức", "Trạng thái"], 1):

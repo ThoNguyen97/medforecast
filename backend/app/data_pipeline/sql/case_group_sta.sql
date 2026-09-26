@@ -1,13 +1,11 @@
--- Số ca theo NHÓM ICD, đọc từ DB trung chuyển MEDFORECAST_DW (máy chủ STAGING).
+-- Số ca theo nhóm ICD, đọc từ MEDFORECAST_DW trên STA.
 --
--- VÌ SAO CẦN CÂU RIÊNG, KHÔNG CỘNG TỪ case_sta.sql
--- Một lượt khám có thể mang hai mã cùng nhóm (J01 chính + J06 phụ, cả hai đều
--- thuộc J00-J06). Cộng số ca của các mã con lại sẽ đếm lượt đó hai lần. Chỉ
--- PROD mới còn TIEPNHAN_ID để đếm DISTINCT ở mức nhóm, nên PROD tính sẵn và đẩy
--- xuống bảng MF_CaBenh_Nhom. Xem sql_his/03_PROD_store_tong_hop.sql bước 7b.
+-- Không cộng từ case_sta.sql: một lượt khám có thể mang hai mã cùng nhóm
+-- (J01 chính + J06 phụ đều thuộc J00-J06), cộng mã con sẽ đếm lượt đó hai lần.
+-- Chỉ PROD còn TIEPNHAN_ID để đếm DISTINCT mức nhóm, nên PROD tính sẵn vào MF_CaBenh_Nhom.
 --
--- Hạt: (tháng × nhóm × vùng). region = 'TOAN_QUOC' là dòng toàn quốc, cũng đếm
--- DISTINCT riêng chứ không phải tổng các tỉnh.
+-- Hạt: (tháng × nhóm × vùng). region = 'TOAN_QUOC' là dòng toàn quốc, đếm DISTINCT
+-- riêng chứ không phải tổng các tỉnh.
 --
 -- Dùng: PIPELINE_CASE_GROUP_SQL_FILE=case_group_sta.sql
 SELECT [month],

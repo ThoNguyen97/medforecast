@@ -24,8 +24,8 @@ import {
 
 const ALERT_LIMIT = 8;
 
-/** Bốn mức DOI → dải màu của thẻ KPI. Xám dùng dải trung tính: chưa đo được
- *  KHÔNG phải an toàn, nên không được tô xanh. */
+/** Bốn mức DOI → dải màu thẻ KPI. Xám dùng dải trung tính: chưa đo được
+ *  không có nghĩa là an toàn nên không tô xanh. */
 const RISK_TONE: Record<AlertLevel, KpiTone> = {
   red: 'red',
   amber: 'amber',
@@ -34,12 +34,12 @@ const RISK_TONE: Record<AlertLevel, KpiTone> = {
 };
 
 /**
- * Tổng quan — Tuần 3 (11/09/2026).
+ * Tổng quan.
  *
- * Một payload (/dashboard/v2) dựng toàn bộ trang; dự báo (/dashboard/v2/forecast)
- * tải riêng vì lần đầu phải khớp ensemble. Mọi KPI neo vào KỲ ĐÃ CHỐT gần
- * nhất; kỳ đang mở chỉ hiện với nhãn "chưa chốt". Không có ngôn ngữ mua sắm:
- * cột thiếu hụt là Δ_need = max(0, nhu cầu dự báo − tồn hữu dụng).
+ * Một payload (/dashboard/v2) dựng toàn bộ trang; dự báo kỳ tới lấy từ bản đã ghi
+ * nhận ở trang Phân tích & Dự báo. Mọi KPI neo vào kỳ đã chốt gần nhất;
+ * kỳ đang mở chỉ hiện với nhãn "chưa chốt". Cột thiếu hụt là
+ * Δ_need = max(0, nhu cầu dự báo − tồn hữu dụng), không phải lượng mua.
  */
 export default function Dashboard() {
   const { setPageTitle } = useUIStore();
@@ -108,7 +108,7 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
+      {/* Tiêu đề trang */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-2xl font-extrabold text-neutral-900">Tổng quan</h2>
@@ -351,7 +351,7 @@ function buildKpis(
     },
     {
       label: 'Mức cảnh báo vận hành',
-      // Trạng thái là chữ, không phải số — hạ cỡ để "CHƯA ĐỦ DỮ LIỆU" không tràn thẻ.
+      // Trạng thái là chữ, không phải số: hạ cỡ chữ để nhãn dài không tràn thẻ.
       value: risk ? (
         <span className="text-[22px] leading-tight font-extrabold">
           {risk.label || OPERATIONAL_LEVEL_LABELS[risk.level]}

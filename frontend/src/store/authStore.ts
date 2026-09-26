@@ -10,7 +10,6 @@ interface AuthStore {
   isAuthenticated: boolean;
   tokenExpiry: number | null;
 
-  // Actions
   setAuth: (user: User, token: string, refreshToken: string, expiresIn: number) => void;
   updateToken: (token: string, expiresIn: number) => void;
   logout: () => void;
@@ -29,7 +28,7 @@ export const useAuthStore = create<AuthStore>()(
       setAuth: (user, token, refreshToken, expiresIn) => {
         const tokenExpiry = Date.now() + expiresIn * 1000;
 
-        // Also store in localStorage for Axios interceptor
+        // Lưu cả vào localStorage để interceptor Axios đọc được
         localStorage.setItem(TOKEN_KEY, token);
         localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
         localStorage.setItem(USER_KEY, JSON.stringify(user));
@@ -69,7 +68,7 @@ export const useAuthStore = create<AuthStore>()(
       isTokenExpired: () => {
         const { tokenExpiry } = get();
         if (!tokenExpiry) return true;
-        // Consider expired 5 minutes before actual expiry
+        // Coi là hết hạn sớm 5 phút để kịp làm mới token
         return Date.now() > tokenExpiry - 5 * 60 * 1000;
       },
     }),

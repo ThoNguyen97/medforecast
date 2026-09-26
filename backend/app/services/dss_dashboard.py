@@ -6,10 +6,10 @@
     forecast_payload(db, ...)   Ŷ_g ba khối bằng ensemble PRODUCTION_CONFIG (xem trước),
                                 cache trong `dss_forecast_cache` theo dấu vân tay dữ liệu
     tang1_tang2(db)             Tầng 1 (bản đã Ghi nhận) → Tầng 2, dùng chung cho mọi
-                                nơi hiển thị nhu cầu để không bao giờ ra hai con số
+                                nơi hiển thị nhu cầu để số liệu nhất quán
 
-Hợp đồng: không có trường nào thuộc phân hệ mua sắm. Cột "thiếu hụt dự kiến"
-là Δ_need = max(0, D_forecast − S_usable).
+Không trả trường nào thuộc phân hệ mua sắm. Cột "thiếu hụt dự kiến" là
+Δ_need = max(0, D_forecast − S_usable).
 """
 from __future__ import annotations
 
@@ -34,14 +34,12 @@ BLOCKS = tuple(dss_demand.BLOCKS)
 LEVELS = ("red", "amber", "green", "grey")
 TOAN_QUOC = "TOAN_QUOC"
 
-# Thư mục kết quả backtest chính thức (run_eval.py --out ketqua_backtest)
+# Kết quả backtest chính thức (app/forecasting/run_eval.py --out ketqua_backtest).
 KETQUA_BACKTEST_DIR = Path(__file__).resolve().parents[2] / "ketqua_backtest"
 PHUONG_AN_CHINH_THUC = "Top-down động"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Cache dự báo mức nhóm
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Cache dự báo mức nhóm ──
 
 _CACHE_DDL = """
 CREATE TABLE IF NOT EXISTS dss_forecast_cache (
@@ -80,10 +78,9 @@ def _ensure_cache(db: Session) -> None:
     db.commit()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Sổ theo dõi mô hình: mỗi lần khớp (cache miss) một dòng forecast_runs; kỳ đích
-# chốt thì `fill_actuals` điền thực tế + sai số. Ghi đúng con số màn hình đã hiện.
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Sổ theo dõi mô hình ──
+# Mỗi lần khớp (cache miss) ghi một dòng forecast_runs; khi kỳ đích chốt, `fill_actuals`
+# điền thực tế và sai số. Ghi đúng con số màn hình đã hiện.
 
 def _log_run(db: Session, block: str, fp: str, payload: Dict[str, Any]) -> None:
     m = payload.get("model") or {}
@@ -110,7 +107,7 @@ def _log_run(db: Session, block: str, fp: str, payload: Dict[str, Any]) -> None:
 
 
 def fill_actuals(db: Session) -> int:
-    """Điền thực tế cho các dòng có kỳ đích ĐÃ CHỐT. Trả số dòng vừa điền."""
+    """Điền thực tế cho các dòng có kỳ đích đã chốt; trả số dòng vừa điền."""
     try:
         _ensure_cache(db)
         rows = db.execute(text(
@@ -161,7 +158,7 @@ def forecast_history(db: Session, limit: int = 60) -> Dict[str, Any]:
                 pass
         items.append(d)
 
-    # Tổng kết: mỗi (khối, kỳ đích) chỉ tính lần khớp CUỐI trước khi kỳ chốt
+    # Tổng kết: mỗi (khối, kỳ đích) chỉ tính lần khớp cuối trước khi kỳ chốt.
     ver = db.execute(text(
         "SELECT block_code, target_period, point, actual, abs_err, pct_err, in_interval "
         "FROM forecast_runs WHERE actual IS NOT NULL AND id IN ("
@@ -196,7 +193,7 @@ def _read_cache(db: Session, block: str, fp: str) -> Optional[Dict[str, Any]]:
 
 
 def _write_cache(db: Session, block: str, fp: str, payload: Dict[str, Any]) -> None:
-    # Mỗi khối chỉ giữ bản mới nhất — bảng không phình theo số lần đồng bộ.
+    # Mỗi khối chỉ giữ bản mới nhất để bảng không phình theo số lần đồng bộ.
     db.execute(text("DELETE FROM dss_forecast_cache WHERE block_code = :b"), {"b": block})
     db.execute(text(
         "INSERT INTO dss_forecast_cache (block_code, fingerprint, target_period, payload, computed_at) "
@@ -211,8 +208,9 @@ def forecast_payload(db: Session, compute: bool = True,
                      force: bool = False) -> Dict[str, Any]:
     """Ŷ_g + khoảng tin cậy cho từng khối, và tổng.
 
-    `compute=False`: chỉ đọc cache, không khớp mô hình — dùng cho endpoint
-    nhanh để biết dự báo đã sẵn chưa. `force=True`: bỏ cache, tính lại.
+    Args:
+        compute: False → chỉ đọc cache, không khớp mô hình (kiểm tra nhanh đã có dự báo chưa).
+        force: True → bỏ qua cache, tính lại.
     """
     _ensure_cache(db)
     svc = HierarchicalForecastService(db)
@@ -285,16 +283,7 @@ def forecast_payload(db: Session, compute: bool = True,
     }
 
 
-def _forecast_by_block_from_cache(db: Session) -> Dict[str, float]:
-    fc = forecast_payload(db, compute=False)
-    if not fc["ready"]:
-        return {}
-    return {x["block"]: float(x["point"]) for x in fc["blocks"]}
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Chuỗi xu hướng: 12 kỳ gần nhất, tổng + từng khối, kèm cùng kỳ năm trước
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Chuỗi xu hướng 12 kỳ (tổng, từng khối, cùng kỳ năm trước) ──
 
 def _trend_series(db: Session, end_period: Optional[str], n: int = 12) -> Dict[str, Any]:
     if not end_period or not ps._has(db, "mart_monthly_cases_by_block"):
@@ -335,9 +324,7 @@ def _trend_series(db: Session, end_period: Optional[str], n: int = 12) -> Dict[s
             "last_year": last_year}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Chất lượng dự báo — đọc kết quả backtest chính thức (run_eval.py)
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Chất lượng dự báo (kết quả backtest chính thức) ──
 
 def _read_csv(path: Path) -> List[Dict[str, str]]:
     with open(path, encoding="utf-8-sig", newline="") as f:
@@ -354,9 +341,8 @@ def _f(v: Any) -> Optional[float]:
 def backtest_quality(dir_: Path = KETQUA_BACKTEST_DIR) -> Dict[str, Any]:
     """Đọc `phancap.csv`, `nhom.csv`, `cau_hinh.json` do run_eval.py ghi.
 
-    Không có thư mục → `available = False`, giao diện phải nói "chưa chạy
-    backtest", không bịa số. RelMAE gộp = Σ MAE / Σ MAE_naive (trọng số theo
-    số bước), không phải trung bình cộng ba RelMAE.
+    Không có thư mục → `available = False` (giao diện báo "chưa chạy backtest").
+    RelMAE gộp = Σ MAE / Σ MAE_naive (trọng số theo số bước).
     """
     out: Dict[str, Any] = {"available": False, "source": str(dir_),
                            "phuong_an": PHUONG_AN_CHINH_THUC}
@@ -393,8 +379,8 @@ def backtest_quality(dir_: Path = KETQUA_BACKTEST_DIR) -> Dict[str, Any]:
                             "weather": (r.get("thoi_tiet") or "").lower() == "true"})
 
     rel_pooled = (sum_mae / sum_naive) if sum_naive > 0 else None
-    # Con số tiêu đề = trung bình ba khối (khớp KetQua_Backtest_ChonCauHinh.md);
-    # bản gộp theo trọng số MAE trả kèm để đối chiếu.
+    # Con số tiêu đề là trung bình cộng RelMAE ba khối; bản gộp theo trọng số MAE
+    # trả kèm để đối chiếu.
     rels = [v["rel_mae_codes"] for v in by_block.values() if v.get("rel_mae_codes") is not None]
     rel_mean = (sum(rels) / len(rels)) if rels else None
     run_at, co_sm = None, None
@@ -424,9 +410,7 @@ def backtest_quality(dir_: Path = KETQUA_BACKTEST_DIR) -> Dict[str, Any]:
     return out
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# DOI theo danh mục
-# ─────────────────────────────────────────────────────────────────────────────
+# ── DOI theo danh mục ──
 
 def _doi_by_category(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     gom: Dict[str, Dict[str, Any]] = {}
@@ -449,9 +433,7 @@ def _doi_by_category(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return out
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Diễn giải nhanh — quy tắc đơn giản, nói đúng những gì dữ liệu nói
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Diễn giải nhanh theo quy tắc ──
 
 def _insights(anchor, cases_last, cases_prev, trend, fc, sig, tap, doi_cat,
               grey_reasons: Dict[str, int]) -> List[Dict[str, str]]:
@@ -503,16 +485,13 @@ def _ly_do_xam_ten(key: str) -> str:
     }.get(key, key)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Payload chính
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Payload chính ──
 
 def recorded_forecast_payload(db: Session) -> Dict[str, Any]:
-    """Ŷ_g ba khối cho kỳ tới, lấy từ bản ĐÃ GHI NHẬN ở trang Phân tích
-    (`disease_forecasts`, location IS NULL = Toàn quốc) — không tự tính.
+    """Ŷ_g ba khối cho kỳ tới từ bản đã ghi nhận ở trang Phân tích (Toàn quốc).
 
-    Đây là nguồn DUY NHẤT nuôi Tầng 2/3. Khối/kỳ chưa ai ghi nhận thì vắng
-    mặt và được báo ở `ready`/`missing`, không suy diễn hay dùng 0.
+    Đọc `disease_forecasts` (location IS NULL), không tự tính; là nguồn duy nhất nuôi
+    Tầng 2/3. Khối chưa ghi nhận được báo ở `ready`/`missing`, không thay bằng 0.
     `forecast_payload()` chỉ phục vụ xem trước ở /dashboard/v2/forecast.
     """
     from app.models.disease_forecast import DiseaseForecast
@@ -586,8 +565,10 @@ def recorded_forecast_payload(db: Session) -> Dict[str, Any]:
 
 
 def care_level_payload(db: Session) -> Dict[str, Any]:
-    """Tỷ trọng phân cấp chăm sóc p̂(g,ro) đã co ngót cho biểu đồ Tầng 2, kèm
-    cửa sổ tính và chẩn đoán định mức (nhóm thiếu định mức, rổ mẫu nhỏ)."""
+    """Tỷ trọng phân cấp chăm sóc p̂(g,ro) đã co ngót cho biểu đồ Tầng 2.
+
+    Kèm cửa sổ tính và chẩn đoán định mức (nhóm thiếu định mức, rổ mẫu nhỏ).
+    """
     shares = dss_demand.care_level_shares(db)
     cua_so: Dict[str, Any] = {}
     if dss_alerts._has(db, "v_care_level_share"):
@@ -609,9 +590,11 @@ def care_level_payload(db: Session) -> Dict[str, Any]:
 
 
 def tang1_tang2(db: Session):
-    """Chuỗi Tầng 1 (bản đã Ghi nhận) → Tầng 2, dùng chung cho Tổng quan và
-    trang Cảnh báo thiếu hụt để hai trang KHÔNG BAO GIỜ ra hai con số khác
-    nhau về cùng một mã. Trả (fc, thresholds, {code: D_forecast}, meta)."""
+    """Chuỗi Tầng 1 (bản đã ghi nhận) → Tầng 2, dùng chung cho Tổng quan và Cảnh báo.
+
+    Returns:
+        (fc, thresholds, {supply_code: D_forecast}, meta).
+    """
     fc = recorded_forecast_payload(db)
     du_bao_nhom = {x["block"]: float(x["point"]) for x in fc["blocks"]} if fc["ready"] else {}
     th = dss_alerts.get_thresholds(db)
@@ -636,9 +619,7 @@ def tang1_tang2(db: Session):
 def _chuoi_cong_thuc(horizon: int, do_ngay: float, vang_ngay: float) -> str:
     """Dòng công thức hiện trên Cảnh báo thiếu hụt và Quản lý thuốc.
 
-    Dựng ở backend để hai màn hình không tự viết lại chữ mỗi nơi một kiểu —
-    trước 19/09 tài liệu ghi một công thức còn code chạy công thức khác suốt
-    nhiều tháng, không ai phát hiện vì chữ trên giao diện là chữ viết tay.
+    Dựng ở backend từ ngưỡng thực tế để chữ trên giao diện luôn khớp công thức đang chạy.
     """
     return (f"DOI = Tồn hữu dụng ÷ (Nhu cầu dự báo ÷ {horizon} ngày)"
             f" · Thiếu hụt = Nhu cầu dự báo − Tồn hữu dụng, không âm"
@@ -654,7 +635,7 @@ def _counts(al: Dict[str, Any]) -> Dict[str, Any]:
             "grey": t["grey"], "total": t["tong_ma"], "measured": t["do_duoc"],
             "zero_stock": sum(1 for r in al["rows"] if r.get("het_hang")),
             "fefo_codes": t.get("so_ma_ap_dung_fefo", 0),
-            "stock_source": t.get("nguon_ton_kho"),   # vd fact_inventory_lot@2026-09-13
+            "stock_source": t.get("nguon_ton_kho"),   # dạng "<bảng>@<snapshot_date>"
             "ly_do_xam": t.get("ly_do_xam", {}), "san_sang": True}
 
 
@@ -676,11 +657,13 @@ def _dong_canh_bao(r: Dict[str, Any]) -> Dict[str, Any]:
 def alerts_payload(db: Session, focus: bool = True, level: Optional[str] = None,
                    q: Optional[str] = None, danh_muc: Optional[str] = None,
                    limit: int = 50, offset: int = 0) -> Dict[str, Any]:
-    """Trang Cảnh báo thiếu hụt — CÙNG chuỗi Tầng 1→2→3 với Tổng quan, chỉ
-    khác ở chỗ trả toàn bộ dòng (phân trang server) thay vì top-8.
+    """Trang Cảnh báo thiếu hụt: cùng chuỗi Tầng 1→2→3 với Tổng quan, trả toàn bộ dòng
+    (phân trang phía server).
 
-    `level` None → mọi mức (Đỏ trước); một mức → chỉ mức đó.
-    `q` lọc theo mã / tên hoạt chất; `danh_muc` lọc theo cột danh mục.
+    Args:
+        level: None → mọi mức (Đỏ trước); một mức → chỉ mức đó.
+        q: lọc theo mã hoặc tên hoạt chất.
+        danh_muc: lọc theo danh mục.
     """
     if level is not None and level not in LEVELS:
         raise ValueError(f"level phải thuộc {LEVELS}")
@@ -691,7 +674,7 @@ def alerts_payload(db: Session, focus: bool = True, level: Optional[str] = None,
     canh_bao = list(al.get("canh_bao") or [])
     if not al.get("san_sang"):
         canh_bao.append((al.get("ly_do") or "Chưa có dữ liệu tồn kho / tiêu hao.")
-                        + " Vào Quản trị → Kết nối HIS rồi bấm Đồng bộ để nạp dữ liệu thuốc.")
+                        + " Cấu hình tại Quản trị → Nguồn dữ liệu (CSDL DW), rồi bấm «Nạp dữ liệu DW» ở trang Dữ liệu bệnh.")
 
     if level is not None:
         rows = [r for r in rows if r["muc"] == level]
@@ -722,8 +705,7 @@ def alerts_payload(db: Session, focus: bool = True, level: Optional[str] = None,
         "forecast": {"ready": fc["ready"], "target_period": fc.get("target_period"),
                      "total": fc["total"], "computed_at": fc.get("computed_at"),
                      "blocks": [{"block": x["block"], "point": x["point"]} for x in fc["blocks"]]},
-        # so_ma theo ĐÚNG phạm vi đang xem (focus 242 / toàn danh mục 1.476),
-        # không phải số mã Tầng 2 sinh ra trên cả danh mục.
+        # so_ma đếm theo phạm vi đang xem (tập trọng tâm hoặc toàn danh mục).
         "demand": {**nhu_cau_meta,
                    "so_ma_toan_danh_muc": nhu_cau_meta.get("so_ma"),
                    "so_ma": sum(1 for r in (al.get("rows") or []) if r.get("d_forecast") is not None)},
@@ -739,10 +721,11 @@ def alerts_payload(db: Session, focus: bool = True, level: Optional[str] = None,
 
 def overview_payload(db: Session, focus: bool = True,
                      level: Optional[str] = None, limit: int = 8) -> Dict[str, Any]:
-    """Mọi thứ Dashboard cần, TRỪ việc khớp mô hình dự báo.
+    """Payload trang Tổng quan (không khớp mô hình dự báo).
 
-    `focus`  True → tập trọng tâm (tỷ trọng hô hấp ≥ 25 %); False → toàn danh mục
-    `level`  lọc bảng cảnh báo theo một mức (red/amber/green/grey); None → Đỏ + Vàng
+    Args:
+        focus: True → tập trọng tâm (tỷ trọng hô hấp ≥ 25%); False → toàn danh mục.
+        level: lọc bảng cảnh báo theo một mức (red/amber/green/grey); None → Đỏ + Vàng.
     """
     if level is not None and level not in LEVELS:
         raise ValueError(f"level phải thuộc {LEVELS}")
@@ -756,22 +739,21 @@ def overview_payload(db: Session, focus: bool = True,
     trend = ps.trend_pct(db, last_closed, prev_closed)
     blocks_closed = ps.cases_by_block(db, last_closed)
 
-    # Tầng 1 (chỉ đọc cache) → Tầng 2
+    # Tầng 1 (bản đã ghi nhận) → Tầng 2
     fc, th, nhu_cau, nhu_cau_meta = tang1_tang2(db)
 
-    # Tầng 3 — hai tập, đếm cả hai để bộ lọc đổi tức thì
+    # Tầng 3: tính cả hai tập để bộ lọc phía giao diện đổi tức thì.
     al_focus = dss_alerts.alert_rows(db, demand=nhu_cau, only_focus=True)
     al_all = dss_alerts.alert_rows(db, demand=nhu_cau, only_focus=False)
     chon = al_focus if focus else al_all
 
     dem_focus, dem_all = _counts(al_focus), _counts(al_all)
-    # Chưa có dữ liệu thuốc (cài mới, chưa đồng bộ HIS) → nói rõ lý do, không
-    # để màn hình hiện 0/0/0/0 như thể kho không có mã nào cần theo dõi.
+    # Chưa có dữ liệu thuốc (chưa đồng bộ HIS) → trả lý do thay vì hiện 0/0/0/0.
     canh_bao_tang3 = list(chon.get("canh_bao") or [])
     if not chon.get("san_sang"):
         canh_bao_tang3.append(
             (chon.get("ly_do") or "Chưa có dữ liệu tồn kho / tiêu hao.")
-            + " Vào Quản trị → Kết nối HIS rồi bấm Đồng bộ để nạp dữ liệu thuốc.")
+            + " Cấu hình tại Quản trị → Nguồn dữ liệu (CSDL DW), rồi bấm «Nạp dữ liệu DW» ở trang Dữ liệu bệnh.")
     dem = dem_focus if focus else dem_all
     sig = {**dem, "nguong": {"red_days": float(th["doi_red_days"]),
                              "amber_days": float(th["doi_amber_days"])}}
@@ -786,12 +768,12 @@ def overview_payload(db: Session, focus: bool = True,
                                  -(r["delta_need"] or 0)))
     alerts = [_dong_canh_bao(r) for r in rows_tbl[:limit]]
 
-    # Mức cảnh báo vận hành: ánh xạ thẳng từ bộ đếm DOI của tập trọng tâm —
-    # cùng một nguồn với bảng Cảnh báo thiếu hụt, không trộn xu hướng số ca.
+    # Mức cảnh báo vận hành ánh xạ từ bộ đếm DOI của tập trọng tâm, cùng nguồn với
+    # bảng Cảnh báo thiếu hụt.
     risk = ps.danh_gia_muc_canh_bao(dem_focus, sig["nguong"], last_closed)
     cat = ps.catalogue_counts(db)
 
-    # Tình trạng dữ liệu (phần rẻ; STA lấy qua /sync/status)
+    # Tình trạng dữ liệu cục bộ; trạng thái STA lấy qua /sync/status.
     dss_tables: Dict[str, Any] = {}
     for t, k in (("fact_usage_total", "period"), ("fact_cases_by_care_level", "period"),
                  ("fact_usage_by_care_level", "period"), ("fact_inventory_lot", "snapshot_date")):
@@ -867,7 +849,7 @@ def overview_payload(db: Session, focus: bool = True,
         "data_status": {"dss_tables": dss_tables, "last_sync": last_sync,
                         "fefo": {"codes": dem_all.get("fefo_codes", 0), "total": dem_all["total"]},
                         "nguon_ton_kho": (al_all.get("tong_hop") or {}).get("nguon_ton_kho"),
-                        # Ngày đánh giá FEFO — neo vào ảnh chụp lô, không vào đồng hồ
+                        # Ngày đánh giá FEFO, neo vào ảnh chụp lô.
                         "as_of": (al_all.get("tong_hop") or {}).get("as_of"),
                         "as_of_nguon": (al_all.get("tong_hop") or {}).get("as_of_nguon")},
         "insights": _insights(anchor, cases_last, cases_prev, trend, fc, sig,

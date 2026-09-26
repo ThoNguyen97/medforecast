@@ -1,15 +1,11 @@
-"""Service nạp dữ liệu từ CSDL nghiên cứu MEDFORECAST_DW (SQL Server cục bộ) vào Data Mart SQLite.
+"""Đồng bộ dữ liệu từ MEDFORECAST_DW (view vw_MedForecast_* trên STA) vào SQLite của ứng dụng.
 
-Bọc DataPipeline để dashboard gọi qua API:
-  - run_sync(): kéo dữ liệu MỚI (khám bệnh + tồn kho) → STAGING → CLEAN → MART.
-  - get_status(): trạng thái lần đồng bộ gần nhất + số liệu hiện có.
+  - run_sync(): nạp ca bệnh + tồn kho (fact/mart), bốn luồng DSS, rồi làm
+    mới các bảng nghiệp vụ.
+  - get_status(): trạng thái lần đồng bộ gần nhất và số liệu hiện có.
 
-Cấu hình lấy theo THỨ TỰ ƯU TIÊN:
-  1. Bảng system_config trong DB (admin lưu từ màn hình Quản trị → Nguồn dữ liệu (CSDL DW))
-     — xem app/services/sync_config_service.py
-  2. Biến môi trường PIPELINE_* trong .env (cách cũ, vẫn chạy khi DB chưa có gì)
-Pipeline ghi vào DB theo PIPELINE_DB_URL, mặc định = DATABASE_URL của app
-(để mart nằm CHUNG DB với ứng dụng).
+Cấu hình kết nối: system_config (xem sync_config_service), sau đó biến môi trường
+PIPELINE_*. Pipeline ghi vào PIPELINE_DB_URL, mặc định là DATABASE_URL của ứng dụng.
 """
 from __future__ import annotations
 import logging
@@ -27,17 +23,17 @@ from app.services import sync_config_service
 
 
 def lam_sach(v, mac_dinh: str = "") -> str:
-    """Chuỗi từ mart về dạng dùng được. pandas NaN đi qua chuỗi hoá thành 'nan' —
-    đã làm 4.680 thuốc mang drug_code='nan' và gộp nghìn thuốc thành một dòng."""
+    """Chuẩn hoá chuỗi từ mart; coi rỗng/'nan'/'none'/'nat'/'null' là thiếu và trả `mac_dinh`.
+
+    pandas NaN khi ép chuỗi thành 'nan', nếu không lọc sẽ gộp nhiều thuốc vào một drug_code.
+    """
     t = str(v).strip() if v is not None else ""
     return mac_dinh if t.lower() in ("", "nan", "none", "nat", "null") else t
 
 
 # Thuộc tính danh mục đồng bộ từ mart → medical_supplies: (cột đích, cột nguồn).
-# `category` BẮT BUỘC có mặt: phân loại được tính lại bên PROD (#DrugMeta trong
-# usp_MedForecast_DayDuLieu) và chỉ tới được ứng dụng qua đường này. Thiếu nó thì
-# mã đã tồn tại giữ nhãn cũ VĨNH VIỄN — 13/09/2026 đã gặp: sửa phân loại
-# "Dịch truyền" trên PROD, đồng bộ báo ok, nhưng 3.001 mã vẫn mang nhãn cũ.
+# `category` phải có: phân loại tính bên PROD (#DrugMeta trong usp_MedForecast_DayDuLieu)
+# chỉ tới ứng dụng qua đường này; thiếu thì mã đã tồn tại giữ mãi nhãn cũ.
 COT_DONG_BO = (
     ("drug_code", "drug_code"),
     ("ten_hoat_chat", "name"),
@@ -50,8 +46,11 @@ COT_DONG_BO = (
 def cap_nhat_thuoc_tinh_vat_tu(supply, dong_mart) -> list:
     """Chép thuộc tính danh mục từ một dòng mart sang MedicalSupply đã có.
 
-    Giá trị rỗng/'nan' bên nguồn KHÔNG ghi đè giá trị đang có. Trả danh sách tên
-    cột thật sự đổi (rỗng nghĩa là không có gì phải ghi)."""
+    Giá trị rỗng/'nan' bên nguồn không ghi đè giá trị đang có.
+
+    Returns:
+        Danh sách tên cột đã đổi (rỗng nếu không có gì thay đổi).
+    """
     da_doi = []
     for cot_dich, cot_nguon in COT_DONG_BO:
         cu = getattr(supply, cot_dich, None)
@@ -65,11 +64,10 @@ logger = logging.getLogger(__name__)
 
 
 def _ban_ghi_json(df) -> list:
-    """DataFrame → list[dict] mà FastAPI/trình duyệt nuốt được.
+    """DataFrame → list[dict] tuần tự hoá JSON được.
 
-    pandas trả numpy.int64 (jsonable_encoder không hiểu → HTTP 500) và NaN cho
-    NULL (json.dumps ghi `NaN`, trình duyệt từ chối parse → giao diện báo
-    "Đồng bộ thất bại" dù backend đã đồng bộ xong). Ép về int/float/str/None.
+    Ép numpy scalar về kiểu Python (jsonable_encoder không xử lý numpy.int64) và NaN về
+    None (JSON không hợp lệ với `NaN`).
     """
     if df is None or getattr(df, "empty", True):
         return []
@@ -105,22 +103,21 @@ def _build_pipeline(db: Optional[Session] = None) -> DataPipeline:
     # Không bắt buộc có TM_ICD*.xlsx: view vw_MedForecast_* đã kèm sẵn cột disease_group.
     hier = IcdHierarchy.from_dir_optional(icd_dir)
 
-    # 1) Cấu hình admin đã lưu trong DB — thắng .env, đổi không cần restart.
+    # 1) Cấu hình lưu trong DB, ưu tiên hơn .env.
     connector = None
     if db is not None:
         try:
             connector = sync_config_service.build_connector(db)
         except RuntimeError:
-            raise                    # cấu hình DB có nhưng thiếu trường — báo thẳng
-        except Exception as exc:     # bảng chưa migrate v.v. — rơi về .env
+            raise                    # cấu hình có nhưng thiếu trường: báo lỗi
+        except Exception as exc:     # vd bảng chưa tạo: dùng .env
             logger.warning("Không đọc được cấu hình kết nối trong DB (%s) — "
                            "dùng biến môi trường.", exc)
     if connector is not None:
         logger.info("Đồng bộ theo cấu hình kết nối lưu trong DB.")
         return DataPipeline(connector, hier)
 
-    # 2) Dự phòng: biến môi trường PIPELINE_SQLSERVER_CONN trong .env
-    #    (23/09/2026: nguồn tệp CSV đã bỏ — chỉ còn SQL Server cục bộ).
+    # 2) Dự phòng: biến môi trường PIPELINE_SQLSERVER_CONN trong .env.
     conn = os.environ.get("PIPELINE_SQLSERVER_CONN", "").strip()
     if not conn:
         raise RuntimeError(
@@ -141,22 +138,19 @@ class SyncService:
         self.db = db
 
     def run_sync(self, full: bool = False) -> dict:
-        """Chạy một lần đồng bộ — BA nửa, nửa nào hỏng không chặn nửa khác.
+        """Chạy một lần đồng bộ gồm ba phần độc lập (phần lỗi không chặn phần khác).
 
-        1. Luồng cũ (CaBenh/TonKho → stg/dim/fact/mart) — DataPipeline.run.
-        2. Bốn luồng DSS (TieuHaoTong, CaBenhPhanCap, TieuHaoPhanCap, TonKhoLo)
-           — dss_loader.load_all. 11/09/2026: trước đây CHỈ nạp được qua CLI
-           scripts/run_dss_load.py; nút Đồng bộ trên giao diện không đụng tới,
-           nên fact_usage_total / fact_inventory_lot đứng yên trong khi thủ tục
-           snapshot MEDFORECAST_DW mới được khôi phục — Dashboard DSS chạy trên số cũ mà
-           không có dấu hiệu nào.
-        3. Làm mới bảng nghiệp vụ cũ (disease_cases, inventory) từ fact/mart.
+        1. Ca bệnh/tồn kho (CaBenh/TonKho → stg/dim/fact/mart): DataPipeline.run.
+        2. Bốn luồng DSS (TieuHaoTong, CaBenhPhanCap, TieuHaoPhanCap, TonKhoLo):
+           dss_loader.load_all.
+        3. Làm mới bảng nghiệp vụ (disease_cases, medical_supplies, inventory) từ fact/mart.
+        Sau đó điền thực tế cho sổ theo dõi dự báo và tạo lại view SQLite.
         """
         pipeline = _build_pipeline(self.db)
         result = pipeline.run(incremental=not full)
         result["mode"] = "full" if full else "incremental"
 
-        # 2) bốn luồng DSS — đầu ra Phase 0 / G1 của hai thủ tục PROD
+        # 2) Bốn luồng DSS.
         try:
             dss = dss_loader.load_all(self.db, pipeline.connector, full=full)
             result["dss_flows"] = dss["flows"]
@@ -172,8 +166,7 @@ class SyncService:
             logger.exception("Nạp luồng DSS thất bại")
             result["dss_error"] = str(exc)[:300]
 
-        # 3) nửa sau: các trang cũ (Dịch tễ, Tồn kho, Dashboard) đọc bảng nghiệp
-        # vụ chứ không đọc mart — phải làm mới cả chúng.
+        # 3) Các trang Dịch tễ, Tồn kho đọc bảng nghiệp vụ chứ không đọc mart.
         try:
             result.update(self._lam_moi_bang_nghiep_vu())
         except Exception as exc:                          # noqa: BLE001
@@ -181,21 +174,19 @@ class SyncService:
             logger.exception("Làm mới bảng nghiệp vụ thất bại")
             result["legacy_refresh_error"] = str(exc)[:300]
 
-        # trạng thái kho trung gian kèm theo, để giao diện thấy dữ liệu "mới" tới đâu
+        # Kèm trạng thái STA để giao diện biết dữ liệu nguồn mới tới đâu.
         result["sta"] = self.trang_thai_sta(pipeline.connector)
 
-        # Tuần 4c: kỳ vừa chốt → điền thực tế cho sổ theo dõi dự báo
+        # Kỳ vừa chốt → điền thực tế cho sổ theo dõi dự báo.
         try:
             from app.services import dss_dashboard
             result["forecast_runs_verified"] = dss_dashboard.fill_actuals(self.db)
         except Exception as exc:                          # noqa: BLE001
             logger.warning("fill_actuals sau đồng bộ lỗi: %s", exc)
 
-        # Bốn view của Tầng 2/Tầng 3 dựa trên fact_usage_total và
-        # fact_cases_by_care_level — hai bảng do CHÍNH đợt đồng bộ này tạo ra.
-        # Lần đồng bộ đầu tiên trên máy mới, lúc ứng dụng khởi động hai bảng đó
-        # chưa tồn tại nên view bị bỏ qua; không tạo lại ở đây thì Dashboard sẽ
-        # hiện "0 mã có mẫu số" cho tới lần khởi động lại tiếp theo.
+        # View Tầng 2/3 phụ thuộc fact_usage_total và fact_cases_by_care_level do chính
+        # đợt đồng bộ này tạo; ở lần đồng bộ đầu tiên, lúc khởi động view đã bị bỏ qua
+        # nên phải tạo lại ở đây.
         try:
             from app.data_pipeline.views import tao_views
             kq_view = tao_views()
@@ -204,19 +195,17 @@ class SyncService:
             logger.warning("Tạo view sau đồng bộ lỗi: %s", exc)
         return result
 
-    # ── mốc chốt của snapshot MEDFORECAST_DW (MF_Watermark / MF_SyncLog) ──
+    # ── Mốc chốt dữ liệu nguồn (MF_Watermark / MF_SyncLog) ──
     @staticmethod
     def trang_thai_sta(connector) -> dict:
-        """Đọc MF_Watermark + MF_SyncLog trong snapshot MEDFORECAST_DW — thủ tục
-        phía bệnh viện ghi hai bảng này khi sinh snapshot; đây là "mốc dữ liệu
-        bệnh viện chốt" hiển thị trên Tổng quan. Ghi chú cũ: thủ tục ghi rất
-        tử tế (ok/failed, thông điệp có số dòng, bất biến) nhưng backend chưa
-        từng đọc (11/09/2026). Không có bước này, job PROD lỗi ba ngày thì màn
-        hình vẫn hiện số ba ngày trước với nhãn "đã đồng bộ hôm nay".
+        """Đọc MF_Watermark + MF_SyncLog trên MEDFORECAST_DW ("mốc dữ liệu bệnh viện chốt").
 
-        Trả {"available": bool, "watermarks": [...], "last_pushes": [...],
-             "warning": str | None}. Chỉ có ý nghĩa với SqlServerConnector;
-        Connector không phải SQL Server trả available=False.
+        Các thủ tục usp_MedForecast_* ghi hai bảng này; đọc chúng để phát hiện job PROD
+        lỗi thay vì hiển thị số cũ như dữ liệu mới.
+
+        Returns:
+            {"available": bool, "watermarks": [...], "last_pushes": [...],
+             "warning": str | None}; connector không phải SQL Server → available=False.
         """
         out = {"available": False, "watermarks": [], "last_pushes": [], "warning": None}
         if not isinstance(connector, SqlServerConnector):
@@ -242,7 +231,7 @@ class SyncService:
         out["available"] = wm is not None or lg is not None
         out["watermarks"] = _ban_ghi_json(wm)
         out["last_pushes"] = _ban_ghi_json(lg)
-        # cảnh báo ngắn cho giao diện — ưu tiên lỗi đẩy thật hơn lỗi quyền đọc
+        # Cảnh báo ngắn cho giao diện; ưu tiên lỗi của job hơn lỗi quyền đọc.
         failed = [r for r in out["last_pushes"] if str(r.get("TrangThai", "")).lower() == "failed"]
         if out["last_pushes"] and str(out["last_pushes"][0].get("TrangThai", "")).lower() != "ok":
             out["warning"] = ("Lần cập nhật kho trung gian gần nhất KHÔNG thành công: "
@@ -250,28 +239,17 @@ class SyncService:
         elif failed:
             out["warning"] = f"{len(failed)}/{len(out['last_pushes'])} lần cập nhật gần đây thất bại — xem nhật ký."
         elif loi:
-            out["warning"] = ("Không đọc được MF_Watermark/MF_SyncLog trong snapshot ("
+            out["warning"] = ("Không đọc được MF_Watermark/MF_SyncLog trong MEDFORECAST_DW ("
                               + "; ".join(loi) + ").")
         return out
 
     def _lam_moi_bang_nghiep_vu(self) -> dict:
-        """Đổ dữ liệu từ tầng pipeline (fact/mart) sang các bảng nghiệp vụ cũ.
+        """Đổ dữ liệu từ tầng pipeline (fact/mart) sang các bảng nghiệp vụ.
 
-        VÌ SAO CẦN BƯỚC NÀY
-        Ứng dụng có hai lớp dữ liệu hình thành theo lịch sử phát triển:
-          - bảng nghiệp vụ (disease_cases, medical_supplies, inventory) — trước
-            giờ nạp bằng chức năng import file CSV, phục vụ các trang Dịch tễ,
-            Tồn kho, Dashboard;
-          - tầng pipeline (fact_*, mart_*) — do job đồng bộ dựng, phục vụ dự báo
-            phân cấp và kế hoạch thuốc.
-        Job đồng bộ chỉ ghi lớp thứ hai. Không có cầu nối này thì sau khi nối
-        nguồn DW, các trang cũ vẫn hiển thị dữ liệu CSV import từ trước — hai màn
-        hình cạnh nhau ra hai con số khác nhau.
-
-        Cách làm: disease_cases XOÁ-RỒI-CHÈN toàn bộ từ fact_disease_case (nguồn
-        chân lý duy nhất, chạy lại không nhân đôi); medical_supplies/inventory
-        thì UPSERT theo supply_code — giữ nguyên safety_stock, giá
-        người dùng đã nhập tay.
+        Bảng nghiệp vụ (disease_cases, medical_supplies, inventory) phục vụ các trang Dịch
+        tễ, Tồn kho; pipeline chỉ ghi fact_*/mart_*, nên cần bước này để hai lớp nhất quán.
+        disease_cases: xoá rồi chèn toàn bộ từ fact_disease_case (chạy lại không nhân đôi).
+        medical_supplies/inventory: upsert theo supply_code, giữ safety_stock đã nhập tay.
         """
         from datetime import date, datetime
 
@@ -293,9 +271,7 @@ class SyncService:
         finally:
             pdb.close()
 
-        # DB cũ tạo trước khi model có cột disease_group: create_all KHÔNG thêm
-        # cột vào bảng đã tồn tại, nên tự ALTER ở đây (SQLite lẫn Postgres đều
-        # chấp nhận cú pháp này; chạy lại lần nữa thì cột đã có, bỏ qua).
+        # create_all không thêm cột vào bảng đã tồn tại; bổ sung disease_group nếu thiếu.
         from sqlalchemy import inspect as sa_inspect
         cot = {c["name"] for c in
                sa_inspect(self.db.connection()).get_columns("disease_cases")}
@@ -304,7 +280,7 @@ class SyncService:
                 "ALTER TABLE disease_cases ADD COLUMN disease_group VARCHAR(20)"))
             logger.info("Đã thêm cột disease_group vào disease_cases.")
 
-        # 1) disease_cases — xoá-rồi-chèn, mỗi dòng = (tháng × mã × tỉnh)
+        # 1) disease_cases: xoá rồi chèn, mỗi dòng = (tháng × mã × tỉnh).
         self.db.query(DiseaseCase).delete()
         self.db.bulk_save_objects([
             DiseaseCase(
@@ -322,7 +298,7 @@ class SyncService:
 
         _sach = lam_sach
 
-        # 2) medical_supplies + inventory — upsert theo supply_code
+        # 2) medical_supplies + inventory: upsert theo supply_code.
         co_san = {s.supply_code: s for s in self.db.query(MedicalSupply).all()}
         inv_theo_id = {i.supply_id: i for i in self.db.query(Inventory).all()}
         them_vt = sua_vt = 0
@@ -394,16 +370,14 @@ class SyncService:
         out["history"] = [{"source": r[0], "last_period": r[1], "rows_ingested": r[2],
                            "status": r[3], "run_at": str(r[4])} for r in (hist or [])]
 
-        # Bốn bảng fact DSS: có/không, kỳ mới nhất — để biết nút Đồng bộ đã
-        # thực sự nạp đầu ra thủ tục chưa.
+        # Số dòng và kỳ mới nhất của bốn bảng fact DSS.
         out["dss_tables"] = {}
         for t, k in (("fact_usage_total", "period"), ("fact_cases_by_care_level", "period"),
                      ("fact_usage_by_care_level", "period"), ("fact_inventory_lot", "snapshot_date")):
             r = q1(f"SELECT COUNT(*), MAX({k}) FROM {t}")
             out["dss_tables"][t] = {"rows": int(r[0] or 0), "latest": r[1]} if r else None
 
-        # Nguồn ứng dụng đang đọc: chỉ tên CSDL và loại nguồn. Không trả host/IP
-        # — giao diện Tổng quan không cần, và ảnh chụp màn hình không lộ hạ tầng.
+        # Chỉ trả loại nguồn và tên CSDL, không trả host/IP để tránh lộ hạ tầng.
         try:
             from app.services.sync_config_service import get_config
             cfg = get_config(self.db)
@@ -412,7 +386,7 @@ class SyncService:
         except Exception:                                 # noqa: BLE001
             out["source"] = {"kind": "unknown", "database": None}
 
-        # Mốc chốt snapshot (mở kết nối SQL Server cục bộ — chỉ khi có cấu hình SQL Server)
+        # Mốc chốt dữ liệu nguồn (mở kết nối tới SQL Server trên STA).
         try:
             out["sta"] = self.trang_thai_sta(_build_pipeline(self.db).connector)
         except Exception as exc:                          # noqa: BLE001

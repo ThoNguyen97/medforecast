@@ -6,28 +6,16 @@ Giao diện chung:
     m.fitted               True sau khi fit thành công (Ensemble dựa vào cờ này)
     m.name                 tên ngắn, ghi vào bản ghi "thành viên đã đóng góp"
 
-SARIMAX là tùy chọn: build_default_ensemble() tự thêm nếu statsmodels có sẵn.
+SARIMAX/ETS là tùy chọn: build_default_ensemble() tự thêm nếu statsmodels có sẵn.
 
-Sửa 11/09/2026 (xem RaSoat_MoHinh_MedForecast_2026-09-09.md):
-  M6  Ensemble ghi lại thành viên nào đã đóng góp, cảnh báo khi một thành viên
-      rớt, và KHÔNG gọi predict trên thành viên chưa fit thành công.
-  M8  Smearing (Duan 1983) có sẵn nhưng TẮT mặc định. Giả thuyết ban đầu là
-      expm1(E[log1p Y]) cho trung vị → hụt. ĐO THẬT (walk-forward 3 nhóm, mức
-      nhóm, 11/09/2026) cho thấy ngược lại: ensemble vốn đã dự báo THỪA
-      (MPE +13…+18%), smearing chỉ nhân thêm ≥1 nên đẩy lệch lên +30%. Giữ mã
-      để đối chứng, không bật.
-  M10 Chuẩn hoá cột trước Ridge — BẬT, với λ dò lại. λ=1 cũ được "ngầm hiệu
-      chuẩn" cho thang chưa chuẩn hoá; chuẩn hoá xong mà giữ λ=1 thì tệ hơn ở
-      cả 3 nhóm. Dò λ∈{3,10,30,100,300}: λ=10 thắng hoặc hoà bản cũ ở mọi ô
-      (Harm 0,81→0,78 / 0,75→0,69 / 0,75→0,76; Poisson 1,12→1,06 / 0,87→0,73
-      / 1,07→0,93). λ≥30 giết J09-J18 (dịch chuyển mức nền 3,66×, phạt xu hướng
-      mạnh thì không theo kịp: MPE −29…−48%). λ tối ưu KHÁC NHAU theo nhóm
-      (J00-J06≈100, J09-J18≈10, J20-J22≈30) — dò theo nhóm là bước tiếp theo.
-  M14 ĐÃ THỬ VÀ HOÀN TÁC — xem chú thích trong SeasonalTrendForecaster.fit.
+- Smearing (Duan 1983) có sẵn nhưng tắt mặc định: ensemble đã có xu hướng dự báo
+  thừa, smearing (hệ số ≥ 1) làm lệch dương tăng thêm.
+- Ridge phạt trên cột đã chuẩn hoá; λ = 10 chọn bằng walk-forward trên 3 nhóm
+  (λ lớn làm mô hình không theo kịp dịch chuyển mức nền của J09-J18).
 """
 from __future__ import annotations
 import logging
-from typing import Dict, List, Optional
+from typing import Dict, List
 import numpy as np
 import pandas as pd
 
@@ -43,13 +31,12 @@ def _arrays(df: pd.DataFrame):
 
 
 def _smear_factor(resid_log: np.ndarray) -> float:
-    """Hệ số Duan: mean(exp(ε)) trên phần dư thang log. ≥ 1 khi phần dư có
-    phương sai; = 1 nếu không có phần dư để ước lượng."""
+    """Hệ số Duan mean(exp(ε)) trên phần dư thang log; = 1 nếu không đủ phần dư."""
     r = np.asarray(resid_log, float)
     r = r[np.isfinite(r)]
     if len(r) < 3:
         return 1.0
-    # chặn ngoại lai cực đoan để một tháng bất thường không thổi phồng cả chuỗi
+    # Chặn ngoại lai để một tháng bất thường không thổi phồng cả chuỗi.
     r = np.clip(r, -3.0, 3.0)
     return float(np.mean(np.exp(r)))
 
@@ -57,9 +44,8 @@ def _smear_factor(resid_log: np.ndarray) -> float:
 def _ridge_standardized(X: np.ndarray, t: np.ndarray, lam: float):
     """Ridge với cột (trừ cột chặn, cột 0) đã chuẩn hoá về mean 0 / sd 1.
 
-    Trả (beta_goc, mu, sd): beta trên thang GỐC để predict không cần chuẩn hoá
-    lại, nhưng hình phạt đã được áp trên thang chuẩn hoá — đó là điểm khác
-    biệt so với bản cũ.
+    Trả beta trên thang gốc để predict không cần chuẩn hoá lại; hình phạt được áp
+    trên thang chuẩn hoá.
     """
     Xs = X.copy()
     mu = Xs[:, 1:].mean(axis=0)
@@ -69,23 +55,11 @@ def _ridge_standardized(X: np.ndarray, t: np.ndarray, lam: float):
     p = Xs.shape[1]
     I = np.eye(p); I[0, 0] = 0.0
     beta_s = np.linalg.solve(Xs.T @ Xs + lam * I, Xs.T @ t)
-    # quy về thang gốc: b_j = b_s_j / sd_j ; b_0 = b_s_0 − Σ b_j·mu_j
+    # Quy về thang gốc: b_j = b_s_j / sd_j ; b_0 = b_s_0 − Σ b_j·mu_j
     beta = np.empty(p)
     beta[1:] = beta_s[1:] / sd
     beta[0] = beta_s[0] - float(np.dot(beta[1:], mu))
     return beta
-
-
-class NaiveForecaster:
-    """Dự báo = giá trị tháng gần nhất."""
-    name = "naive"
-    fitted = False
-    def fit(self, df):
-        self._last = float(df["cases"].iloc[-1]) if len(df) else 0.0
-        self.fitted = True
-        return self
-    def predict(self, next_month: int) -> float:
-        return max(0.0, self._last)
 
 
 class SeasonalNaiveForecaster:
@@ -106,8 +80,8 @@ class SeasonalNaiveForecaster:
 class SeasonalTrendForecaster:
     """Mức + hệ số mùa (nhân) + xu hướng tuyến tính có giảm dần.
 
-    Ước lượng hệ số mùa và xu hướng trên các tháng KHÔNG COVID để tránh méo.
-    Thang đo: TRUNG BÌNH (không biến đổi log) — không cần smearing.
+    Ước lượng hệ số mùa và xu hướng trên các tháng không COVID để tránh méo.
+    Thang đo gốc (không log) nên không cần smearing.
     """
     name = "seasonal_trend"
     fitted = False
@@ -123,17 +97,15 @@ class SeasonalTrendForecaster:
         use = ~cov if (self.exclude_covid and (~cov).sum() >= 6) else np.ones(self.n, bool)
         base_mean = y[use].mean() if use.any() else (y.mean() if self.n else 0.0)
         base_mean = base_mean if base_mean > 0 else 1.0
-        # hệ số mùa theo tháng (nhân) — một lượt, KHÔNG chuẩn hoá.
-        # 11/09/2026: đã thử chuẩn hoá về trung bình 1 + ước lượng lại sau khi
-        # khử xu hướng (M14). Đo walk-forward 3 nhóm: tệ hơn ở 2/3 (J00-J06
-        # RelMAE 1,23→1,51; J20-J22 0,98→1,20), chỉ J09-J18 tốt hơn. Giữ bản cũ.
+        # Hệ số mùa theo tháng (nhân), ước lượng một lượt, không chuẩn hoá về trung bình 1:
+        # chuẩn hoá + ước lượng lại sau khử xu hướng cho kết quả walk-forward kém hơn ở 2/3 nhóm.
         self.sfac = {}
         for m in range(1, 13):
             sel = use & (mo == m)
             self.sfac[m] = (y[sel].mean() / base_mean) if sel.any() and y[sel].mean() > 0 else 1.0
         s_of = np.array([self.sfac[m] for m in mo])
         des = np.where(s_of > 0, y / s_of, y)
-        # xu hướng tuyến tính trên chuỗi đã khử mùa (chỉ dùng non-covid)
+        # Xu hướng tuyến tính trên chuỗi đã khử mùa (chỉ tháng không COVID).
         xi, di = idx[use], des[use]
         if len(xi) >= 3:
             self.slope, self.intercept = np.polyfit(xi, di, 1)
@@ -145,7 +117,7 @@ class SeasonalTrendForecaster:
 
     def predict(self, next_month: int) -> float:
         idx = self.n  # bước kế tiếp
-        # giảm dần độ ngoại suy của xu hướng để tránh trôi
+        # Giảm chấn ngoại suy xu hướng để tránh trôi.
         horizon = idx - self._last_fit_idx
         eff = self._last_fit_idx + sum(self.damping ** k for k in range(1, int(max(1, horizon)) + 1))
         level = self.intercept + self.slope * eff
@@ -156,8 +128,8 @@ class SeasonalTrendForecaster:
 class PoissonTrendForecaster:
     """Hồi quy log-tuyến tính (xấp xỉ Poisson): log1p(ca) ~ xu hướng + tháng.
 
-    Ridge trên cột ĐÃ CHUẨN HOÁ (M10). Ước lượng trên tháng không COVID.
-    Thang đo: log → cần smearing (M8) để trả kỳ vọng thay vì trung vị.
+    Ridge trên cột đã chuẩn hoá, ước lượng trên tháng không COVID.
+    Thang log nên smearing (nếu bật) chuyển trung vị về kỳ vọng.
     """
     name = "poisson_trend"
     fitted = False
@@ -200,12 +172,11 @@ class PoissonTrendForecaster:
 
 
 class HarmonicPoissonForecaster:
-    """Hồi quy log-tuyến tính (Poisson xấp xỉ) với mùa dạng ĐIỀU HÒA (sin/cos)
-    + tùy chọn biến THỜI TIẾT có ĐỘ TRỄ.
+    """Hồi quy log-tuyến tính (Poisson xấp xỉ) với mùa dạng điều hòa (sin/cos),
+    tùy chọn thêm biến thời tiết có độ trễ.
 
-    Ưu điểm: ít tham số (hợp dữ liệu nhỏ). Thời tiết dùng ở độ trễ (lag) nên
-    KHÔNG rò rỉ tương lai — đúng dịch tễ (bệnh bùng sau đợt thời tiết).
-    Thang đo: log → smearing (M8).
+    Ít tham số, hợp dữ liệu nhỏ. Thời tiết dùng ở độ trễ nên không rò rỉ tương lai
+    (bệnh bùng sau đợt thời tiết). Thang log, smearing tùy chọn.
 
     df cần cột: month(int), cases(float), is_covid(bool),
                 và nếu use_weather: temp, humidity, rainfall (có thể NaN).
@@ -298,13 +269,12 @@ class HarmonicPoissonForecaster:
         if self._has_w_stored():
             for c in self.WCOLS:
                 for L in self.weather_lags:
-                    j = i - L                      # lag từ dữ liệu ĐÃ QUAN SÁT
+                    j = i - L                      # lag từ dữ liệu đã quan sát
                     val = self._w_hist[c][j] if 0 <= j < self.n else np.nan
                     dev = (0.0 if (val is None or np.isnan(val))
                            else (val - self._w_mean[c]) / self._w_std[c])
                     row.append(dev)
-        # Bản cũ cắt ngắn âm thầm khi lệch chiều (row[:len(beta)] @ beta[:len(row)]).
-        # Lệch chiều là lỗi lập trình — phải nổ ra, không được đoán bừa.
+        # Lệch số chiều đặc trưng/beta là lỗi lập trình: báo lỗi thay vì cắt ngắn.
         if len(row) != len(self.beta):
             raise ValueError(f"HarmonicPoisson: đặc trưng {len(row)} ≠ beta {len(self.beta)}")
         eta = float(np.asarray(row) @ self.beta)
@@ -316,14 +286,12 @@ class HarmonicPoissonForecaster:
 
 
 class Ensemble:
-    """Trung bình ĐỀU các thành viên đã fit thành công (giảm phương sai).
+    """Trung bình đều các thành viên đã fit thành công.
 
-    M6: ghi lại ai đóng góp. Sau mỗi lần predict:
+    Sau mỗi lần predict:
         .members_used   tên các thành viên góp giá trị vào trung bình
         .members_failed {tên: lý do} các thành viên rớt ở fit hoặc predict
-    Không có trọng số thích ứng — một thành viên tồi bị LÀM LOÃNG chứ không
-    bị hạ trọng số. Nếu cần trọng số nghịch đảo MSE thì làm ở lớp trên với
-    kết quả backtest, không giấu vào đây.
+    Trọng số thích ứng nằm ở lớp trên (combine.AdaptiveCombiner).
     """
     name = "ensemble"
 
@@ -332,11 +300,8 @@ class Ensemble:
         self.members_used: List[str] = []
         self.members_failed: Dict[str, str] = {}
 
-    # Dự báo của một thành viên vượt quá PLAUSIBLE_FACTOR × max lịch sử thì bị
-    # coi là rớt (ghi lý do), không đưa vào trung bình. 11/09/2026: SARIMAX
-    # không hội tụ cho 10^7 ở J20-J22 và 10^45 ở mã thưa J09-J18 — một giá trị
-    # như vậy lọt vào np.mean là phá cả ensemble. Đây chính là "hạ trọng số
-    # mô hình tồi" mà tài liệu cũ tưởng đã có; giờ mới có thật, và minh bạch.
+    # Dự báo thành viên vượt PLAUSIBLE_FACTOR × max lịch sử bị coi là rớt (ghi lý do):
+    # SARIMAX không hội tụ có thể trả giá trị cực lớn, phá cả trung bình.
     PLAUSIBLE_FACTOR = 5.0
 
     def fit(self, df):
@@ -356,9 +321,10 @@ class Ensemble:
         return self
 
     def predict_members(self, next_month: int) -> Dict[str, float]:
-        """Dự báo của TỪNG thành viên còn đứng (M12). Thành viên rớt / phi lý
-        bị loại và ghi lý do như trước. Lớp kết hợp (combine.AdaptiveCombiner)
-        quyết định trọng số — không phải việc của ensemble."""
+        """Dự báo của từng thành viên hợp lệ; thành viên rớt/phi lý bị loại và ghi lý do.
+
+        Trọng số do combine.AdaptiveCombiner quyết định.
+        """
         out: Dict[str, float] = {}
         for m in self.members:
             nm = getattr(m, "name", type(m).__name__)
@@ -378,8 +344,7 @@ class Ensemble:
         return out
 
     def predict(self, next_month: int) -> float:
-        """Trung bình ĐỀU — giữ cho mức mã và cho tương thích. Mức nhóm dùng
-        `group_forecast.py` với trọng số thích ứng."""
+        """Trung bình đều, dùng ở mức mã; mức nhóm dùng `group_forecast` với trọng số thích ứng."""
         vals = self.predict_members(next_month)
         if not vals:
             logger.error("Ensemble: KHÔNG thành viên nào dự báo được — trả 0.")
@@ -405,12 +370,11 @@ def _has_statsmodels() -> bool:
 
 def build_default_ensemble(use_weather: bool = False, smearing: bool = False,
                            lam: float = 10.0, use_ets: bool = False) -> Ensemble:
-    """SeasonalTrend + PoissonTrend (+ Harmonic-thời-tiết nếu use_weather;
-    + SARIMAX nếu có statsmodels).
+    """SeasonalTrend + PoissonTrend (+ HarmonicPoisson thời tiết nếu use_weather;
+    + SARIMAX, ETS nếu có statsmodels).
 
-    Trong app và backtest, luôn dựng qua `group_forecast.make_ensemble(df, cfg)`
-    để tham số đọc từ PRODUCTION_CONFIG; gọi thẳng không tham số là cấu hình
-    "thời tiết tắt".
+    App và backtest dựng qua `group_forecast.make_ensemble(df, cfg)` để tham số đọc
+    từ PRODUCTION_CONFIG.
     """
     members = [SeasonalTrendForecaster(),
                PoissonTrendForecaster(lam=lam, smearing=smearing)]
@@ -426,7 +390,7 @@ def build_default_ensemble(use_weather: bool = False, smearing: bool = False,
             pass
         if use_ets:
             try:
-                from .ets_opt import EtsForecaster       # tuỳ chọn (M12)
+                from .ets_opt import EtsForecaster       # tuỳ chọn
                 members.append(EtsForecaster(smearing=smearing))
             except Exception:
                 pass

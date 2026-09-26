@@ -34,7 +34,7 @@ export default function ConfigurationsSection() {
   );
 }
 
-// ── Disease catalog ─────────────────────────────────────────────────────────
+// ── Danh mục bệnh ──
 
 function DiseaseConfigCard() {
   const { data: diseases = [], isLoading } = useAdminDiseases();
@@ -156,7 +156,7 @@ function DiseaseConfigCard() {
   );
 }
 
-// ── Disease group catalog ────────────────────────────────────────────────────
+// ── Danh mục nhóm bệnh ──
 
 function DiseaseGroupConfigCard() {
   const { data: groups = [], isLoading } = useAdminDiseaseGroups();
@@ -285,7 +285,7 @@ function DiseaseGroupConfigCard() {
   );
 }
 
-// ── Reusable dialogs ────────────────────────────────────────────────────────
+// ── Dialog dùng chung ──
 
 function DiseaseFormDialog({
   initial,
@@ -510,7 +510,7 @@ function ConfirmDialog({
   );
 }
 
-// ── Reusable bits ───────────────────────────────────────────────────────────
+// ── Thành phần dùng chung ──
 
 const inputClass =
   'w-full h-10 px-3 rounded-lg border border-neutral-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500';

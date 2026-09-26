@@ -2,15 +2,11 @@ import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { AlertTriangle, RotateCcw } from 'lucide-react';
 
 /**
- * Chặn lỗi render của MỘT trang, không để nó làm trắng cả ứng dụng.
+ * Chặn lỗi render của một trang, không để nó làm trắng cả ứng dụng.
  *
- * Vì sao cần: React gỡ toàn bộ cây khi có lỗi ném ra trong lúc render mà không
- * component nào bắt. Trước đây ứng dụng không có ranh giới nào, nên một lỗi
- * nhỏ ở một trang (ví dụ tham chiếu tới biến khai sai scope) làm mất luôn cả
- * thanh điều hướng — người dùng chỉ thấy màn hình trắng, không có manh mối nào.
- *
- * Đặt bên trong Layout để khi một trang hỏng thì sidebar và header vẫn còn,
- * người dùng chuyển sang trang khác được.
+ * React gỡ toàn bộ cây khi lỗi render không được component nào bắt, kể cả
+ * thanh điều hướng. Đặt bên trong Layout để khi một trang hỏng thì sidebar và
+ * header vẫn còn, người dùng chuyển sang trang khác được.
  */
 interface Props {
   children: ReactNode;

@@ -1,15 +1,7 @@
-"""
-Integration tests for Configuration API endpoints.
+"""Test tích hợp API cấu hình hệ thống.
 
-Covers:
-- GET  /api/v1/config
-- GET  /api/v1/config/conversion-ratios
-- PUT  /api/v1/config/conversion-ratios  (Admin only)
-- GET  /api/v1/config/thresholds
-- PUT  /api/v1/config/thresholds  (Admin only)
-- GET  /api/v1/config/{key}
-- PUT  /api/v1/config/{key}  (Admin only)
-- RBAC enforcement
+Phạm vi: GET /api/v1/config, GET/PUT /api/v1/config/{key} (PUT chỉ Administrator)
+và phân quyền theo vai trò.
 """
 
 import pytest
@@ -26,7 +18,7 @@ from app.models.medical_supply import MedicalSupply
 from app.core.security import hash_password, create_access_token
 
 
-# ── Test DB Setup ─────────────────────────────────────────────────────────────
+# ── CSDL test ──
 
 @pytest.fixture(scope="function")
 def db_session():
@@ -129,7 +121,7 @@ def sample_supply(db_session):
     return supply
 
 
-# ── List Configs Tests ────────────────────────────────────────────────────────
+# ── Danh sách cấu hình ──
 
 class TestListConfigs:
     def test_list_configs_requires_auth(self, client):
@@ -152,7 +144,7 @@ class TestListConfigs:
         assert resp.status_code == 200
 
 
-# ── Get Config by Key Tests ───────────────────────────────────────────────────
+# ── Đọc cấu hình theo khoá ──
 
 class TestGetConfigByKey:
     def test_get_config_by_key_success(self, client, admin_headers, sample_config):
@@ -171,7 +163,7 @@ class TestGetConfigByKey:
         assert resp.status_code == 401
 
 
-# ── Update Config by Key Tests ────────────────────────────────────────────────
+# ── Cập nhật cấu hình theo khoá ──
 
 class TestUpdateConfigByKey:
     def test_update_config_success_as_admin(self, client, admin_headers, sample_config):
@@ -193,7 +185,7 @@ class TestUpdateConfigByKey:
         assert resp.status_code == 403
 
     def test_create_new_config_via_put(self, client, admin_headers):
-        """PUT to a nonexistent key should create it."""
+        """PUT vào khoá chưa tồn tại sẽ tạo mới."""
         resp = client.put(
             "/api/v1/config/new_key",
             json={"config_value": "new_value", "description": "Brand new config"},

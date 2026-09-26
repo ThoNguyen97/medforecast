@@ -1,15 +1,11 @@
-"""DỰ BÁO từ artifact đã huấn luyện — không cần DB, không cần khớp lại (3.7).
+"""Dự báo từ artifact đã huấn luyện, không cần DB và không khớp lại mô hình.
 
     python -m app.forecasting.predict --model models/v1/model_v1.pkl
     python -m app.forecasting.predict --model models/v1/model_v1.pkl --block J09-J18 --json
 
-Đọc `model_v1.pkl` (thành viên đã khớp + trọng số + hệ số lệch + phần dư
-tương đối) và trả dự báo kỳ kế tiếp của từng khối kèm khoảng 90 %, và chia
-xuống mã theo tỷ trọng cố định (top-down) để có số ở mức mã.
-
-Muốn dự báo với dữ liệu MỚI hơn artifact thì huấn luyện lại bằng train.py —
-mô hình khớp trong vài chục giây, không có lý do gì để dự báo bằng trạng
-thái cũ khi đã có tháng mới.
+Đọc `model_v1.pkl` (thành viên đã khớp, trọng số, hệ số lệch, phần dư tương đối),
+trả dự báo kỳ kế tiếp của từng khối kèm khoảng 90 % và chia xuống mã theo tỷ trọng
+cố định (top-down). Có dữ liệu tháng mới thì huấn luyện lại bằng train.py.
 """
 from __future__ import annotations
 

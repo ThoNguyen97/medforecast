@@ -4,10 +4,9 @@ import { MemoryRouter } from 'react-router-dom';
 import Login from '../Login';
 import { useAuth } from '../../hooks/useAuth';
 
-// Mock useAuth to avoid real network calls
+// Mock useAuth để không gọi mạng thật
 vi.mock('../../hooks/useAuth');
 
-// Mock useNavigate
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom');
@@ -123,7 +122,7 @@ describe('Login page', () => {
     const passwordInput = screen.getByLabelText(/mật khẩu/i) as HTMLInputElement;
     expect(passwordInput.type).toBe('password');
 
-    // Find the toggle button (tabIndex=-1)
+    // Nút hiện/ẩn mật khẩu có tabIndex=-1
     const toggleBtn = passwordInput.parentElement!.querySelector('button[tabindex="-1"]')!;
     fireEvent.click(toggleBtn);
     expect(passwordInput.type).toBe('text');

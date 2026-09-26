@@ -15,7 +15,7 @@ export default function Layout() {
       <div
         className={cn(
           'shrink-0 transition-all duration-300',
-          // Mobile: overlay sidebar
+          // Di động: sidebar dạng lớp phủ
           'fixed inset-y-0 left-0 z-30 lg:relative lg:z-auto',
           isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         )}
@@ -23,7 +23,7 @@ export default function Layout() {
         <Sidebar />
       </div>
 
-      {/* Mobile overlay backdrop */}
+      {/* Lớp nền mờ khi mở sidebar trên di động */}
       {isSidebarOpen && (
         <div
           className="fixed inset-0 z-20 bg-black/50 lg:hidden"
@@ -31,7 +31,7 @@ export default function Layout() {
         />
       )}
 
-      {/* Main content area */}
+      {/* Vùng nội dung chính */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <Header />
         <main className="flex-1 overflow-y-auto p-6">

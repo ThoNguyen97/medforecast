@@ -1,4 +1,4 @@
-"""Inventory model."""
+"""Model tồn kho theo lô."""
 from sqlalchemy import Column, Integer, String, Date, DateTime, ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -6,7 +6,7 @@ from app.database import Base
 
 
 class Inventory(Base):
-    """Inventory tracking for medical supplies."""
+    """Tồn kho thuốc/vật tư y tế theo lô và hạn dùng."""
     
     __tablename__ = "inventory"
     
@@ -20,6 +20,5 @@ class Inventory(Base):
     last_updated = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     updated_by = Column(Integer, ForeignKey("users.id"))
     
-    # Relationships
     supply = relationship("MedicalSupply", backref="inventory_items")
     updater = relationship("User")
