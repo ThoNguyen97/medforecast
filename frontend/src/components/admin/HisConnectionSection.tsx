@@ -15,16 +15,8 @@ import {
 } from '../../services/syncService';
 import { cn } from '../../utils/cn';
 
-/**
- * Quản trị → Nguồn dữ liệu (CSDL DW).
- *
- * Cấu hình lưu trong bảng system_config thay vì file .env: admin đổi host/mật
- * khẩu trên giao diện, thử kết nối trước khi lưu, và lần đồng bộ sau tự dùng cấu
- * hình mới mà không cần khởi động lại backend.
- *
- * Mật khẩu chỉ đi một chiều (client → server): server không trả lại, form chỉ
- * biết "đã đặt hay chưa" qua has_password.
- */
+/** Cấu hình kết nối CSDL DW, lưu ở system_config.
+ *  Mật khẩu chỉ đi một chiều: server không trả lại, form chỉ biết has_password. */
 
 const RONG: HisConnectionInput = {
   source: 'sqlserver',
@@ -80,7 +72,7 @@ export default function HisConnectionSection() {
 
   const doi = <K extends keyof HisConnectionInput>(k: K, v: HisConnectionInput[K]) => {
     setForm((f) => ({ ...f, [k]: v }));
-    setTestResult(null); // cấu hình đã đổi → kết quả thử cũ không còn giá trị
+    setTestResult(null); // cấu hình đổi thì kết quả thử cũ vô hiệu
   };
 
   const laSqlServer = form.source === 'sqlserver';
@@ -192,7 +184,7 @@ export default function HisConnectionSection() {
         </div>
       )}
 
-      {/* Hành động + kết quả thử */}
+      {/* Hành động */}
       <div className="bg-white rounded-2xl border border-neutral-200 p-5 space-y-4">
         <div className="flex flex-wrap items-center gap-3">
           <button

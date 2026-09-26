@@ -25,11 +25,8 @@ async def get_supply_requirements_summary(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Một dòng mỗi mã: nhu cầu dự báo `horizon_days` ngày tới, tồn hữu dụng
-    FEFO và thiếu hụt = max(0, nhu cầu − tồn). Đi đúng chuỗi
-    dss_dashboard.tang1_tang2 → dss_alerts.alert_rows nên không lệch trang
-    Cảnh báo. `disease_types`/`requirement_count` giữ để tương thích schema phản hồi.
-    """
+    """Một dòng mỗi mã: nhu cầu dự báo, tồn hữu dụng FEFO, thiếu hụt = max(0, nhu cầu − tồn).
+    Dùng cùng chuỗi tang1_tang2 → alert_rows với trang Cảnh báo."""
 
     try:
         from app.models.medical_supply import MedicalSupply

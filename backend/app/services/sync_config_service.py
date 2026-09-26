@@ -1,13 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Cấu hình kết nối CSDL MEDFORECAST_DW (trên STA), lưu trong system_config và sửa từ Quản trị.
-
-Ứng dụng đọc 7 view vw_MedForecast_* qua pyodbc. Thứ tự ưu tiên khi dựng connector:
-cấu hình trong DB (nếu admin đã lưu), sau đó biến môi trường PIPELINE_* trong .env.
-Lưu trong DB để đổi kết nối/mật khẩu ngay trên giao diện, có thử kết nối, không cần restart.
-
-Mật khẩu mã hoá Fernet với khoá dẫn xuất từ SECRET_KEY (sha256 → urlsafe-b64). Mã hoá
-thuận nghịch là bắt buộc vì cần mật khẩu gốc để kết nối, nên SECRET_KEY phải nằm ngoài
-DB. API không bao giờ trả mật khẩu về client, kể cả dạng đã mã hoá.
+"""Cấu hình kết nối MEDFORECAST_DW (STA) lưu trong system_config, ưu tiên hơn biến môi trường PIPELINE_*.
+Mật khẩu mã hoá Fernet với khoá dẫn xuất từ SECRET_KEY (cần thuận nghịch để kết nối);
+API không bao giờ trả mật khẩu về client.
 """
 from __future__ import annotations
 
@@ -27,18 +21,17 @@ logger = logging.getLogger(__name__)
 
 CONFIG_KEY = "his_sync.connection"
 
-# Hồ sơ câu SQL: quyết định app đọc view nào từ nguồn.
+# Hồ sơ câu SQL: app đọc view nào từ nguồn.
 SQL_PROFILES = {
-    # MEDFORECAST_DW trên STA (mặc định)
     "sta": {"case": "case_sta.sql", "inventory": "inventory_sta.sql",
             "case_group": "case_group_sta.sql"},
 }
 
 MAC_DINH = {
-    "source": "sqlserver",     # nguồn duy nhất: SQL Server
-    "host": "localhost",       # máy chủ SQL Server chứa MEDFORECAST_DW
+    "source": "sqlserver",
+    "host": "localhost",
     "port": 1433,
-    "instance": "",            # instance có tên (localhost\SQLEXPRESS) — khi đặt thì bỏ port
+    "instance": "",            # instance có tên: khi đặt thì bỏ port
     "database": "MEDFORECAST_DW",
     "auth": "windows",         # windows (Trusted_Connection) | sql (UID/PWD)
     "username": "medforecast_app",
@@ -48,7 +41,7 @@ MAC_DINH = {
     "lookback_months": 3,      # số kỳ nạp lại mỗi lần đồng bộ
 }
 
-# 7 view ứng dụng đọc kèm nhãn; kiểm tra kết nối duyệt đủ cả 7.
+# 7 view ứng dụng đọc; kiểm tra kết nối duyệt đủ cả 7.
 VIEW_UNG_DUNG = [
     ("vw_MedForecast_CaBenh",          "ca bệnh theo mã ICD"),
     ("vw_MedForecast_CaBenhNhom",      "số ca theo nhóm ICD"),
@@ -133,7 +126,7 @@ def save_config(db: Session, payload: dict, user_id: Optional[int]) -> dict:
 
 
 # ── Dựng chuỗi kết nối ──
-# Thứ tự ưu tiên khi driver trong cấu hình không có trên máy (lỗi IM002).
+# Thứ tự ưu tiên khi driver cấu hình không có trên máy (IM002).
 DRIVER_UU_TIEN = [
     "ODBC Driver 18 for SQL Server",
     "ODBC Driver 17 for SQL Server",
@@ -144,11 +137,7 @@ DRIVER_UU_TIEN = [
 
 
 def driver_kha_dung(driver_cau_hinh: str) -> tuple[str, bool]:
-    """Trả (tên driver dùng thật, có phải tên đã cấu hình không).
-
-    Tên đã lưu không có trong pyodbc.drivers() → lấy driver SQL Server tốt nhất đang
-    cài theo DRIVER_UU_TIEN. Không có pyodbc thì trả nguyên tên cấu hình.
-    """
+    """Trả (driver dùng thật, có phải tên đã cấu hình); thiếu driver thì lấy theo DRIVER_UU_TIEN."""
     try:
         import pyodbc
         co = list(pyodbc.drivers())
@@ -171,11 +160,7 @@ def dung_windows_auth(cfg: dict) -> bool:
 
 
 def _chuoi_ket_noi(cfg: dict) -> str:
-    """URL SQLAlchemy qua odbc_connect + quote_plus, an toàn với mật khẩu chứa @ ; \\ %.
-
-    `auth = windows`  → Trusted_Connection=yes (không UID/PWD)
-    `auth = sql`      → UID/PWD
-    """
+    """URL SQLAlchemy qua odbc_connect + quote_plus, an toàn với mật khẩu chứa ký tự đặc biệt."""
     if cfg.get("instance"):
         server = f"{cfg['host']}\\{cfg['instance']}"      # instance có tên: bỏ port
     else:
@@ -194,7 +179,7 @@ def _chuoi_ket_noi(cfg: dict) -> str:
 
 
 def build_connector(db: Session):
-    """Connector theo cấu hình trong DB; None nếu chưa lưu (khi đó dùng biến môi trường PIPELINE_*)."""
+    """Connector theo cấu hình trong DB; None nếu chưa lưu."""
     cfg = _doc_tho(db)
     if not cfg:
         return None
@@ -220,10 +205,7 @@ def build_connector(db: Session):
 
 # ── Thử kết nối ──
 def test_connection(db: Session, payload: dict) -> dict:
-    """Thử kết nối bằng cấu hình vừa nhập (chưa lưu); mật khẩu rỗng thì dùng mật khẩu đã lưu.
-
-    Trả kết quả từng bước để giao diện chỉ ra đúng bước lỗi.
-    """
+    """Thử kết nối bằng cấu hình chưa lưu, trả kết quả từng bước; mật khẩu rỗng thì dùng mật khẩu đã lưu."""
     cfg = {**MAC_DINH, **{k: v for k, v in payload.items() if v is not None}}
     mat_khau = (payload.get("password") or "").strip()
     if mat_khau:
@@ -253,7 +235,6 @@ def test_connection(db: Session, payload: dict) -> dict:
             cach = "Windows Authentication" if dung_windows_auth(cfg) else f"SQL auth ({cfg.get('username')})"
             steps.append({"name": "Kết nối SQL Server", "ok": True,
                           "detail": f"Đăng nhập được ({cach}), database: {ten_db}"})
-            # Kiểm tra các bảng MF_* và mốc chốt trong MF_Watermark.
             try:
                 so_bang = c.execute(text(
                     "SELECT COUNT(*) FROM sys.tables WHERE name LIKE 'MF[_]%'")).scalar()

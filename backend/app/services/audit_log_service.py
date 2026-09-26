@@ -12,7 +12,6 @@ from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
-# Số ngày lưu giữ log.
 LOG_RETENTION_DAYS = 90
 DEFAULT_PAGE_SIZE = 50
 
@@ -36,11 +35,7 @@ class AuditLogService:
         page: int = 1,
         page_size: int = DEFAULT_PAGE_SIZE,
     ) -> Tuple[int, list]:
-        """Danh sách audit log đã lọc và phân trang.
-
-        Returns:
-            (total, items) để dựng PaginatedResponse mà không cần truy vấn thứ hai.
-        """
+        """Danh sách audit log đã lọc và phân trang; trả (total, items)."""
         query = self.db.query(AuditLog)
 
         if start_date:
@@ -145,11 +140,7 @@ class AuditLogService:
     # ── Retention Cleanup ─────────────────────────────────────────────────────
 
     def delete_old_logs(self, retention_days: int = LOG_RETENTION_DAYS) -> dict:
-        """Xoá audit log và system log cũ hơn *retention_days* ngày.
-
-        Returns:
-            dict số dòng đã xoá của từng bảng, mốc cắt và số ngày lưu giữ.
-        """
+        """Xoá audit log và system log cũ hơn retention_days ngày; trả số dòng đã xoá."""
         cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
 
         audit_deleted = (

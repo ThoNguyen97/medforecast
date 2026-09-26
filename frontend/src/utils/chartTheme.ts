@@ -1,30 +1,25 @@
-/**
- * Chart theme chuẩn hóa cho toàn hệ thống (recharts).
- *
- * Palette categorical đã kiểm định trên nền trắng (CVD ΔE ≥ 8, normal-vision
- * ΔE ≥ 15, lightness band, chroma floor). Gán màu theo thứ tự cố định, không
- * xoay vòng; màu trạng thái dành riêng cho cảnh báo, không dùng làm màu series.
- */
+/** Chart theme dùng chung cho recharts. Palette đã kiểm định trên nền trắng (CVD ΔE ≥ 8);
+ *  gán màu theo thứ tự cố định, màu trạng thái không dùng làm màu series. */
 
-/** Series categorical — thứ tự cố định slot 1→5 */
+/** Series categorical, thứ tự cố định. */
 export const SERIES = {
-  s1: '#2a78d6', // blue     — series chính (năm nay / thực tế / tồn kho)
-  s2: '#008300', // green    — series 2
-  s3: '#e87ba4', // magenta  — series 3
-  s4: '#eda100', // yellow   — series 4
-  s5: '#1baf7a', // aqua     — series 5
-  s6: '#eb6834', // orange   — series 6
+  s1: '#2a78d6', // series chính
+  s2: '#008300',
+  s3: '#e87ba4',
+  s4: '#eda100',
+  s5: '#1baf7a',
+  s6: '#eb6834',
 } as const;
 
-/** Màu phụ trợ trung tính cho trục/lưới/nhãn — grid phải "lùi về sau" */
+/** Màu trung tính cho trục/lưới/nhãn. */
 export const INK = {
-  axis: '#6b7280', // text nhãn trục
-  grid: '#e5e7eb', // đường lưới nhạt
+  axis: '#6b7280',
+  grid: '#e5e7eb',
   muted: '#9ca3af',
-  reference: '#c7cdd6', // đường tham chiếu (năm trước, baseline)
+  reference: '#c7cdd6', // năm trước, baseline
 } as const;
 
-/** Props dùng chung cho recharts — áp cho mọi chart để đồng nhất */
+/** Props dùng chung cho mọi chart. */
 export const gridProps = {
   stroke: INK.grid,
   strokeDasharray: '3 3',

@@ -1,10 +1,4 @@
-/**
- * Hợp đồng dữ liệu /api/v1/inventory (backend app/schemas/base.py:
- * MedicalSupplyResponse, InventoryResponse, InventoryUpdate).
- *
- * Không có trường mua sắm (reorder_point, storage_capacity, MOQ, lead time):
- * hệ thống là DSS thuần, tồn kho chỉ mang tồn hiện có và ngưỡng tham khảo.
- */
+/** Hợp đồng dữ liệu /api/v1/inventory (backend app/schemas/base.py); không có trường mua sắm. */
 
 export interface MedicalSupply {
   id: number;
@@ -23,7 +17,7 @@ export interface Inventory {
   id: number;
   supply_id: number;
   supply: MedicalSupply | null;
-  current_stock: number;      // có thể âm — HIS xuất trước nhập bù sau
+  current_stock: number;      // có thể âm: HIS xuất trước nhập bù sau
   safety_stock: number;       // ngưỡng tham khảo, không tham gia DOI
   location: string | null;
   batch_number: string | null;

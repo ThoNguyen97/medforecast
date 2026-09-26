@@ -17,7 +17,7 @@ interface ReportTypeMeta {
   title: string;
   description: string;
   icon: React.ComponentType<{ className?: string }>;
-  accent: string; // màu gốc Tailwind, vd 'blue', 'rose'
+  accent: string; // màu Tailwind, vd 'blue'
 }
 
 export const REPORT_TYPES: ReportTypeMeta[] = [

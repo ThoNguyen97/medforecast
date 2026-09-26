@@ -1,9 +1,6 @@
 # -*- coding: utf-8 -*-
-"""Dự báo số ca theo nhóm ICD (theo tỉnh hoặc toàn quốc) cho trang Phân tích & Dự báo.
-
-Dùng cùng ensemble mức nhóm với backtest và Dashboard (`group_forecast.forecast_group_next`,
-PRODUCTION_CONFIG). Khi tháng đích nằm trong quá khứ, mô hình chỉ học trên các tháng
-trước tháng đích để tránh rò rỉ thời gian.
+"""Dự báo số ca theo nhóm ICD (tỉnh hoặc toàn quốc) cho trang Phân tích, cùng ensemble với backtest.
+Tháng đích trong quá khứ chỉ học trên các tháng trước đó để tránh rò rỉ thời gian.
 """
 from __future__ import annotations
 
@@ -71,11 +68,7 @@ def _thoi_tiet_thang(db: Session, region: Optional[str]) -> pd.DataFrame:
 
 
 def _ky_du_lieu_moi_nhat(db: Session) -> Optional[str]:
-    """Tháng mới nhất có mặt trong disease_cases, dạng "YYYY-MM".
-
-    Tra trên toàn bảng (không lọc bệnh/khu vực) vì độ đầy đủ dữ liệu là tính chất của
-    đợt đồng bộ HIS; nhờ vậy mọi khu vực bị cắt tại cùng một mốc lịch.
-    """
+    """Tháng mới nhất trong disease_cases ("YYYY-MM"), tra toàn bảng để mọi khu vực cắt cùng một mốc."""
     moi_nhat = db.query(func.max(DiseaseCase.recorded_at)).scalar()
     if moi_nhat is None:
         return None
@@ -84,18 +77,12 @@ def _ky_du_lieu_moi_nhat(db: Session) -> Optional[str]:
 
 def du_bao_nhom(db: Session, disease: str, region: Optional[str],
                 target_year: int, target_month: int) -> Optional[Dict[str, Any]]:
-    """Dự báo 1 tháng cho nhóm/mã × vùng.
-
-    Returns:
-        dict kết quả, hoặc None khi không đủ dữ liệu (để nơi gọi dùng phương án dự phòng).
-    """
+    """Dự báo 1 tháng cho nhóm/mã × vùng; None khi không đủ dữ liệu."""
     df = _chuoi_thang(db, disease, region)
     moc = f"{target_year}-{target_month:02d}"
 
-    # Tháng mới nhất trong dữ liệu được coi là chưa chốt và bị loại khỏi chuỗi huấn
-    # luyện: đợt đồng bộ HIS gần nhất thường mới nạp một phần tháng đó (sụt giả).
-    # Cắt theo mốc lịch chung, không "bỏ dòng cuối mỗi chuỗi", vì chuỗi thiếu hẳn
-    # tháng đó sẽ bị cắt nhầm một tháng đủ. Ràng buộc chống rò rỉ vẫn giữ qua `moc`.
+    # Tháng mới nhất coi là chưa chốt (đồng bộ HIS mới nạp một phần), loại khỏi chuỗi huấn luyện
+    # theo mốc lịch chung, không bỏ dòng cuối mỗi chuỗi.
     ky_moi_nhat = _ky_du_lieu_moi_nhat(db)
     gioi_han = min(moc, ky_moi_nhat) if ky_moi_nhat else moc
     hist = df[df["period"] < gioi_han].reset_index(drop=True)
@@ -112,12 +99,10 @@ def du_bao_nhom(db: Session, disease: str, region: Optional[str],
     w = _thoi_tiet_thang(db, region)
     if not w.empty:
         hist = hist.merge(w, on="period", how="left")
-    # Cờ và ngưỡng số tháng thời tiết lấy từ PRODUCTION_CONFIG.
     dung_thoi_tiet = (PRODUCTION_CONFIG.use_weather and (not w.empty)
                       and hist["temp"].notna().sum() >= PRODUCTION_CONFIG.weather_min_months)
 
-    # Cùng đường với backtest và Dashboard: trọng số thích ứng + hệ số lệch + khoảng
-    # thực nghiệm; walk-forward bên trong (interval_n_back bước) cho "độ chính xác tại chỗ".
+    # Cùng đường với backtest; walk-forward bên trong cho "độ chính xác tại chỗ".
     gf = forecast_group_next(hist, target_month, PRODUCTION_CONFIG)
     predicted = int(round(max(0.0, float(gf["point"]))))
 
@@ -142,7 +127,6 @@ def du_bao_nhom(db: Session, disease: str, region: Optional[str],
         "use_weather": dung_thoi_tiet,
         "n_history_months": int(n),
         "accuracy": accuracy,
-        # Lưu vết: thành viên đã đóng góp và cấu hình đã dùng.
         "interval": {"lower": (int(round(gf["lower"])) if gf["lower"] is not None else None),
                      "upper": (int(round(gf["upper"])) if gf["upper"] is not None else None),
                      "level": gf["level"], "n_resid": gf["n_resid"]},

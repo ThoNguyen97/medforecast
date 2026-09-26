@@ -52,7 +52,7 @@ def test_split_topdown():
 
 def test_harmonic_poisson_with_and_without_weather():
     df = _series(n=48, base=80)
-    # thêm cột thời tiết giả (có tương quan mùa)
+    # thời tiết giả có tương quan mùa
     df["temp"] = 27 + 3 * np.sin(2 * np.pi * df["month"] / 12)
     df["humidity"] = 75 + 5 * np.cos(2 * np.pi * df["month"] / 12)
     df["rainfall"] = np.maximum(0, 100 + 80 * np.sin(2 * np.pi * df["month"] / 12))
@@ -68,7 +68,6 @@ def test_ensemble_weather_flag_runs():
     assert build_default_ensemble(use_weather=True).fit(df).predict(6) >= 0
 
 
-# ── Kết hợp thích ứng và hiệu chỉnh lệch ──
 
 def test_combiner_mean_equals_plain_average():
     from app.forecasting.combine import AdaptiveCombiner

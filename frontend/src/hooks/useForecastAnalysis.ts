@@ -36,14 +36,8 @@ export function useAnalyzeForecast() {
   });
 }
 
-/**
- * Nạp bản dự báo đã ghi nhận theo khóa (nhóm bệnh, khu vực, tháng).
- *
- * Dùng useQuery thay vì useMutation vì đây là thao tác đọc chạy theo bộ lọc:
- * mutation gọi trong useEffect lúc mount hỏng dưới <StrictMode> (effect chạy hai
- * lần, observer bị gỡ khỏi mutation đang chạy nên isPending kẹt true).
- * queryKey gồm các giá trị nguyên thuỷ để key ổn định giữa các lần render.
- */
+/** Nạp bản dự báo đã ghi nhận theo khóa. Dùng useQuery thay vì useMutation:
+ *  mutation gọi trong useEffect hỏng dưới StrictMode (isPending kẹt true). */
 export function useSavedForecast(
   p: {
     disease_type: string;

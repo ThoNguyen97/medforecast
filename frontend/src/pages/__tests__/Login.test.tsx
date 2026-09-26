@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import Login from '../Login';
 import { useAuth } from '../../hooks/useAuth';
 
-// Mock useAuth để không gọi mạng thật
+// Mock useAuth
 vi.mock('../../hooks/useAuth');
 
 const mockNavigate = vi.fn();

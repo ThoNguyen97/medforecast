@@ -80,12 +80,9 @@ def list_disease_cases(
     )
 
 
-# ── Xuất Excel theo bộ lọc đang áp dụng trên giao diện ──
+# ── Xuất Excel ──
 def _khoang_thang(start_month: Optional[str], end_month: Optional[str]):
-    """'YYYY-MM' → (từ 00:00 ngày 1 tháng đầu, đến 23:59:59 ngày cuối tháng cuối).
-
-    Đảo hai mốc nếu người dùng nhập ngược. Trả (None, None) khi không lọc.
-    """
+    """'YYYY-MM' → (đầu tháng đầu, cuối tháng cuối); đảo nếu nhập ngược, (None, None) khi không lọc."""
     from datetime import timedelta
 
     def _parse(s: Optional[str]) -> Optional[datetime]:
@@ -117,13 +114,7 @@ def export_disease_cases_excel(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    """Xuất danh sách số ca bệnh dịch tễ ra .xlsx.
-
-    Sheet 1 "Chi tiết": từng bản ghi đúng như bảng trên trang Dữ liệu bệnh.
-    Sheet 2 "Tổng hợp": số ca theo Tháng × Nhóm bệnh × Tỉnh/Thành.
-    Sheet 3 "Bộ lọc": điều kiện đã áp dụng. Bộ lọc cùng quy ước với giao diện:
-    nhóm ICD (OR dải mã), tên tỉnh khớp qua mọi biến thể (province_aliases).
-    """
+    """Xuất số ca bệnh ra .xlsx (Chi tiết, Tổng hợp theo tháng × nhóm × tỉnh, Bộ lọc) theo bộ lọc giao diện."""
     import io as _io
     from fastapi.responses import Response
     from app.models.disease_case import DiseaseCase
@@ -257,16 +248,14 @@ def create_disease_case(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> Any:
-    """Thêm một bản ghi số ca. Trùng (năm, tháng, mã ICD, khu vực) với bản ghi
-    đã có thì trả 409 kèm `existing_id` để giao diện gợi ý cập nhật."""
+    """Thêm một bản ghi số ca; trùng (tháng, mã ICD, khu vực) thì 409 kèm `existing_id`."""
     from app.models.disease_case import DiseaseCase
     from sqlalchemy import extract
 
     service = DiseaseCaseService(db)
     client_ip = get_client_ip(request)
 
-    # Không so disease_type: mọi bản ghi đều là "respiratory", so cột đó sẽ chặn
-    # nhầm bản ghi của mã ICD khác cùng tháng/khu vực.
+    # Không so disease_type: mọi bản ghi đều là "respiratory".
     existing = (
         db.query(DiseaseCase)
         .filter(
@@ -386,14 +375,7 @@ async def import_disease_cases_csv(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Any:
-    """Import số ca bệnh từ CSV, hỗ trợ hai định dạng.
-
-    1. File mẫu: cột ``month`` (MM/YYYY hoặc YYYY-MM), ``disease_code`` hoặc
-       ``disease_name`` (tên tiếng Việt), ``region``, ``cases``.
-    2. CSV bệnh viện: cột ``AdmissionDate``, ``NhomBenh``, ``SoTiepNhan``, ``District``;
-       gộp theo (ngày, mã ICD, khu vực), đếm ``SoTiepNhan`` phân biệt.
-    Khu vực mới gặp được tự đăng ký vào admin.regions.
-    """
+    """Import số ca bệnh từ CSV (định dạng file mẫu hoặc CSV bệnh viện); khu vực mới tự đăng ký vào admin.regions."""
     from app.models.disease_case import DiseaseCase
 
     if not file.filename or not file.filename.lower().endswith((".csv",)):
@@ -420,13 +402,12 @@ async def import_disease_cases_csv(
     imported = 0
     updated = 0
     skipped = 0
-    errors: list[dict] = []  # dòng lỗi trả về để người dùng sửa
+    errors: list[dict] = []
 
-    # Khu vực gặp trong CSV, đăng ký một lần vào admin.regions sau vòng lặp.
     new_regions_to_register: set[str] = set()
 
     def _register_pending_regions() -> None:
-        """Thêm các khu vực mới từ CSV vào admin.regions (idempotent)."""
+        """Thêm khu vực mới vào admin.regions (idempotent)."""
         if not new_regions_to_register:
             return
         from app.models.system_config import SystemConfig
@@ -478,21 +459,16 @@ async def import_disease_cases_csv(
     )
     
     if has_simple_format:
-        # Định dạng file mẫu. Cột supply_* (nếu có) chỉ để gộp các dòng cùng
-        # (month, disease, region) thành một bản ghi; chi tiết thuốc không được lưu
-        # vì nhu cầu thuốc lấy từ định mức thực nghiệm (Tầng 2).
-
+        # Định dạng file mẫu; cột supply_* chỉ để gộp dòng, không lưu (nhu cầu thuốc lấy từ Tầng 2).
         has_supply_col = (
             "supply_name" in headers
             or "supply_code" in headers
             or "drug_code" in headers
         )
 
-        # Bước 1: gom theo (month, disease_key, region).
         grouped: dict[tuple, dict] = {}
         for idx, row in enumerate(reader, start=2):
             month_str = (row.get("month") or "").strip()
-            # Ưu tiên disease_code, sau đó disease_name.
             disease_code = (row.get("disease_code") or "").strip().upper()
             disease_name = (row.get("disease_name") or "").strip()
             disease = disease_code if disease_code else disease_name
@@ -543,7 +519,6 @@ async def import_disease_cases_csv(
                 errors.append({"row": idx, "reason": f"Số ca phải >= 0, nhận được {cases_int}"})
                 continue
 
-            # Mã ICD hợp lệ dùng trực tiếp, ngược lại tra theo tên tiếng Việt.
             if disease in ICD_TO_NAME:
                 disease_key = disease
             else:
@@ -605,7 +580,6 @@ async def import_disease_cases_csv(
                     "category": supply_category or "Khác",
                 })
 
-        # Bước 2: upsert mỗi nhóm thành một DiseaseCase.
         for entry in grouped.values():
             recorded_at = entry["recorded_at"]
             disease_key = entry["disease_key"]
@@ -651,7 +625,7 @@ async def import_disease_cases_csv(
             new_regions_to_register.add(region)
 
     else:
-        # Định dạng CSV bệnh viện: đếm SoTiepNhan phân biệt theo (ngày, mã ICD, khu vực).
+        # CSV bệnh viện: đếm SoTiepNhan phân biệt theo (ngày, mã ICD, khu vực).
         aggregate: dict[tuple, set[str]] = {}
         for row in reader:
             admit = (row.get("AdmissionDate") or "").strip()
@@ -733,7 +707,7 @@ async def import_disease_cases_csv(
         f"imported={imported} updated={updated} skipped={skipped}"
     )
 
-    # Luôn None: DSS phân loại theo rổ chăm sóc do HIS ghi nhận, không suy luận độ nặng.
+    # Luôn None: DSS không suy luận độ nặng.
     auto_severity: dict | None = None
 
     return {
@@ -741,7 +715,7 @@ async def import_disease_cases_csv(
         "imported": imported,
         "updated": updated,
         "skipped": skipped,
-        "errors": errors[:200],  # giới hạn kích thước phản hồi
+        "errors": errors[:200],
         "errors_truncated": len(errors) > 200,
         "auto_severity_recompute": auto_severity,
     }
@@ -835,11 +809,7 @@ def get_case_supply_usage(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Nhu cầu thuốc ước tính cho một bản ghi số ca.
-
-    Số lượng = case_count × norm_hieu_dung(i, g), g là nhóm ICD của bản ghi,
-    norm_hieu_dung = Σ_ro p̂(g,ro)·Norm(i,g,ro) — cùng định mức thực nghiệm
-    (dss_demand) với Tổng quan/Cảnh báo. Nhóm chưa có định mức → danh sách rỗng.
-    """
+    Số lượng = case_count × norm_hieu_dung(i, g) (định mức thực nghiệm dss_demand); nhóm chưa có định mức → rỗng."""
     from app.models.disease_case import DiseaseCase
     from app.models.medical_supply import MedicalSupply
     from app.utils.icd_groups import nhom_cua_ma
@@ -933,7 +903,7 @@ def get_case_supply_usage(
             "year": case.recorded_at.year,
             "icd_code": case.icd_code,
             "disease_name": case.disease_name,
-            # disease_type trùng icd_code, giữ để tương thích schema phản hồi
+            # Trùng icd_code, giữ để tương thích schema.
             "disease_type": case.icd_code,
             "location": case.location,
             "case_count": case.case_count,
@@ -997,7 +967,7 @@ async def distinct_values(
         for icd, name in diseases_rows
         if icd
     ]
-    # Nhóm ICD là chiều lọc chính (dự báo ở cấp nhóm); chỉ liệt kê nhóm có dữ liệu.
+    # Chỉ liệt kê nhóm ICD có dữ liệu.
     disease_groups = []
     for khoa, ten in NHOM_ICD.items():
         ma_con = sorted({icd for icd in icd_codes if nhom_cua_ma(icd) == khoa})
@@ -1006,10 +976,9 @@ async def distinct_values(
 
     return {
         "disease_groups": disease_groups,
-        # Mức mã: dùng cho drill-down, không dùng cho bộ lọc chính.
         "icd_codes": icd_codes,
         "diseases": diseases_list,
-        # Bí danh của icd_codes, giữ để tương thích schema phản hồi.
+        # Bí danh của icd_codes, giữ để tương thích schema.
         "disease_types": icd_codes,
         "regions": [r[0] for r in regions if r[0]],
     }

@@ -1,15 +1,5 @@
 """API trang Tổng quan và Cảnh báo thiếu hụt.
-
-Routes
-------
-GET /api/v1/dashboard/v2                   toàn bộ màn hình Tổng quan (một payload)
-GET /api/v1/dashboard/v2/alerts            trang Cảnh báo thiếu hụt, phân trang server
-GET /api/v1/dashboard/v2/forecast          Ŷ_g ba khối bằng ensemble (xem trước, có cache)
-GET /api/v1/dashboard/v2/forecast/history  sổ theo dõi mô hình trong vận hành
-
-Các endpoint chỉ đọc dữ liệu nghiệp vụ. Phần ghi duy nhất là cache dự báo
-(`dss_forecast_cache`, `forecast_runs`) do dss_dashboard quản lý, khoá theo
-dấu vân tay dữ liệu.
+Chỉ đọc; phần ghi duy nhất là cache dự báo do dss_dashboard quản lý.
 """
 from __future__ import annotations
 
@@ -37,12 +27,8 @@ def get_dashboard_v2(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Dict:
-    """Số ca kỳ đã chốt, dự báo đã ghi nhận, DOI + cảnh báo, phân cấp chăm sóc,
-    chất lượng mô hình, tình trạng dữ liệu.
-
-    Chưa ghi nhận dự báo kỳ tới thì `demand.ready = false`, cột `d_forecast` /
-    `delta_need` để None để giao diện hiển thị "chưa có dự báo" thay vì 0.
-    """
+    """Toàn bộ payload màn hình Tổng quan.
+    Chưa ghi nhận dự báo kỳ tới thì `demand.ready = false`, `d_forecast`/`delta_need` = None."""
     try:
         return dss_dashboard.overview_payload(db, focus=focus, level=level, limit=limit)
     except ValueError as exc:
@@ -60,8 +46,7 @@ def get_dashboard_v2_alerts(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Dict:
-    """Cùng chuỗi Tầng 1 → 2 → 3 với `/v2` (cùng dự báo, cùng định mức, cùng
-    ngưỡng), chỉ khác là trả toàn bộ dòng có phân trang thay vì top-8."""
+    """Bảng cảnh báo đầy đủ, phân trang server; cùng chuỗi Tầng 1 → 2 → 3 với `/v2`."""
     try:
         return dss_dashboard.alerts_payload(db, focus=focus, level=level, q=q,
                                             danh_muc=danh_muc, limit=limit, offset=offset)
@@ -75,13 +60,8 @@ def get_dashboard_v2_forecast(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Dict:
-    """Ŷ_g ba khối bằng ensemble PRODUCTION_CONFIG — bản xem trước, không dùng
-    cho Tổng quan/Cảnh báo (hai trang đó đọc bản đã ghi nhận ở trang Phân tích).
-
-    Lần tính đầu mất vài chục giây (dựng khoảng thực nghiệm ~25 lần khớp mỗi
-    khối); kết quả cache theo dấu vân tay chuỗi ca + thời tiết + cấu hình,
-    nên khoá tự đổi sau mỗi lần đồng bộ.
-    """
+    """Ŷ_g ba khối bằng ensemble, bản xem trước (Tổng quan/Cảnh báo đọc bản đã ghi nhận).
+    Lần tính đầu mất vài chục giây; cache theo dấu vân tay dữ liệu + cấu hình."""
     return dss_dashboard.forecast_payload(db, compute=True, force=force)
 
 
@@ -91,6 +71,5 @@ def get_dashboard_v2_forecast_history(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Dict:
-    """Mỗi lần app khớp mô hình là một dòng; kỳ đích chốt thì điền thực tế và
-    sai số. Khác backtest: đây là con số màn hình đã hiện vào thời điểm đó."""
+    """Sổ theo dõi mô hình trong vận hành: mỗi lần khớp một dòng, kỳ chốt thì điền thực tế và sai số."""
     return dss_dashboard.forecast_history(db, limit=limit)

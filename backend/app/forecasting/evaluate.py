@@ -1,17 +1,7 @@
-"""Kiểm định walk-forward (mở rộng cửa sổ, dự báo 1 bước) và so sánh các hướng phân cấp.
+"""Kiểm định walk-forward 1 bước và so sánh 4 hướng phân cấp ở mức mã, tham số từ PRODUCTION_CONFIG.
 
-So sánh ở mức mã cho 4 hướng: bottom-up, top-down cố định, top-down động, hoà giải OLS.
-Mọi tham số mô hình lấy từ `config.PRODUCTION_CONFIG`.
-
-Chỉ số:
-  MAE, RMSE
-  RelMAE      MAE / MAE(seasonal-naive out-of-sample trên cùng các bước); khác MASE
-              (Hyndman & Koehler 2006) chuẩn hoá theo naive in-sample. < 1 là thắng seasonal-naive.
-  ME, MPE%    sai số có dấu (dự báo − thực tế) và tỷ lệ so với thực tế, phát hiện lệch
-              hệ thống một chiều mà MAE/RMSE/RelMAE không thấy. Âm = hụt.
-  sMAPE, WAPE
-  coverage    độ phủ thực của khoảng dự báo mức nhóm: tỷ lệ bước thực tế rơi trong
-              khoảng dựng từ phân vị phần dư quá khứ.
+Chỉ số: MAE, RMSE, RelMAE (MAE / MAE seasonal-naive out-of-sample, khác MASE), ME và MPE% (sai số có dấu,
+âm = hụt), sMAPE, WAPE, coverage (tỷ lệ bước thực tế rơi trong khoảng dự báo nhóm).
 """
 from __future__ import annotations
 from typing import Dict, List, Optional
@@ -47,11 +37,7 @@ def _metrics_block(a: np.ndarray, p: np.ndarray, sn: np.ndarray) -> dict:
 
 
 def empirical_interval(pred: float, rel_resid: np.ndarray, level: float):
-    """Khoảng dự báo từ phân vị của tỷ số (thực tế / dự báo) trong quá khứ.
-
-    Không giả định phân phối, cho phép bất đối xứng và không âm. Cần ≥ 8 phần dư,
-    ít hơn thì trả None để nơi gọi báo chưa đủ lịch sử.
-    """
+    """Khoảng dự báo từ phân vị tỷ số thực tế/dự báo quá khứ; None nếu dưới 8 phần dư."""
     r = np.asarray(rel_resid, float)
     r = r[np.isfinite(r) & (r > 0)]
     if len(r) < 8:
@@ -65,11 +51,7 @@ def walk_forward_block(db_path: str, block: str,
                        *, min_train: Optional[int] = None,
                        ewma_span: Optional[int] = None,
                        from_period: Optional[str] = "__cfg__") -> Dict:
-    """Walk-forward 1 bước cho một nhóm ICD, đọc dữ liệu từ DB.
-
-    Tham số mô hình lấy từ `cfg`; ba kwargs chỉ để ghi đè, mặc định theo cfg.
-    Logic nằm ở `walk_forward_frames` để chạy được cả từ dataset file (dataset.py).
-    """
+    """Walk-forward 1 bước cho một nhóm ICD từ DB; kwargs chỉ để ghi đè cfg."""
     from_period = cfg.from_period if from_period == "__cfg__" else from_period
     group = da.group_series(db_path, block, from_period=from_period)
     codes_ser = da.code_series(db_path, block, from_period=from_period)
@@ -86,18 +68,12 @@ def walk_forward_frames(block: str, group: pd.DataFrame,
                         cfg: ForecastConfig = PRODUCTION_CONFIG,
                         *, min_train: Optional[int] = None,
                         ewma_span: Optional[int] = None) -> Dict:
-    """Walk-forward trên DataFrame đã nạp (từ DB hoặc từ dataset/v1/*.csv).
-
-    `group`      [period, year, month, cases, is_covid] của cả nhóm
-    `codes_ser`  {icd_code: DataFrame cùng cột} cho từng mã
-    `shares_fixed` {icd_code: tỷ trọng cố định} (top-down cố định)
-    `weather`    [period, temp, humidity, rainfall] hoặc rỗng
-    """
+    """Walk-forward trên DataFrame đã nạp từ DB hoặc dataset file."""
     min_train = cfg.min_train if min_train is None else min_train
     ewma_span = cfg.ewma_span if ewma_span is None else ewma_span
     codes = sorted(codes_ser.keys())
 
-    # Ghép thời tiết vào cả nhóm lẫn mã để backtest dùng đúng đầu vào như service.
+    # Ghép thời tiết vào cả nhóm lẫn mã như service.
     if not cfg.use_weather:
         weather = pd.DataFrame()
     group = da.join_weather(group, weather)
@@ -113,7 +89,7 @@ def walk_forward_frames(block: str, group: pd.DataFrame,
     failed_count: Dict[str, int] = {}
     failed_why: Dict[str, str] = {}
 
-    # ── Mức nhóm: dùng chung đường chạy với service ──
+    # ── Mức nhóm ──
     gwf = run_group_walk_forward(group, cfg, start=min_train)
     group_pred, group_actual, snaive_g = gwf.pred, gwf.actual, gwf.snaive
     members_hist = [list(mp.keys()) for mp in gwf.member_preds]
@@ -121,8 +97,7 @@ def walk_forward_frames(block: str, group: pd.DataFrame,
         failed_count[nm] = cnt
         failed_why[nm] = gwf.members_failed_example.get(nm, "")
 
-    # Độ phủ khoảng dự báo nhóm: khoảng của bước t dựng từ phần dư tương đối
-    # của các bước trước t (tối đa interval_n_back).
+    # Độ phủ: khoảng bước t dựng từ phần dư tương đối các bước trước t.
     rel_resid: List[float] = []
     cov_hits, cov_total, widths = 0, 0, []
     for a_g, p_g in zip(group_actual, group_pred):
@@ -134,7 +109,7 @@ def walk_forward_frames(block: str, group: pd.DataFrame,
         if p_g > 0:
             rel_resid.append(a_g / p_g)
 
-    # ── Mức mã: chia Ŷ_g (đã kết hợp thích ứng) về từng mã ──
+    # ── Mức mã ──
     for k, t in enumerate(range(min_train, len(periods))):
         tgt_month = int(group["month"].iloc[t])
         hist_g = group.iloc[:t]
@@ -204,7 +179,6 @@ def walk_forward_frames(block: str, group: pd.DataFrame,
         "members_failed_count": failed_count,
         "members_failed_example": failed_why,
         "n_code_fits": n_steps * len(codes),
-        # Trạng thái combiner ở bước cuối (trọng số từng thành viên).
         "combiner": gwf.combiner.describe() if gwf.combiner else {},
         "bias_mean": float(np.mean(gwf.bias)) if gwf.bias else 1.0,
     }
@@ -215,10 +189,7 @@ def weather_effect(db_path: str, block: str,
                    cfg: ForecastConfig = PRODUCTION_CONFIG,
                    *, min_train: Optional[int] = None,
                    from_period: Optional[str] = "__cfg__") -> dict:
-    """So sánh ensemble mức nhóm có và không có thời tiết (walk-forward 1 bước).
-
-    Dùng đúng cấu hình sản xuất, chỉ bật/tắt thời tiết.
-    """
+    """So sánh ensemble mức nhóm có và không có thời tiết, walk-forward 1 bước."""
     from dataclasses import replace
     min_train = cfg.min_train if min_train is None else min_train
     from_period = cfg.from_period if from_period == "__cfg__" else from_period
@@ -242,7 +213,7 @@ def weather_effect(db_path: str, block: str,
 
 def smearing_effect(db_path: str, block: str,
                     cfg: ForecastConfig = PRODUCTION_CONFIG) -> dict:
-    """Đo lệch hệ thống (ME, MPE%) của ensemble nhóm có và không có smearing."""
+    """Đo ME, MPE% của ensemble nhóm có và không có smearing."""
     from dataclasses import replace
     g = da.group_series(db_path, block, from_period=cfg.from_period)
     gw = da.join_weather(g, da.weather_series(db_path))
@@ -258,26 +229,13 @@ def smearing_effect(db_path: str, block: str,
 def combine_effect(db_path: str, block: str,
                    cfg: ForecastConfig = PRODUCTION_CONFIG,
                    variants: Optional[Dict[str, dict]] = None) -> dict:
-    """So sánh các cách kết hợp thành viên ở mức nhóm trên cùng một ensemble.
-
-    Thành viên được khớp và ghi dự báo một lần (đủ ứng viên, kể cả ETS nếu có
-    statsmodels); mỗi biến thể chỉ chạy lại combiner trên bản ghi đó.
-
-    Biến thể mặc định (nền cfg):
-        mean            trung bình đều                                 — không ETS
-        inv_mae         trọng số nghịch đảo MAE, cửa sổ 12             — không ETS
-        mean+bias       trung bình đều + hệ số lệch                    — không ETS
-        inv_mae+bias    cả hai                                         — không ETS
-        *+ets           bốn biến thể trên có thêm ETS
-    Mỗi biến thể trả chỉ số nhóm + độ phủ khoảng + trọng số cuối.
-    """
+    """So sánh cách kết hợp thành viên mức nhóm: khớp một lần với siêu tập thành viên, mỗi biến thể chỉ chạy lại combiner."""
     from dataclasses import replace
     from .group_forecast import replay
     from .combine import combiner_from_config
     g = da.group_series(db_path, block, from_period=cfg.from_period)
     gw = da.join_weather(g, da.weather_series(db_path))
 
-    # Ghi một lần với siêu tập thành viên.
     rec = run_group_walk_forward(gw, replace(cfg, use_ets=True), start=cfg.min_train)
     has_ets = any("ets" in mp for mp in rec.member_preds)
 

@@ -1,11 +1,4 @@
-"""API đồng bộ dữ liệu từ HIS (dùng cho nút 'Đồng bộ' trên dashboard).
-
-  POST /api/v1/sync/run          -> chạy đồng bộ (khám bệnh + tồn kho), trả tóm tắt
-  GET  /api/v1/sync/status       -> trạng thái lần gần nhất + số liệu hiện có
-  GET  /api/v1/sync/config       -> cấu hình kết nối (không kèm mật khẩu)
-  PUT  /api/v1/sync/config       -> lưu cấu hình (chỉ Administrator)
-  POST /api/v1/sync/config/test  -> thử kết nối với cấu hình vừa nhập, chưa lưu
-"""
+"""API đồng bộ dữ liệu từ HIS và cấu hình kết nối (nút 'Đồng bộ' trên dashboard)."""
 from __future__ import annotations
 from typing import Optional
 
@@ -43,7 +36,6 @@ def sync_status(db: Session = Depends(get_db),
     return SyncService(db).get_status()
 
 
-# ── Cấu hình kết nối ──
 class SyncConfigIn(BaseModel):
     """Cấu hình kết nối HIS/DW; bỏ trống mật khẩu khi lưu thì giữ mật khẩu đang có."""
     source: str = Field("sqlserver", pattern="^sqlserver$")
@@ -63,8 +55,7 @@ class SyncConfigIn(BaseModel):
 @router.get("/config")
 def get_sync_config(db: Session = Depends(get_db),
                     _user: User = Depends(get_admin_user)):
-    """Trả cấu hình hiện tại. Mật khẩu không bao giờ rời server —
-    chỉ trả `has_password` để giao diện biết đã đặt hay chưa."""
+    """Cấu hình hiện tại; mật khẩu không trả về, chỉ có `has_password`."""
     return sync_config_service.get_config(db)
 
 
@@ -72,8 +63,7 @@ def get_sync_config(db: Session = Depends(get_db),
 def save_sync_config(payload: SyncConfigIn,
                      db: Session = Depends(get_db),
                      user: User = Depends(get_admin_user)):
-    """Lưu vào bảng system_config. Lần đồng bộ sau tự dùng cấu hình mới,
-    không cần khởi động lại backend."""
+    """Lưu cấu hình (Admin); lần đồng bộ sau dùng ngay, không cần khởi động lại."""
     return sync_config_service.save_config(db, payload.model_dump(), user.id)
 
 
@@ -81,6 +71,5 @@ def save_sync_config(payload: SyncConfigIn,
 def test_sync_config(payload: SyncConfigIn,
                      db: Session = Depends(get_db),
                      _user: User = Depends(get_admin_user)):
-    """Thử kết nối bằng cấu hình vừa nhập (chưa lưu). Trả kết quả từng bước
-    kiểm tra để giao diện chỉ ra bước lỗi."""
+    """Thử kết nối bằng cấu hình vừa nhập (chưa lưu), trả kết quả từng bước."""
     return sync_config_service.test_connection(db, payload.model_dump())

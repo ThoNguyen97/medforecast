@@ -1,4 +1,4 @@
-/** Tải một Blob về máy dưới tên file cho trước (dùng cho xuất PDF/Excel). */
+/** Tải Blob về máy dưới tên file cho trước. */
 export function triggerDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

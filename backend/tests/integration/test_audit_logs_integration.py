@@ -1,8 +1,4 @@
-"""Test tích hợp API nhật ký kiểm toán và log hệ thống.
-
-Phạm vi: GET /api/v1/audit-logs, GET /api/v1/system-logs, GET /api/v1/system-logs/errors,
-POST /api/v1/system-logs/cleanup; phân trang, bộ lọc và giới hạn quyền Administrator.
-"""
+"""Test tích hợp API nhật ký kiểm toán và log hệ thống: phân trang, bộ lọc, quyền Administrator."""
 
 import pytest
 from fastapi.testclient import TestClient

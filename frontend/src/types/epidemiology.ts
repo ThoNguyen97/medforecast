@@ -6,7 +6,7 @@ export interface DiseaseCase {
   recorded_at: string;
   icd_code: DiseaseType | string;
   disease_name: string;
-  // disease_type luôn là 'respiratory'; giữ để tương thích API
+  // luôn 'respiratory', giữ để tương thích API
   disease_type?: string;
   case_count: number;
   location: string;
@@ -41,7 +41,6 @@ export const DISEASE_TYPE_LABELS: Record<string, string> = {
   J06: 'Nhiễm trùng đường hô hấp trên cấp',
   J02: 'Viêm họng cấp',
   J01: 'Viêm xoang cấp',
-  // Nhãn cho bản ghi chỉ có disease_type
   respiratory: 'Bệnh hô hấp',
 };
 

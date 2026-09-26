@@ -1,31 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Backtest ngoài mẫu cho Tầng 2 (quy đổi số lượt → nhu cầu thuốc).
-
-Chạy từ backend/:
-    python scripts/backtest_tier2.py --db data/medforecast.db --out ketqua_backtest
-
-Với mỗi kỳ đích t đã chốt:
-  1. Norm(i,g,ro), p̂(g,ro) tính trên cửa sổ `window` kỳ đã chốt kết thúc t−1
-     (cùng công thức app/services/dss_demand.py: rổ < 30 đợt → định mức gộp;
-     co ngót K₀ = 6 trong khối nội trú).
-  2. Số lượt của kỳ t:
-        kịch bản A  — số lượt thực (mart_monthly_cases_by_block, TOAN_QUOC)
-        kịch bản B  — ŷ của Tầng 1 (run_group_walk_forward, PRODUCTION_CONFIG)
-  3. D̂_benh,i(t) = Σ_g Σ_ro Y_g · p̂ · Norm  so với tiêu hao hô hấp thực
-     (Σ fact_usage_by_care_level của kỳ t).
-  4. D̂_i(t) = D̂_benh + nền(12 kỳ trước t) so với tiêu hao toàn viện thực
-     (fact_usage_total.so_luong_toan_vien) — chỉ khi có ≥ 12 kỳ nền.
-  5. Đối chứng ngây thơ: trung bình trượt 12 kỳ của chính đại lượng cần dự báo.
-
-Hai biến thể cửa sổ:  `sanxuat`  min_period = 2025-04 (như cấu hình đang chạy)
-                      `toanbo`   không chặn min_period (đo tác động điểm gãy).
-
-Kết quả ghi vào thư mục --out (mặc định backend/ketqua_backtest/):
-         tang2_buoc.csv  tang2_ma.csv  tang2_ma_buoc.csv  tang2_toanvien_ma_buoc.csv
-         tang2_tomtat.csv  tang2_ondinh.csv
-         tang2_tieuhao_moi_luot.csv (tiêu hao hô hấp / lượt và tỷ trọng NGT theo kỳ)
-         tang2_yhat.csv (ŷ Tầng 1 từng bước, để tái lập; --yhat-csv để đọc lại)
-         tang2_cau_hinh.json (tham số của lần chạy)
+"""Backtest ngoài mẫu Tầng 2 (số lượt → nhu cầu thuốc) theo walk-forward, cùng
+công thức dss_demand.py; kịch bản A dùng số lượt thực, B dùng ŷ Tầng 1; ghi CSV ra --out.
+Chạy: cd backend && python scripts/backtest_tier2.py --db data/medforecast.db --out ketqua_backtest
+  --skip-b      bỏ kịch bản B (không chạy Tầng 1)
+  --yhat-csv    đọc ŷ Tầng 1 từ CSV thay vì chạy lại walk-forward
 """
 from __future__ import annotations
 import argparse, json, sqlite3, sys, warnings
@@ -49,7 +27,7 @@ def q(con, sql, p=()):
     return pd.read_sql_query(sql, con, params=p)
 
 
-# ── Tầng 2: cùng logic dss_demand ──
+# ── Tầng 2 ──
 def shares(cases_g: dict) -> dict:
     """p̂(g,ro) có co ngót trong khối nội trú (care_level_shares)."""
     tong = sum(cases_g.values())
@@ -106,7 +84,7 @@ def norms_on(cases_df, usage_df, periods):
 
 
 def demand(norms, sh, y_by_block) -> dict:
-    """D̂_benh,i = Σ_g Σ_ro Y_g p̂ Norm (kể cả nhánh gộp nội trú khi rổ thiếu định mức)."""
+    """D̂_benh,i = Σ_g Σ_ro Y_g p̂ Norm; rổ thiếu định mức dùng nhánh gộp nội trú."""
     out = defaultdict(float)
     for g, y in y_by_block.items():
         if y is None or y <= 0 or g not in norms or g not in sh:
@@ -161,7 +139,7 @@ def main():
     resp_act = usage.groupby(["period", "supply_code"])["quantity"].sum()
     tot_act = tot.set_index(["period", "supply_code"])["so_luong_toan_vien"]
 
-    # ── ŷ Tầng 1 từng bước (kịch bản B) ──
+    # ── ŷ Tầng 1 ──
     yhat = {}
     if args.yhat_csv:
         for r in pd.read_csv(args.yhat_csv).itertuples():
@@ -200,10 +178,10 @@ def main():
             scen = {"A": yA}
             if yhat and all((t, g) in yhat for g in BLOCKS):
                 scen["B"] = {g: yhat[(t, g)] for g in BLOCKS}
-            # đối chứng ngây thơ hô hấp: TB 12 kỳ trước t (cùng cửa sổ)
+            # đối chứng ngây thơ: TB cửa sổ
             naive_resp = usage[usage.period.isin(win)].groupby("supply_code")["quantity"].sum() / len(win)
             a_resp = resp_act.loc[t] if t in resp_act.index.get_level_values(0) else pd.Series(dtype=float)
-            # nền: 12 kỳ đã chốt trước t trong fact_usage_total
+            # nền: 12 kỳ trước t
             prev_t = [p for p in tot_periods if p < t][-WINDOW:]
             co_nen = len(prev_t) >= WINDOW and t in tot_periods
             if co_nen:
@@ -249,7 +227,7 @@ def main():
     df_b = pd.DataFrame(buoc)
     df_b.round(3).to_csv(out / "tang2_buoc.csv", index=False, encoding="utf-8-sig")
 
-    # ── Tóm tắt (pooled trên mọi mã × mọi bước) ──
+    # ── Tóm tắt ──
     tomtat = []
     def _sum(df, tag, cols):
         for kb, s in df.groupby("kich_ban"):
@@ -279,7 +257,7 @@ def main():
                                tot_naive_WAPE_tb_buoc=s.tot_focus_naive_WAPE.mean()))
     pd.DataFrame(tomtat).round(3).to_csv(out / "tang2_tomtat.csv", index=False, encoding="utf-8-sig")
 
-    # ── Theo mã (biến thể sản xuất, cửa sổ ≥ 6) ──
+    # ── Theo mã ──
     rows_c = []
     for (kb, c), lst in per_code.items():
         lst = [r for r in lst if r[0] >= "2025-10"]
@@ -299,7 +277,7 @@ def main():
     df_c = pd.DataFrame(rows_c).sort_values(["kich_ban", "tong_thuc"], ascending=[True, False])
     df_c.round(3).to_csv(out / "tang2_ma.csv", index=False, encoding="utf-8-sig")
 
-    # ── Ổn định định mức: hai nửa 6 kỳ của cửa sổ sản xuất ──
+    # ── Ổn định định mức ──
     win = [p for p in all_periods if p >= "2025-04"][-WINDOW:]
     h1, h2 = win[:6], win[6:]
     n1, s1 = norms_on(cases, usage, h1); n2, s2 = norms_on(cases, usage, h2)
@@ -320,7 +298,7 @@ def main():
     df_s = pd.DataFrame(rows_s)
     df_s["ty_so"] = np.where((df_s.norm_nua1 > 0) & (df_s.norm_nua2 > 0), df_s.norm_nua2 / df_s.norm_nua1, np.nan)
     df_s.sort_values("tieu_hao_12ky", ascending=False).round(5).to_csv(out / "tang2_ondinh.csv", index=False, encoding="utf-8-sig")
-    # ── Chẩn đoán: tiêu hao hô hấp trên một lượt và tỷ trọng ngoại trú theo kỳ ──
+    # ── Chẩn đoán ──
     uq = usage.groupby("period")["quantity"].sum()
     cq = cases.groupby("period")["cases"].sum()
     ngt = cases[cases.ro == NGT].groupby("period")["cases"].sum()

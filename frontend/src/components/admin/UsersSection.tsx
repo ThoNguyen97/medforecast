@@ -79,7 +79,7 @@ export default function UsersSection() {
         <KpiTile label="Đã khoá" value={counts.locked} tone={counts.locked > 0 ? 'warning' : 'default'} />
       </div>
 
-      {/* Thanh công cụ + bảng */}
+      {/* Bảng */}
       <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b border-neutral-100">
           <div className="flex flex-wrap items-center gap-2.5 flex-1">

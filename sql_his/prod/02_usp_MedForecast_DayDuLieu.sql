@@ -1,36 +1,14 @@
-/* =============================================================================
-   prod/02_usp_MedForecast_DayDuLieu.sql
-   Chạy trên: HIS PROD (CSDL HIS). Điều kiện: prod/01 (linked server) và
-   sta/01..02 trên STA. Job prod/05 gọi thủ tục này hằng ngày.
-   Mục đích: tổng hợp lượt khám thuộc các nhóm ICD đích (nội trú + ngoại trú),
-   khử định danh, rồi đẩy xuống MEDFORECAST_DW:
-       MF_CaBenh_VatTu, MF_CaBenh_Nhom   số ca theo mã / nhóm ICD × tỉnh (T1)
-       MF_CaBenh_PhanCap                 số ca theo nhóm × rổ — mẫu số định mức (T2)
-       MF_TieuHao_PhanCap                tiêu hao theo nhóm × rổ × vật tư — tử số
-       MF_TonKho                         ảnh chụp tồn kho tổng
-   Tiêu hao toàn viện do prod/03 đẩy, tồn theo lô do prod/04 đẩy.
-
-   Rổ chăm sóc (5 rổ): NGT | NT1 | NT2 | NT3 | NT0.
-     Nguồn: TT_NOITRU_KHAMBENH.PHANCAPCHAMSOC_ID → LST_DICTIONARY
-     (DICTIONARY_TYPE_CODE = 'PhanCapChamSoc', mã '1' | '2' | '3').
-     Cấp của đợt = MIN(mã) trên các y lệnh của đợt (mã nhỏ = nặng).
-     NGT tách riêng khỏi NT3 vì mức tiêu hao mỗi lượt khác biệt lớn; NT0 = nội
-     trú chưa gán phân cấp, giữ riêng để phần thiếu dữ liệu luôn nhìn thấy được.
-
-   Chống đếm hai lần ở mức nhóm: lượt mang J01 (chính) + J06 (phụ) có hai dòng
-   trong #Dx; ghép thẳng với #Drug sẽ cộng lượng thuốc hai lần vào J00-J06.
-   Bảng trung gian #DxG khử trùng ở mức (lượt × nhóm) trước khi ghép.
-
-   Vật tư y tế: @GomVTYT = 1 để lấy cả VTYT (mặc định chỉ thuốc). Y lệnh VTYT
-   không mang phân cấp chăm sóc, nên với is_vtyt = 1 tầng sau phải gộp
-   NT1+NT2+NT3+NT0 trước khi chia định mức.
-============================================================================= */
+/* prod/02_usp_MedForecast_DayDuLieu.sql
+   Chạy trên: HIS PROD. Điều kiện: prod/01 và sta/01..02; job prod/05 gọi hằng ngày.
+   Mục đích: tổng hợp lượt khám thuộc nhóm ICD đích (nội trú + ngoại trú), khử định danh, đẩy xuống
+   MEDFORECAST_DW: MF_CaBenh_VatTu, MF_CaBenh_Nhom (T1), MF_CaBenh_PhanCap, MF_TieuHao_PhanCap (T2), MF_TonKho.
+   Rổ chăm sóc NGT | NT1 | NT2 | NT3 | NT0, cấp của đợt = MIN(mã phân cấp) trên y lệnh thuốc của đợt. */
 
 CREATE OR ALTER PROCEDURE dbo.usp_MedForecast_DayDuLieu
     @SoThangLuiLai       INT   = 3,              -- khớp PIPELINE_LOOKBACK_MONTHS
     @NapLaiToanBo        BIT   = 0,
     @TuNgayGoc           DATE  = '2019-01-01',   -- mốc khi nạp lại toàn bộ
-    @BENHVIEN_ID         VARCHAR(8)   = NULL,           -- đặt 79428 nếu DB nhiều bệnh viện
+    @BENHVIEN_ID         VARCHAR(8)   = NULL,           -- khi DB nhiều bệnh viện
     @NhomBenhDich        NVARCHAR(400) = N'J00-J06,J09-J18,J20-J22',
     @XuLyVungKhongXacDinh TINYINT = 1,           -- 0 giữ nhãn | 1 gộp | 2 loại bỏ
     @NguongOutlier       FLOAT = NULL,
@@ -58,7 +36,7 @@ BEGIN
             @QtyNhom FLOAT = 0, @QtyRo FLOAT = 0;
 
     BEGIN TRY
-        /* ── Cửa sổ cần tổng hợp lại ── */
+        /* Cửa sổ cần tổng hợp lại */
         IF @ChiXem = 0
             SELECT @Moc = MocDaDay
             FROM   [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_Watermark]
@@ -73,18 +51,14 @@ BEGIN
         PRINT CONCAT(N'Tổng hợp từ ', CONVERT(varchar(10), @TuNgay, 120),
                      N' đến ', CONVERT(varchar(10), @DenNgay, 120));
 
-        /* =====================================================================
-           0) Danh mục tỉnh — dò trong địa chỉ text khi không suy ra được qua xã
-           ===================================================================== */
+        /* 0) Danh mục tỉnh: dò trong địa chỉ text khi không suy ra được qua xã */
         IF OBJECT_ID('tempdb..#Tinh') IS NOT NULL DROP TABLE #Tinh;
         SELECT DISTINCT TENDONVI
         INTO   #Tinh
         FROM   TM_DONVIHANHCHINH
         WHERE  CAPDONVI = 2 AND LEN(TENDONVI) >= 4;
 
-        /* =====================================================================
-           0b) Danh mục mã bệnh đích — lấy theo nhóm ICD, không hardcode mã
-           ===================================================================== */
+        /* 0b) Danh mục mã bệnh đích lấy theo nhóm ICD, không hardcode mã */
         IF OBJECT_ID('tempdb..#NhomDich') IS NOT NULL DROP TABLE #NhomDich;
         SELECT LTRIM(RTRIM(value)) AS Nhom
         INTO   #NhomDich
@@ -101,10 +75,8 @@ BEGIN
         IF (SELECT COUNT(DISTINCT LEFT(Nhom, 1)) FROM #NhomDich) > 1
             THROW 50004, N'@NhomBenhDich đang trộn nhiều chương ICD (khác chữ cái đầu). Thủ tục chỉ hỗ trợ một chương mỗi lần chạy.', 1;
 
-        /* Chuỗi nhóm chuẩn hoá dạng ',J00-J06,J09-J18,J20-J22,' — giới hạn mọi
-           lệnh DELETE bên STA theo đúng các nhóm của lần chạy (chạy riêng một
-           nhóm không xoá dữ liệu nhóm khác); so bằng LIKE để khỏi đẩy bảng tạm
-           qua linked server.                                                  */
+        /* Chuỗi nhóm chuẩn hoá ',J00-J06,...,' giới hạn mọi DELETE bên STA theo nhóm của lần chạy;
+           so bằng LIKE để khỏi đẩy bảng tạm qua linked server */
         SELECT @NhomChuan = N',' + STRING_AGG(Nhom, N',') + N',' FROM #NhomDich;
 
         IF OBJECT_ID('tempdb..#IcdDich') IS NOT NULL DROP TABLE #IcdDich;
@@ -150,13 +122,7 @@ BEGIN
         PRINT CONCAT(N'Phạm vi bệnh: ', @nNhomDich, N' nhóm (', @NhomBenhDich,
                      N') → ', @nMaDich, N' mã 3 ký tự.');
 
-        /* =====================================================================
-           1) #Enc — lượt khám thuộc các nhóm bệnh đích, gộp nội trú + ngoại trú
-           ---------------------------------------------------------------------
-           CapYLenh: phân cấp chăm sóc của từng y lệnh. Chỉ y lệnh thuốc
-           (ISYLENHVTYT = 0) có phân cấp; y lệnh VTYT để NULL và bị MIN() ở
-           bước 1c bỏ qua.
-           ===================================================================== */
+        /* 1) #Enc: lượt khám thuộc nhóm bệnh đích; CapYLenh chỉ có ở y lệnh thuốc, VTYT để NULL */
         IF OBJECT_ID('tempdb..#Enc') IS NOT NULL DROP TABLE #Enc;
 
         -- 1a) Nội trú
@@ -184,10 +150,7 @@ BEGIN
              OR TRY_CAST(BA.ICD_BENHCHINH AS INT) IN (SELECT ICD_ID FROM #IcdDich)
              OR KB.DS_MAICDPHU LIKE '%' + @ChuCaiDich + '[0-9][0-9]%' );
 
-        -- 1b) Ngoại trú
-        --     LEFT JOIN TM_ICD để giữ lượt có CHANDOANICD_ID rỗng nhưng
-        --     DS_MAICDPHU chứa mã đích (đối xứng với 1a).
-        --     Ngoại trú không có phân cấp chăm sóc → CapYLenh = NULL, rổ 'NGT'.
+        -- 1b) Ngoại trú: LEFT JOIN TM_ICD để giữ lượt chỉ có mã đích ở DS_MAICDPHU; không phân cấp nên CapYLenh NULL
         INSERT INTO #Enc (LoaiDieuTri, KHAMBENH_ID, TIEPNHAN_ID, BENHNHAN_ID,
                           MonthStart, PrimaryICD, SubICD, CapYLenh)
         SELECT 'NGT', KB.KHAMBENH_ID, tn.TIEPNHAN_ID, tn.BENHNHAN_ID,
@@ -202,14 +165,8 @@ BEGIN
           AND ( KB.CHANDOANICD_ID IN (SELECT ICD_ID FROM #IcdDich)
              OR KB.DS_MAICDPHU LIKE '%' + @ChuCaiDich + '[0-9][0-9]%' );
 
-        /* =====================================================================
-           1c) #CapDot — rổ của mỗi đợt điều trị
-           ---------------------------------------------------------------------
-           cap(đợt) = MIN(mã phân cấp) = cấp nặng nhất trong đợt. MIN chỉ xét
-           các y lệnh đã qua bộ lọc bệnh đích (các dòng trong #Enc), để phản
-           ánh mức nặng khi điều trị bệnh hô hấp, không phải bệnh khác cùng đợt.
-           NT0 = nội trú nhưng không y lệnh nào của đợt có phân cấp.
-           ===================================================================== */
+        /* 1c) #CapDot: rổ của mỗi đợt = MIN(mã phân cấp) trên y lệnh đã qua bộ lọc bệnh đích;
+           NT0 = nội trú không y lệnh nào có phân cấp */
         IF OBJECT_ID('tempdb..#CapDot') IS NOT NULL DROP TABLE #CapDot;
         SELECT
             e.LoaiDieuTri,
@@ -222,8 +179,7 @@ BEGIN
         GROUP BY e.LoaiDieuTri, e.TIEPNHAN_ID;
         CREATE UNIQUE CLUSTERED INDEX IX_CapDot ON #CapDot(LoaiDieuTri, TIEPNHAN_ID);
 
-        /* Mã phân cấp ngoài {1,2,3} sẽ tạo rổ bị CHECK constraint bên STA chặn;
-           dồn về NT0 và cảnh báo ngay thay vì lỗi ở bước đẩy.                  */
+        /* Mã phân cấp ngoài {1,2,3} bị CHECK bên STA chặn, dồn về NT0 và cảnh báo sớm */
         IF EXISTS (SELECT 1 FROM #CapDot WHERE Ro NOT IN ('NGT','NT1','NT2','NT3','NT0'))
         BEGIN
             PRINT N'CẢNH BÁO: có mã phân cấp chăm sóc ngoài {1,2,3} — đã dồn vào rổ NT0. Kiểm tra LST_DICTIONARY.';
@@ -231,9 +187,7 @@ BEGIN
             WHERE  Ro NOT IN ('NGT','NT1','NT2','NT3','NT0');
         END
 
-        /* =====================================================================
-           2) #PatReg — vùng (tỉnh) tính một lần cho mỗi bệnh nhân
-           ===================================================================== */
+        /* 2) #PatReg: vùng (tỉnh) tính một lần cho mỗi bệnh nhân */
         IF OBJECT_ID('tempdb..#PatReg') IS NOT NULL DROP TABLE #PatReg;
         SELECT DISTINCT
                bn.BENHNHAN_ID,
@@ -255,11 +209,7 @@ BEGIN
         WHERE ISNULL(NULLIF(LTRIM(RTRIM(bn.ACTIVE)), ''), '1') <> '0';
         CREATE UNIQUE CLUSTERED INDEX IX_PatReg ON #PatReg(BENHNHAN_ID);
 
-        /* =====================================================================
-           3) #Dx — 1 dòng / (loại × lượt khám × mã bệnh), gộp chính + phụ
-           Ro (từ #CapDot) là hàm của (LoaiDieuTri, TIEPNHAN_ID) nên không
-           làm tăng số dòng.
-           ===================================================================== */
+        /* 3) #Dx: 1 dòng / (loại × lượt × mã bệnh), gộp chính + phụ; Ro là hàm của (loại, lượt) nên không tăng dòng */
         IF OBJECT_ID('tempdb..#Dx') IS NOT NULL DROP TABLE #Dx;
         SELECT DISTINCT
                x.LoaiDieuTri, x.KHAMBENH_ID, x.TIEPNHAN_ID, x.MonthStart,
@@ -272,7 +222,7 @@ BEGIN
             FROM   #Enc e
             JOIN   #Ma3 m ON m.Ma3 = LEFT(e.PrimaryICD, 3)
             UNION ALL
-            -- chẩn đoán phụ (chỉ từ DS_MAICDPHU — danh sách mã chuẩn)
+            -- chẩn đoán phụ từ DS_MAICDPHU
             SELECT e.LoaiDieuTri, e.KHAMBENH_ID, e.TIEPNHAN_ID, e.BENHNHAN_ID,
                    e.MonthStart, m.Ma3
             FROM   #Enc e
@@ -288,10 +238,7 @@ BEGIN
             SELECT COUNT(DISTINCT TIEPNHAN_ID) AS Cases
             FROM   #Dx GROUP BY MonthStart, Region, DiseaseCode) z0;
 
-        /* =====================================================================
-           3a) Vùng không xác định — xử lý trước bước gộp ô nhỏ, để nhãn
-               vùng đã chuẩn trước khi đếm ô
-           ===================================================================== */
+        /* 3a) Vùng không xác định, xử lý trước bước gộp ô nhỏ */
         IF OBJECT_ID('tempdb..#VungKhongRo') IS NOT NULL DROP TABLE #VungKhongRo;
         SELECT DISTINCT Region INTO #VungKhongRo FROM #Dx
         WHERE  Region = N'(Không xác định)'
@@ -316,13 +263,7 @@ BEGIN
             PRINT CONCAT(N'Vùng không xác định: đã loại bỏ ', @nCaKhongRoTinh, N' ca.');
         END
 
-        /* =====================================================================
-           3b) Ngưỡng ô nhỏ k — chống tái định danh (chỉ tác động chiều vùng)
-           ---------------------------------------------------------------------
-           Ô (tháng × mã × tỉnh) có ít hơn k lượt DISTINCT được đổi nhãn vùng
-           thành @NhanGopVung. Chỉ đổi Region, không đổi Ro và số ca, nên các
-           bảng phân cấp (không có chiều vùng) không bị ảnh hưởng.
-           ===================================================================== */
+        /* 3b) Ngưỡng ô nhỏ k chống tái định danh: ô (tháng × mã × tỉnh) < k lượt đổi nhãn vùng, không đổi Ro và số ca */
         IF @NguongOToiThieu > 1
         BEGIN
             IF OBJECT_ID('tempdb..#ONho') IS NOT NULL DROP TABLE #ONho;
@@ -347,12 +288,7 @@ BEGIN
                          @NhanGopVung, N'".');
         END
 
-        /* =====================================================================
-           4) #DrugMeta — danh mục thuốc (+ VTYT nếu @GomVTYT = 1)
-           NoteCategory: nhóm dược lý suy từ tên nhóm/hoạt chất; thứ tự WHEN
-           là thứ tự ưu tiên. Dịch truyền nhận diện qua nhóm dược hoặc hoạt
-           chất natri clorid/glucose đóng chai/túi/lọ, ringer.
-           ===================================================================== */
+        /* 4) #DrugMeta: danh mục thuốc (+ VTYT nếu @GomVTYT = 1); NoteCategory theo thứ tự ưu tiên WHEN */
         IF OBJECT_ID('tempdb..#DrugMeta') IS NOT NULL DROP TABLE #DrugMeta;
         SELECT
             D.DUOC_ID,
@@ -387,15 +323,13 @@ BEGIN
         LEFT JOIN TM_DONVITINH     dvt ON dvt.DONVITINH_ID = D.DONVITINH_ID
         LEFT JOIN TM_PHANLOAIDUOC  pld ON pld.PHANLOAIDUOC = D.PHANLOAIDUOC
         LEFT JOIN TM_NHOMDUOC      nd  ON nd.NHOMDUOC_ID   = D.NHOMDUOC_ID
-        WHERE (@GomVTYT = 1 OR ld.LOAIVATTU_ID = 'T')     -- mặc định: chỉ thuốc
+        WHERE (@GomVTYT = 1 OR ld.LOAIVATTU_ID = 'T')
           AND D.MADUOC IS NOT NULL AND LTRIM(RTRIM(D.MADUOC)) <> ''
           AND D.TENDUOCDAYDU IS NOT NULL
           AND (@BENHVIEN_ID IS NULL OR D.BENHVIEN_ID = @BENHVIEN_ID);
         CREATE UNIQUE CLUSTERED INDEX IX_DM ON #DrugMeta(DUOC_ID);
 
-        /* =====================================================================
-           5) Chặn quét toàn bảng toa thuốc
-           ===================================================================== */
+        /* 5) Chặn quét toàn bảng toa thuốc */
         IF OBJECT_ID('tempdb..#K_NT')  IS NOT NULL DROP TABLE #K_NT;
         IF OBJECT_ID('tempdb..#K_NGT') IS NOT NULL DROP TABLE #K_NGT;
         SELECT DISTINCT KHAMBENH_ID INTO #K_NT  FROM #Dx WHERE LoaiDieuTri = 'NT';
@@ -403,11 +337,7 @@ BEGIN
         CREATE CLUSTERED INDEX IX_KNT  ON #K_NT(KHAMBENH_ID);
         CREATE CLUSTERED INDEX IX_KNGT ON #K_NGT(KHAMBENH_ID);
 
-        /* =====================================================================
-           6) #Drug — gom số lượng theo (loại × lượt khám × thuốc)
-           SoDong (số dòng toa gốc) chỉ để đối chiếu; định mức tính theo số
-           lượng vì số đơn vị mỗi dòng toa khác nhau nhiều giữa NGT và NT.
-           ===================================================================== */
+        /* 6) #Drug: gom số lượng theo (loại × lượt × thuốc); SoDong chỉ để đối chiếu */
         IF OBJECT_ID('tempdb..#Drug') IS NOT NULL DROP TABLE #Drug;
         CREATE TABLE #Drug (
             LoaiDieuTri  VARCHAR(3),   KHAMBENH_ID BIGINT,
@@ -417,7 +347,7 @@ BEGIN
             Qty          FLOAT,        SoDong      INT
         );
 
-        -- 6a) Nội trú: số lượng = số thực lĩnh, thiếu thì lấy số kê
+        -- 6a) Nội trú: số thực lĩnh, thiếu thì lấy số kê
         INSERT INTO #Drug
         SELECT 'NT', tt.KHAMBENH_ID, dm.SupplyCode, dm.SupplyName, dm.SupplyUnit,
                dm.DrugGroup, dm.NoteCategory, dm.IsVtyt,
@@ -448,11 +378,7 @@ BEGIN
         HAVING SUM(CAST(ISNULL(tt.SOLUONG, 0) AS FLOAT)) > 0;
         CREATE CLUSTERED INDEX IX_Drug ON #Drug(LoaiDieuTri, KHAMBENH_ID);
 
-        /* =====================================================================
-           7) #KQ — kết quả theo mã bệnh (hợp đồng dữ liệu CASE_COLUMNS)
-           cases = COUNT(DISTINCT lượt) của (tháng × tỉnh × mã), lặp lại trên
-           mọi dòng vật tư; kiểm bất biến tổng ca sau khi khử lặp bằng MAX.
-           ===================================================================== */
+        /* 7) #KQ: kết quả theo mã bệnh; cases lặp trên mọi dòng vật tư, khử lặp bằng MAX */
         IF OBJECT_ID('tempdb..#KQ') IS NOT NULL DROP TABLE #KQ;
         ;WITH DiseaseCases AS (
             SELECT MonthStart, Region, DiseaseCode,
@@ -524,10 +450,7 @@ BEGIN
                          @TongCaGoc, N') trừ phần đã loại (', @nCaKhongRoTinh,
                          N'). Có chỗ đang làm mất hoặc nhân đôi ca — kiểm tra trước khi đẩy.');
 
-        /* =====================================================================
-           7b) Số ca theo nhóm ICD — đếm DISTINCT lượt ở mức nhóm, kèm dòng
-               'TOAN_QUOC' đếm riêng (không cộng các tỉnh)
-           ===================================================================== */
+        /* 7b) Số ca theo nhóm ICD: DISTINCT lượt ở mức nhóm, dòng 'TOAN_QUOC' đếm riêng */
         IF OBJECT_ID('tempdb..#KQN') IS NOT NULL DROP TABLE #KQN;
         SELECT
             g.MonthStart AS Period,
@@ -556,15 +479,8 @@ BEGIN
 
         SELECT @nDongNhom = COUNT(*) FROM #KQN;
 
-        /* =====================================================================
-           7c) #DxG — khử trùng ở mức nhóm
-           ---------------------------------------------------------------------
-           #Dx có một dòng cho mỗi mã bệnh; lượt mang J01 + J06 (cùng nhóm
-           J00-J06) có hai dòng. Ghép thẳng với #Drug rồi gom theo nhóm sẽ cộng
-           thuốc hai lần, làm định mức phồng theo tỷ lệ đồng mắc trong nhóm.
-           #DxG giữ một dòng cho mỗi (lượt × nhóm). Lượt có mã ở hai nhóm khác
-           nhau (J06 + J20) vẫn giữ hai dòng: thuốc phục vụ cả hai nhóm.
-           ===================================================================== */
+        /* 7c) #DxG: khử trùng ở mức (lượt × nhóm); ghép thẳng #Dx với #Drug sẽ cộng thuốc hai lần
+           cho lượt mang hai mã cùng nhóm */
         IF OBJECT_ID('tempdb..#DxG') IS NOT NULL DROP TABLE #DxG;
         SELECT DISTINCT
                dx.LoaiDieuTri, dx.KHAMBENH_ID, dx.TIEPNHAN_ID, dx.MonthStart,
@@ -574,16 +490,14 @@ BEGIN
         JOIN   #Ma3 m3 ON m3.Ma3 = dx.DiseaseCode;
         CREATE CLUSTERED INDEX IX_DxG ON #DxG(LoaiDieuTri, KHAMBENH_ID);
 
-        /* Danh sách lượt khám × tháng, khử trùng qua mọi nhóm — cho bảng tổng */
+        /* Lượt khám × tháng khử trùng qua mọi nhóm, cho bảng tổng */
         IF OBJECT_ID('tempdb..#EncThang') IS NOT NULL DROP TABLE #EncThang;
         SELECT DISTINCT LoaiDieuTri, KHAMBENH_ID, TIEPNHAN_ID, MonthStart
         INTO   #EncThang
         FROM   #DxG;
         CREATE CLUSTERED INDEX IX_EncThang ON #EncThang(LoaiDieuTri, KHAMBENH_ID);
 
-        /* =====================================================================
-           7d) #KQP — mẫu số: số ca (DISTINCT lượt) theo (tháng × nhóm × rổ)
-           ===================================================================== */
+        /* 7d) #KQP: mẫu số, số ca DISTINCT theo (tháng × nhóm × rổ) */
         IF OBJECT_ID('tempdb..#KQP') IS NOT NULL DROP TABLE #KQP;
         SELECT
             g.MonthStart AS Period,
@@ -600,9 +514,7 @@ BEGIN
         SELECT @nDongPhanCap = COUNT(*) FROM #KQP;
         SELECT @nONhoPhanCap = COUNT(*) FROM #KQP WHERE cases < 5;
 
-        /* =====================================================================
-           7e) #KQT — tử số: tiêu hao theo (tháng × nhóm × rổ × vật tư)
-           ===================================================================== */
+        /* 7e) #KQT: tử số, tiêu hao theo (tháng × nhóm × rổ × vật tư) */
         IF OBJECT_ID('tempdb..#KQT') IS NOT NULL DROP TABLE #KQT;
         SELECT
             g.MonthStart AS Period,
@@ -627,9 +539,7 @@ BEGIN
 
         SELECT @nDongTieuHao = COUNT(*) FROM #KQT;
 
-        /* Kiểm chứng khử trùng: so tổng lượng theo rổ (#KQT) với cách tính độc
-           lập từ danh sách lượt đã khử trùng hoàn toàn (#EncThang). Số sau phải
-           nhỏ hơn hoặc bằng; phần chênh là lượt thuộc nhiều nhóm bệnh.         */
+        /* Kiểm chứng khử trùng: tổng theo #EncThang phải nhỏ hơn hoặc bằng tổng #KQT, chênh là lượt thuộc nhiều nhóm */
         SELECT @QtyRo = ISNULL(SUM(so_luong), 0) FROM #KQT;
         SELECT @QtyNhom = ISNULL(SUM(dr.Qty), 0)
         FROM   #EncThang e
@@ -646,10 +556,7 @@ BEGIN
                          N' (chênh = phần lượt thuộc nhiều nhóm bệnh, đúng như thiết kế).');
 
 
-        /* =====================================================================
-           8) Tồn kho — ảnh chụp hiện tại (tổng, không theo lô)
-           Tồn theo lô do usp_MedForecast_DayKhoCungUng đẩy.
-           ===================================================================== */
+        /* 8) Tồn kho: ảnh chụp tổng, không theo lô (lô do prod/04 đẩy) */
         IF OBJECT_ID('tempdb..#TK') IS NOT NULL DROP TABLE #TK;
         SELECT
             dm.SupplyCode                      AS supply_code,
@@ -670,9 +577,7 @@ BEGIN
 
         SELECT @nTonKho = COUNT(*) FROM #TK;
 
-        /* =====================================================================
-           9) Đẩy xuống STA — hoặc chỉ trả kết quả nếu @ChiXem = 1
-           ===================================================================== */
+        /* 9) Đẩy xuống STA, hoặc chỉ trả kết quả nếu @ChiXem = 1 */
         IF @ChiXem = 1
         BEGIN
             PRINT CONCAT(N'CHẾ ĐỘ CHỈ XEM — không đẩy. Dòng = ', @nDong,
@@ -714,7 +619,7 @@ BEGIN
             GROUP BY n.disease_group, n.disease_group_name
             ORDER BY n.disease_group;
 
-            /* Kết quả 3: tỷ trọng phân cấp p̂(g,c) theo nhóm bệnh.            */
+            /* Kết quả 3: tỷ trọng phân cấp p̂(g,c) theo nhóm bệnh */
             SELECT  disease_group,
                     ro,
                     SUM(cases)                                                   AS TongCa,
@@ -727,8 +632,7 @@ BEGIN
             GROUP BY disease_group, ro
             ORDER BY disease_group, ro;
 
-            /* Kết quả 4: định mức thực nghiệm của các vật tư tiêu hao lớn nhất
-               (con số T2 sẽ dùng) — xem trước khi đẩy.                          */
+            /* Kết quả 4: định mức thực nghiệm của vật tư tiêu hao lớn nhất */
             SELECT TOP 200
                    t.disease_group, t.ro, t.supply_code, t.supply_name, t.supply_unit,
                    SUM(t.so_luong)                                        AS TongLuong,
@@ -747,7 +651,7 @@ BEGIN
             RETURN;
         END
 
-        /* Chốt chặn 1 — không cho dữ liệu trùng khoá rời khỏi PROD. */
+        /* Chốt chặn 1: không cho dữ liệu trùng khoá rời khỏi PROD */
         DECLARE @nTrung INT = (
             SELECT COUNT(*) FROM (
                 SELECT 1 AS x FROM #KQ
@@ -756,8 +660,7 @@ BEGIN
         IF @nTrung > 0
             THROW 50001, N'Kết quả tổng hợp có dòng trùng khoá (Period, disease_code, region, supply_code) — không đẩy xuống STA.', 1;
 
-        /* DELETE giới hạn theo các nhóm của lần chạy (@NhomChuan). Dòng
-           disease_group NULL (dữ liệu trước khi có cột nhóm) được dọn luôn.   */
+        /* DELETE giới hạn theo nhóm của lần chạy; dòng disease_group NULL được dọn luôn */
         DELETE FROM [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_CaBenh_VatTu]
         WHERE  Period >= @TuNgay
           AND (disease_group IS NULL
@@ -783,7 +686,7 @@ BEGIN
         SELECT Period, [month], disease_group, disease_group_name, region, cases, SYSDATETIME()
         FROM   #KQN;
 
-        /* Chốt chặn 2 — số dòng bên STA trong cùng phạm vi phải khớp. */
+        /* Chốt chặn 2: số dòng bên STA cùng phạm vi phải khớp */
         DECLARE @nSauKhiDay INT = (
             SELECT COUNT(*) FROM [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_CaBenh_VatTu]
             WHERE Period >= @TuNgay
@@ -792,8 +695,7 @@ BEGIN
         IF @nSauKhiDay <> @nDong
             THROW 50002, N'Số dòng bên STA không khớp số dòng đã gom — nghi có dữ liệu thừa hoặc thiếu.', 1;
 
-        /* Hai bảng phân cấp — xoá-rồi-chèn trong cùng phạm vi nhóm.
-           MF_TieuHao_Tong do prod/03_usp_MedForecast_DayTieuHaoToanVien.sql đẩy. */
+        /* Hai bảng phân cấp: xoá-rồi-chèn trong cùng phạm vi nhóm */
         IF @DayLuongPhanCap = 1
         BEGIN
             DELETE FROM [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_CaBenh_PhanCap]
@@ -820,9 +722,8 @@ BEGIN
 
         END
 
-        /* Tồn kho: dừng nếu ảnh chụp rỗng (tránh xoá sạch MF_TonKho khiến mọi
-           vật tư báo thiếu); dùng tên ba phần đầy đủ để không phụ thuộc
-           database mặc định của login; DELETE thay TRUNCATE (không cần ALTER). */
+        /* Tồn kho: dừng nếu ảnh chụp rỗng để không xoá sạch MF_TonKho;
+           DELETE thay TRUNCATE để không cần quyền ALTER */
         IF @nTonKho = 0
             THROW 50006, N'Ảnh chụp tồn kho rỗng — DỪNG, không xoá MF_TonKho bên STA. Kiểm tra @BENHVIEN_ID và TM_LOAIDUOC.LOAIVATTU_ID.', 1;
 
@@ -840,7 +741,7 @@ BEGIN
         IF @nTonKhoSTA <> @nTonKho
             THROW 50007, N'Số dòng tồn kho bên STA không khớp ảnh chụp vừa tính.', 1;
 
-        /* ── 10) Mốc và nhật ký ── */
+        /* 10) Mốc và nhật ký */
         DECLARE @MocMoi DATE = (SELECT MAX(Period) FROM #KQ);
 
         UPDATE [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_Watermark]
@@ -899,18 +800,8 @@ END
 GO
 
 
-/* =============================================================================
-   Cách dùng
-   1. Xem trước, không đẩy (kết quả 3 — tỷ trọng phân cấp — cần soi kỹ: nhóm
-      J09-J18 phải nặng hơn J00-J06 rõ rệt; kết quả 4 — định mức — đối chiếu
-      vài dòng với khoa Dược để phát hiện lệch đơn vị tính):
-       EXEC dbo.usp_MedForecast_DayDuLieu @NapLaiToanBo = 1, @ChiXem = 1;
-   2. Nạp toàn bộ lần đầu:
-       EXEC dbo.usp_MedForecast_DayDuLieu @NapLaiToanBo = 1;
-   3. Hằng ngày (job prod/05_sql_agent_job.sql):
-       EXEC dbo.usp_MedForecast_DayDuLieu;
-   Chạy riêng một nhóm (chỉ xoá/chèn dữ liệu nhóm đó):
-       EXEC dbo.usp_MedForecast_DayDuLieu @NhomBenhDich = N'J09-J18';
-   Nếu DB nhiều bệnh viện: thêm @BENHVIEN_ID = 79428 ở mọi lần gọi.
-   @DayLuongPhanCap = 0 bỏ qua hai bảng phân cấp; @GomVTYT = 0 chỉ lấy thuốc.
-============================================================================= */
+/* Cách dùng
+   Xem trước:      EXEC dbo.usp_MedForecast_DayDuLieu @NapLaiToanBo = 1, @ChiXem = 1;
+   Nạp lần đầu:    EXEC dbo.usp_MedForecast_DayDuLieu @NapLaiToanBo = 1;
+   Hằng ngày:      EXEC dbo.usp_MedForecast_DayDuLieu;
+   Một nhóm:       EXEC dbo.usp_MedForecast_DayDuLieu @NhomBenhDich = N'J09-J18'; */

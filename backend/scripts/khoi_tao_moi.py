@@ -1,25 +1,10 @@
-"""Khởi tạo hệ thống trên máy mới từ bản clone (không cần CSDL có sẵn).
-
-    cd backend
-    python scripts/khoi_tao_moi.py
-
-`backend/.env` và `backend/data/*.db` không nằm trong git (chứa mật khẩu HIS và dữ
-liệu bệnh viện). Script thực hiện:
-
-  1. Tạo `.env` từ `.env.example` nếu chưa có, sinh SECRET_KEY ngẫu nhiên.
-  2. Tạo toàn bộ bảng (nghiệp vụ + tầng dữ liệu mart/fact) và view trong cùng một file SQLite.
-  3. Tạo tài khoản quản trị (mặc định admin / admin123; đổi mật khẩu sau khi đăng nhập).
-  4. Nạp bộ dữ liệu `dataset/v1` (số ca theo tháng + thời tiết) vào mart/fact để
-     Tầng 1 (dự báo) chạy được ngay mà không cần kết nối HIS.
-
-Phần vật tư (tồn kho, DOI, cảnh báo thiếu hụt) cần dữ liệu kho bệnh viện, chỉ có
-sau khi cấu hình kết nối STA và đồng bộ; bộ dữ liệu công bố không chứa dữ liệu vật tư.
-
-Tuỳ chọn:
-    --data ../dataset/v1     thư mục bộ dữ liệu
-    --no-data                chỉ tạo bảng + tài khoản, không nạp dữ liệu
-    --username / --password / --email   tài khoản quản trị khác mặc định
-    --ghi-de-du-lieu         nạp dataset dù CSDL đã có dữ liệu (xoá dữ liệu dịch tễ hiện có)
+"""Khởi tạo hệ thống trên máy mới: tạo .env, toàn bộ bảng/view SQLite, tài khoản
+quản trị và nạp dataset/v1 để Tầng 1 chạy được không cần HIS.
+Chạy: cd backend && python scripts/khoi_tao_moi.py
+  --data ../dataset/v1                thư mục bộ dữ liệu
+  --no-data                           chỉ tạo bảng + tài khoản
+  --username / --password / --email   tài khoản quản trị khác mặc định
+  --ghi-de-du-lieu                    nạp dataset dù CSDL đã có dữ liệu (xoá dữ liệu dịch tễ hiện có)
 """
 from __future__ import annotations
 
@@ -33,7 +18,7 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BACKEND_DIR))
 
 TOAN_QUOC = "TOAN_QUOC"
-TINH_MAC_DINH = "TP. Hồ Chí Minh"   # tên chuẩn, khớp danh mục tỉnh/thành
+TINH_MAC_DINH = "TP. Hồ Chí Minh"   # tên chuẩn
 
 
 # ── 1. .env ──────────────────────────────────────────────────────────────────
@@ -55,14 +40,13 @@ def tao_env(backend: Path) -> str:
 
 def tao_bang() -> str:
     from app.database import Base, engine
-    import app.models  # noqa: F401 — đăng ký model vào metadata
+    import app.models  # noqa: F401
     Base.metadata.create_all(bind=engine)
     n_app = len(Base.metadata.tables)
     from app.data_pipeline.db import init_db as pipeline_init_db, get_db_url
     pipeline_init_db()
     from app.data_pipeline.db import Base as PBase
-    # Bảng tự quản và view nằm ngoài create_all; thiếu chúng thì Dashboard trả
-    # rỗng mà không báo lỗi.
+    # View và bảng tự quản nằm ngoài create_all
     from app.data_pipeline.views import dam_bao_luoc_do, VIEWS
     kq = dam_bao_luoc_do(engine)
     n_view = sum(1 for k, v in kq.items() if k in VIEWS and v == "đã tạo")
@@ -122,11 +106,7 @@ def _bool(v) -> int:
 
 
 def nap_du_lieu(data_dir: Path) -> list[str]:
-    """Nạp dataset/v1 vào mart/fact + bảng nghiệp vụ disease_cases.
-
-    Xoá sạch các bảng đích rồi nạp lại: trộn dữ liệu cũ và mới sẽ làm sai
-    chuỗi thời gian mà không phát hiện được.
-    """
+    """Nạp dataset/v1 vào mart/fact và disease_cases; xoá sạch bảng đích trước để không trộn chuỗi cũ/mới."""
     from sqlalchemy import text
     from app.database import SessionLocal
 
@@ -222,7 +202,7 @@ def nap_du_lieu(data_dir: Path) -> list[str]:
 # ── chạy ─────────────────────────────────────────────────────────────────────
 
 def _dem_du_lieu_cu() -> str:
-    """Mô tả ngắn dữ liệu đang có trong CSDL; chuỗi rỗng nếu CSDL còn trống."""
+    """Mô tả dữ liệu đang có; chuỗi rỗng nếu CSDL trống."""
     from sqlalchemy import text
     from app.database import SessionLocal
     db = SessionLocal()
@@ -257,7 +237,7 @@ def main(argv=None) -> int:
     print("MedForecast — khởi tạo hệ thống trên máy mới\n" + "─" * 60)
     print("1) Cấu hình   :", tao_env(BACKEND_DIR))
 
-    # Nạp .env trước khi import app.config (settings chỉ đọc một lần)
+    # settings chỉ đọc .env một lần nên nạp trước khi import app.config
     try:
         from dotenv import load_dotenv
         load_dotenv(BACKEND_DIR / ".env")
@@ -271,8 +251,7 @@ def main(argv=None) -> int:
         print("4) Dữ liệu    : bỏ qua (--no-data)")
     else:
         d = Path(args.data)
-        # CSDL đã có dữ liệu (ví dụ đã đồng bộ HIS): không nạp dataset để tránh
-        # ghi đè số liệu thật, trừ khi có --ghi-de-du-lieu.
+        # Không ghi đè số liệu thật đã đồng bộ HIS trừ khi --ghi-de-du-lieu
         dang_co = _dem_du_lieu_cu()
         if dang_co and not args.ghi_de_du_lieu:
             print(f"4) Dữ liệu    : DB đã có dữ liệu ({dang_co}) — KHÔNG nạp dataset "

@@ -15,7 +15,6 @@ export default function Layout() {
       <div
         className={cn(
           'shrink-0 transition-all duration-300',
-          // Di động: sidebar dạng lớp phủ
           'fixed inset-y-0 left-0 z-30 lg:relative lg:z-auto',
           isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         )}
@@ -23,7 +22,7 @@ export default function Layout() {
         <Sidebar />
       </div>
 
-      {/* Lớp nền mờ khi mở sidebar trên di động */}
+      {/* Lớp nền di động */}
       {isSidebarOpen && (
         <div
           className="fixed inset-0 z-20 bg-black/50 lg:hidden"
@@ -31,13 +30,11 @@ export default function Layout() {
         />
       )}
 
-      {/* Vùng nội dung chính */}
+      {/* Nội dung chính */}
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <Header />
         <main className="flex-1 overflow-y-auto p-6">
-          {/* Ranh giới lỗi đặt ở đây (trong Layout) để khi một trang hỏng thì
-              sidebar và header vẫn còn, người dùng chuyển trang khác được.
-              resetKey theo đường dẫn: rời trang hỏng là ranh giới tự reset. */}
+          {/* Ranh giới lỗi */}
           <ErrorBoundary resetKey={location.pathname}>
             <Outlet />
           </ErrorBoundary>

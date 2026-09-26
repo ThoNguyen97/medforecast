@@ -1,8 +1,4 @@
-"""Fixture dùng chung cho test tích hợp.
-
-Mỗi test dùng một CSDL SQLite in-memory mới và TestClient gắn với CSDL đó qua
-dependency injection của FastAPI, bảo đảm cô lập giữa các test.
-"""
+"""Fixture test tích hợp: mỗi test một SQLite in-memory mới và TestClient gắn với nó."""
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,10 +12,9 @@ from app.models.user import User
 from app.core.security import hash_password, create_access_token
 
 
-# ── Tiện ích CSDL ──────────────────────────────────────────────────────────
 
 def build_test_engine():
-    """Tạo engine SQLite in-memory mới (đã tạo bảng)."""
+    """Engine SQLite in-memory mới, đã tạo bảng."""
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -33,7 +28,6 @@ def build_session_factory(engine):
     return sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
-# ── Fixture dùng chung ───────────────────────────────────────────────────────────
 
 @pytest.fixture(scope="function")
 def db_engine():
@@ -70,7 +64,6 @@ def client(db_session):
     app.dependency_overrides.pop(get_db, None)
 
 
-# ── Fixture người dùng ─────────────────────────────────────────────────────────────
 
 @pytest.fixture
 def admin_user(db_session):
@@ -123,7 +116,6 @@ def inventory_manager_user(db_session):
     return user
 
 
-# ── Fixture token ────────────────────────────────────────────────────────────
 
 @pytest.fixture
 def admin_token(admin_user):

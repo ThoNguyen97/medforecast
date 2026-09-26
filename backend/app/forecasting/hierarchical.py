@@ -1,8 +1,6 @@
-"""Các hướng hòa giải phân cấp: bottom-up, top-down (cố định/động), hoà giải OLS.
+"""Hòa giải phân cấp: top-down (cố định/động) và hoà giải OLS (Hyndman et al. 2011, W = I, không phải MinT).
 
-reconcile_ols dùng W = I, tức hoà giải OLS (Hyndman et al. 2011), không phải MinT
-(Wickramasuriya, Hyndman & Athanasopoulos 2019, cần ước lượng hiệp phương sai sai số).
-Khoá API "mint" được giữ cho tương thích frontend; nhãn hiển thị ghi "Hoà giải OLS".
+Khoá API "mint" giữ cho tương thích frontend.
 """
 from __future__ import annotations
 from typing import Dict, List
@@ -12,7 +10,7 @@ import pandas as pd
 
 def ewma_shares(hist_group: pd.DataFrame, hist_codes: Dict[str, pd.DataFrame],
                 span: int = 6) -> Dict[str, float]:
-    """Tỷ trọng động: EWMA của (ca mã / tổng nhóm) theo tháng, chuẩn hóa tổng = 1."""
+    """EWMA của (ca mã / tổng nhóm) theo tháng, chuẩn hóa tổng = 1."""
     g = hist_group.set_index("period")["cases"]
     ratios = {}
     for code, cdf in hist_codes.items():
@@ -29,19 +27,14 @@ def ewma_shares(hist_group: pd.DataFrame, hist_codes: Dict[str, pd.DataFrame],
 
 def reconcile_ols(codes: List[str], base_group: float,
                   base_codes: Dict[str, float]) -> Dict[str, float]:
-    """Hoà giải OLS (W = I): dùng cả dự báo nhóm lẫn từng mã.
+    """Hoà giải OLS: bottom = (Sᵀ S)⁻¹ Sᵀ · [base_group, base_codes...], S = [1ᵀ; I].
 
-    np.maximum(·, 0) ở cuối cắt giá trị âm nên có thể phá tính nhất quán:
-    tổng dự báo mã không còn bằng dự báo nhóm.
-
-    S (n+1 x n): hàng đầu = tổng, còn lại = ma trận đơn vị.
-    bottom = (Sᵀ S)⁻¹ Sᵀ · [base_group, base_codes...]  (W = I).
+    Cắt âm ở cuối nên tổng mã có thể không bằng dự báo nhóm.
     """
     n = len(codes)
     if n == 0:
         return {}
     if n == 1:
-        # 1 mã: hòa giải = trung bình dự báo nhóm và mã
         v = max(0.0, 0.5 * (base_group + base_codes[codes[0]]))
         return {codes[0]: v}
     S = np.vstack([np.ones(n), np.eye(n)])

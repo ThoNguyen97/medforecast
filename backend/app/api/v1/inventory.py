@@ -66,8 +66,7 @@ def get_expiring_items(
     return items
 
 
-# ── Route đường dẫn tĩnh: phải khai báo trước "/{inventory_id}" ──
-
+# ── Route tĩnh, khai báo trước "/{inventory_id}" ──
 
 @router.get("/template", include_in_schema=True)
 async def download_inventory_template():
@@ -129,8 +128,7 @@ def delete_inventory(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_inventory_manager_or_admin),
 ) -> Any:
-    """Xoá một dòng tồn kho (Inventory Manager / Admin). Cảnh báo không lưu trạng
-    thái mà tính lại từ DOI mỗi lần đọc, nên không cần xử lý kèm."""
+    """Xoá một dòng tồn kho (Inventory Manager / Admin)."""
     from app.models.inventory import Inventory as InventoryModel
 
     item = (
@@ -195,11 +193,7 @@ def batch_update_inventory(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_inventory_manager_or_admin)
 ) -> Any:
-    """Cập nhật nhiều dòng tồn kho một lần (Inventory Manager / Admin).
-
-    Body là danh sách object gồm `inventory_id` (bắt buộc), `current_stock`,
-    `safety_stock` (tuỳ chọn), ví dụ `[{"inventory_id": 1, "current_stock": 500}]`.
-    """
+    """Cập nhật nhiều dòng tồn kho một lần; body là list {inventory_id, current_stock?, safety_stock?}."""
     inventory_service = InventoryService(db)
     client_ip = get_client_ip(request)
     
@@ -217,7 +211,6 @@ def batch_update_inventory(
 
 
 # ── Helpers import/export ──
-
 
 async def _do_inventory_import(file: "UploadFile", db: Session, current_user: User) -> Any:
     """Đọc CSV, tìm hoặc tạo MedicalSupply, rồi upsert dòng Inventory tương ứng."""

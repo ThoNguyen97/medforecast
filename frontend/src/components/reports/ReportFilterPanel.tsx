@@ -3,9 +3,9 @@ import { cn } from '../../utils/cn';
 import type { ReportKind } from './ReportTypePicker';
 
 export interface ReportFilterState {
-  search: string; // Chỉ dùng cho các báo cáo khác, không dùng cho epidemic
-  startMonth: string; // Cho báo cáo epidemic
-  endMonth: string; // Cho báo cáo epidemic
+  search: string; // không dùng cho epidemic
+  startMonth: string; // báo cáo epidemic
+  endMonth: string; // báo cáo epidemic
   diseaseType: string;
   region: string;
   category: string;
@@ -32,7 +32,7 @@ export default function ReportFilterPanel({
 
   const showDisease = ['epidemic', 'forecast', 'accuracy'].includes(kind);
   const showRegion = ['epidemic', 'forecast'].includes(kind);
-  const showStatus = kind === 'inventory'; // Chỉ hiện ở báo cáo Tồn kho
+  const showStatus = kind === 'inventory'; // chỉ báo cáo Tồn kho
 
   return (
     <div className="bg-white rounded-2xl border border-neutral-200 p-5">
@@ -40,7 +40,7 @@ export default function ReportFilterPanel({
         Bộ lọc báo cáo
       </p>
       <div className="space-y-4">
-        {/* Thanh tìm kiếm hoặc bộ lọc tháng */}
+        {/* Tìm kiếm / lọc tháng */}
         {(kind === 'epidemic' || kind === 'forecast') ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* Khoảng tháng */}
@@ -135,7 +135,7 @@ export default function ReportFilterPanel({
           </div>
         )}
 
-        {/* Các bộ lọc khác - chỉ hiển thị cho các báo cáo không phải epidemic và forecast */}
+        {/* Bộ lọc khác */}
         {kind !== 'epidemic' && kind !== 'forecast' && (
           <div className="flex flex-wrap items-center gap-2.5">
             {showDisease && (

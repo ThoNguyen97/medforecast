@@ -59,7 +59,7 @@ describe('Header', () => {
 
   it('renders user initials in avatar', () => {
     renderHeader();
-    // Họ tên "Nguyen Van A" → chữ cái đầu của hai từ cuối là "VA"
+    // "Nguyen Van A": chữ cái đầu hai từ cuối là "VA"
     expect(screen.getByText('VA')).toBeInTheDocument();
   });
 
@@ -82,7 +82,6 @@ describe('Header', () => {
 
   it('opens user dropdown on button click', () => {
     renderHeader();
-    // Tìm nút menu người dùng qua khối avatar
     const dropdownButton = screen.getByText('Nguyen Van A').closest('button')!;
     fireEvent.click(dropdownButton);
     expect(screen.getByText('Đăng xuất')).toBeInTheDocument();

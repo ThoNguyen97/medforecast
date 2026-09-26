@@ -9,10 +9,7 @@ const TONE: Record<Insight['tone'], { icon: React.ReactNode; cls: string }> = {
   muted: { icon: <MinusCircle className="w-4 h-4" />, cls: 'text-neutral-400' },
 };
 
-/**
- * Diễn giải do backend tổng hợp từ chính số liệu trên màn hình theo ngưỡng cấu hình —
- * mỗi dòng đều dẫn được về một con số ở thẻ hoặc bảng phía trên.
- */
+/** Diễn giải do backend tổng hợp từ số liệu trên màn hình theo ngưỡng cấu hình. */
 export default function InsightsCard({ items }: { items: Insight[] }) {
   if (items.length === 0) {
     return <div className="py-6 text-center text-sm text-neutral-400">Không có điểm cần lưu ý.</div>;

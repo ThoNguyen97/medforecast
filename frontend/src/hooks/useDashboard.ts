@@ -6,7 +6,7 @@ import { useAuthStore } from '../store/authStore';
 
 // ── Tổng quan (/dashboard/v2) ────────────────────────────────────────────────
 
-/** Payload nhanh: KPI, DOI, bảng cảnh báo, phân cấp, chất lượng, tình trạng dữ liệu. */
+/** Payload trang Tổng quan. */
 export function useDashboardV2(params: DashboardV2Params) {
   const { isAuthenticated } = useAuthStore();
   return useQuery({

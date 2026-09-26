@@ -1,11 +1,4 @@
-"""Schema DB trung gian: CLEAN (dim/fact) → MART.
-
-Tiền tố bảng theo tầng:
-  dim_*   : bảng chiều đã chuẩn hóa (ICD phân cấp, vật tư, địa bàn)
-  fact_*  : bảng sự kiện đã làm sạch (ca bệnh, tiêu thụ vật tư, tồn kho)
-  mart_*  : bảng tổng hợp sẵn dùng cho mô hình & báo cáo
-  sync_state : mốc đồng bộ (watermark) + nhật ký mỗi lần chạy
-"""
+"""Schema DB trung gian: dim_* (chiều), fact_* (sự kiện đã làm sạch), mart_* (tổng hợp), sync_state (watermark)."""
 from __future__ import annotations
 
 from sqlalchemy import (
@@ -16,7 +9,7 @@ from sqlalchemy.sql import func
 
 from .db import Base
 
-# PK tự tăng dùng Integer: SQLite chỉ auto-increment với INTEGER PRIMARY KEY, Postgres ánh xạ SERIAL.
+# Integer để SQLite auto-increment (INTEGER PRIMARY KEY), Postgres ánh xạ SERIAL.
 PK = Integer
 
 
@@ -30,7 +23,7 @@ class DimIcd(Base):
     block_name = Column(String(255))
     chapter_code = Column(String(20), index=True)   # vd 'J00-J99'
     chapter_name = Column(String(255))
-    is_target = Column(Boolean, default=False, index=True)  # thuộc 3 nhóm dự báo
+    is_target = Column(Boolean, default=False, index=True)
 
 
 class DimSupply(Base):
@@ -116,11 +109,7 @@ class MartInventory(Base):
 
 
 class MartMonthlyWeather(Base):
-    """Thời tiết trung bình theo tháng × địa bàn (từ environmental_data / Open-Meteo).
-
-    Biến ngoại sinh cho mô hình dự báo (dùng có độ trễ). region='TOAN_QUOC' lấy
-    TP.HCM làm đại diện môi trường cho chuỗi ca gộp toàn quốc.
-    """
+    """Thời tiết trung bình tháng × địa bàn, biến ngoại sinh có trễ; region='TOAN_QUOC' lấy TP.HCM đại diện."""
     __tablename__ = "mart_monthly_weather"
     id = Column(PK, primary_key=True, autoincrement=True)
     period = Column(String(7), index=True)
@@ -137,7 +126,7 @@ class MartMonthlyWeather(Base):
 
 # ── Sync state ──
 class SyncState(Base):
-    """Watermark và nhật ký mỗi lần đồng bộ, phục vụ nạp tăng dần và truy vết."""
+    """Watermark và nhật ký mỗi lần đồng bộ."""
     __tablename__ = "sync_state"
     id = Column(Integer, primary_key=True, autoincrement=True)
     source = Column(String(40), index=True)

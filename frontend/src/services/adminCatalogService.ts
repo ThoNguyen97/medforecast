@@ -9,7 +9,7 @@ export interface DiseaseItem {
 export interface DiseaseGroupItem {
   key: string;
   name: string;
-  /** Danh sách mã bệnh (key trong Danh mục bệnh) thuộc nhóm này. */
+  /** Mã bệnh thuộc nhóm này. */
   icd_codes: string[];
 }
 

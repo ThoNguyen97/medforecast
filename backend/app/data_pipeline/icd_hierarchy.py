@@ -1,13 +1,4 @@
-"""Ánh xạ phân cấp ICD: Mã → Nhóm (block) → Chương.
-
-Nguồn: TM_ICD.xlsx (cột MAICD, TENICD, PHANNHOM) + TM_ICD_CHUONG.xlsx
-(cột MACHUONGICD, TENCHUONGICD). PHANNHOM là mã nhóm, vd 'J00-J06'.
-
-Ba nhóm hô hấp đích của dự báo:
-  J00-J06  Nhiễm khuẩn hô hấp trên cấp
-  J20-J22  Nhiễm khuẩn hô hấp dưới cấp khác
-  J09-J18  Cúm và viêm phổi
-"""
+"""Ánh xạ phân cấp ICD mã → nhóm (block) → chương từ TM_ICD.xlsx và TM_ICD_CHUONG.xlsx."""
 from __future__ import annotations
 
 import logging
@@ -28,10 +19,7 @@ TARGET_BLOCKS = {
 
 
 def normalize_icd(code: str) -> str:
-    """Chuẩn hóa mã ICD về gốc 3 ký tự: bỏ khoảng trắng, viết hoa, bỏ phần sau dấu chấm.
-
-    'j01' → 'J01'; ' J20.0 ' → 'J20' (gốc 3 ký tự để gộp nhóm).
-    """
+    """Chuẩn hóa mã ICD về gốc 3 ký tự: ' J20.0 ' → 'J20'."""
     if code is None:
         return ""
     c = str(code).strip().upper().replace(" ", "")
@@ -49,11 +37,7 @@ class IcdHierarchy:
 
     @classmethod
     def from_dir_optional(cls, icd_dir: str | Path) -> "IcdHierarchy":
-        """Đọc TM_ICD*.xlsx nếu có; thiếu hoặc hỏng file thì trả bảng tra rỗng.
-
-        Nguồn STA đã kèm cột `disease_group` (từ TM_ICD.PHANNHOM) nên không cần bảng tra.
-        Với nguồn file CSV, thiếu bảng tra khiến mọi dòng không tra được nhóm và bị loại (có log).
-        """
+        """Đọc TM_ICD*.xlsx nếu có; thiếu hoặc hỏng file thì trả bảng tra rỗng (nguồn STA không cần)."""
         icd = Path(icd_dir) / "TM_ICD.xlsx"
         chapter = Path(icd_dir) / "TM_ICD_CHUONG.xlsx"
         if not (icd.exists() and chapter.exists()):
@@ -63,7 +47,7 @@ class IcdHierarchy:
             return cls()
         try:
             return cls.from_files(icd, chapter)
-        except Exception as exc:                                    # file hỏng, sai cột
+        except Exception as exc:
             logger.warning("Đọc bảng tra ICD thất bại (%s) — dùng bảng rỗng.", exc)
             return cls()
 
@@ -71,7 +55,6 @@ class IcdHierarchy:
     def from_files(cls, icd_path: str | Path, chapter_path: str | Path) -> "IcdHierarchy":
         h = cls()
         chapters = pd.read_excel(chapter_path)
-        # Chương: MACHUONGICD = 'A00-B99', TENCHUONGICD
         chap_ranges = []
         for _, r in chapters.iterrows():
             rng = str(r.get("MACHUONGICD", "")).strip()
@@ -88,19 +71,16 @@ class IcdHierarchy:
                 continue
             h.code_to_block.setdefault(code, block)
             if block not in h.block_name:
-                h.block_name[block] = ""  # tên nhóm điền sau nếu có
-            # Map nhóm → chương theo khoảng chữ-số
+                h.block_name[block] = ""
             if block not in h.block_to_chapter:
                 ch = _find_chapter(block, chap_ranges)
                 if ch:
                     h.block_to_chapter[block] = ch
 
-        # Tên chuẩn cho 3 nhóm đích.
         for b, name in TARGET_BLOCKS.items():
             h.block_name[b] = name
         return h
 
-    # ── Tra cứu ──
     def block_of(self, icd_code: str) -> Optional[str]:
         return self.code_to_block.get(normalize_icd(icd_code))
 
@@ -133,5 +113,4 @@ def _find_chapter(block: str, chapter_ranges: list[str]) -> Optional[str]:
             continue
         if lo[0] == start[0] == hi[0] and lo[1] <= start[1] <= hi[1]:
             return rng
-        # Chương trải nhiều chữ cái (hiếm với hô hấp) không được xét.
     return None

@@ -6,7 +6,7 @@ import {
   type CareLevelSection,
 } from '../../types/dashboardV2';
 
-/** Dải tuần tự một tông xanh (bậc 250 → 700), NT0 là xám vì "chưa phân cấp". */
+/** Dải xanh tuần tự (250 → 700); NT0 xám vì chưa phân cấp. */
 const BUCKET_COLOR: Record<CareBucket, string> = {
   NGT: '#86b6ef',
   NT1: '#3987e5',
@@ -16,10 +16,7 @@ const BUCKET_COLOR: Record<CareBucket, string> = {
 };
 const ORDER: CareBucket[] = ['NGT', 'NT1', 'NT2', 'NT3', 'NT0'];
 
-/**
- * Làm tròn "largest remainder": từng đoạn làm tròn độc lập có thể cho tổng
- * 99 hoặc 101; cách này bảo đảm tổng nhãn của một thanh luôn đúng 100.
- */
+/** Làm tròn largest remainder để tổng nhãn một thanh luôn đúng 100. */
 function roundTo100(values: Partial<Record<CareBucket, number>>): Partial<Record<CareBucket, number>> {
   const keys = ORDER.filter((ro) => (values[ro] ?? 0) > 0);
   const total = keys.reduce((a, ro) => a + (values[ro] ?? 0), 0);
@@ -42,11 +39,7 @@ function roundTo100(values: Partial<Record<CareBucket, number>>): Partial<Record
   return out;
 }
 
-/**
- * Tỷ trọng phân cấp chăm sóc p̂(g, rổ) — thanh 100 % cho từng khối ICD.
- * Đây là đầu vào của Tầng 2 (định mức thực nghiệm tính theo rổ), nên hiển
- * thị để người xem hiểu vì sao cùng một số ca lại cho nhu cầu khác nhau.
- */
+/** Tỷ trọng phân cấp chăm sóc p̂(g, rổ), thanh 100 % theo khối ICD; đầu vào Tầng 2. */
 export default function CareLevelChart({
   data,
   block,

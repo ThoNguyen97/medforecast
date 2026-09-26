@@ -41,7 +41,7 @@ export default function ReportPreview({
 
   return (
     <div className="bg-white rounded-2xl border border-neutral-200 overflow-hidden">
-      {/* Tiêu đề văn bản */}
+      {/* Tiêu đề */}
       <div className="px-6 py-5 border-b border-neutral-100">
         <p className="text-[11px] font-semibold tracking-wider uppercase text-blue-600">
           Báo cáo

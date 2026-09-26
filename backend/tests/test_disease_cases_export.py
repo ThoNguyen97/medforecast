@@ -79,14 +79,14 @@ def test_export_all(client):
     data, tong = body[:-1], body[-1]
     assert len(data) == 5
     assert tong[6] == "TỔNG" and tong[7] == 57
-    # Bản ghi thiếu disease_group được suy từ mã ICD; tên tỉnh được chuẩn hoá
+    # disease_group thiếu được suy từ mã ICD; tên tỉnh chuẩn hoá
     r = next(x for x in data if x[7] == 5)
     assert r[2] == "J09-J18" and r[3] == "Cúm và viêm phổi" and r[6] == "TP. Hồ Chí Minh"
     assert data[0][1] == "08/2025"  # sắp xếp mới nhất trước
 
 
 def test_export_filter_group_and_location_alias(client):
-    # location gửi tên chuẩn nhưng DB lưu cả 2 biến thể → phải bắt được cả 2
+    # DB lưu cả 2 biến thể tên tỉnh, lọc phải bắt được cả 2
     wb = _doc(client.get("/api/v1/disease-cases/export",
                          params={"location": "TP. Hồ Chí Minh"}))
     data = list(wb["Chi tiết"].iter_rows(min_row=2, values_only=True))[:-1]
@@ -104,7 +104,7 @@ def test_export_filter_month_range_and_summary(client):
     data = list(wb["Chi tiết"].iter_rows(min_row=2, values_only=True))[:-1]
     assert sorted(x[7] for x in data) == [5, 6, 11, 14]
     th = list(wb["Tổng hợp"].iter_rows(min_row=2, values_only=True))
-    # 2 dòng TP.HCM tháng 07 khác nhóm → không gộp; 2 biến thể tên → cùng 1 tỉnh
+    # khác nhóm không gộp; 2 biến thể tên là cùng 1 tỉnh
     assert th[-1][3] == "TỔNG" and th[-1][4] == 36
     assert len(th) - 1 == 4
     bl = dict(wb["Bộ lọc"].iter_rows(min_row=1, values_only=True))

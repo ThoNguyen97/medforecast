@@ -1,1 +1,0 @@
-# Gói test tích hợp

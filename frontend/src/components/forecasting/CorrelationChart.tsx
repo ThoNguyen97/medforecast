@@ -80,7 +80,7 @@ export default function CorrelationChart({ data, targetMonth, coefficients }: Pr
               tickLine={false}
               axisLine={{ stroke: '#e5e7eb' }}
             />
-            {/* Trái: số ca mắc (0-600) */}
+            {/* Trục trái */}
             <YAxis
               yAxisId="left"
               stroke="#9ca3af"
@@ -89,7 +89,7 @@ export default function CorrelationChart({ data, targetMonth, coefficients }: Pr
               axisLine={false}
               width={40}
             />
-            {/* Phải: thời tiết (0-100) */}
+            {/* Trục phải */}
             <YAxis
               yAxisId="right"
               orientation="right"
@@ -101,7 +101,7 @@ export default function CorrelationChart({ data, targetMonth, coefficients }: Pr
             />
             <Tooltip content={<CorrelationTooltip />} cursor={{ fill: '#f8fafc' }} />
 
-            {/* Cột số ca mắc */}
+            {/* Cột số ca */}
             <Bar
               yAxisId="left"
               dataKey="Số ca mắc"
@@ -134,7 +134,7 @@ export default function CorrelationChart({ data, targetMonth, coefficients }: Pr
   );
 }
 
-/** Đơn vị và số chữ số của từng đường thời tiết. */
+/** Đơn vị và số chữ số từng đường thời tiết. */
 const DON_VI: Record<string, { don_vi: string; so_le: number }> = {
   'Nhiệt độ': { don_vi: '°C', so_le: 1 },
   'Độ ẩm': { don_vi: '%', so_le: 1 },
@@ -150,11 +150,7 @@ interface DongTooltip {
   payload: { is_forecast: boolean };
 }
 
-/**
- * Cột số ca của năm đang dự báo và của các năm đã ghi nhận là hai thứ khác
- * nhau — biểu đồ đã tô hai màu, tooltip phải gọi đúng tên thì người đọc mới
- * không nhầm số dự báo thành số thực tế.
- */
+/** Tooltip gọi đúng tên số dự báo (năm đang dự báo) và số thực tế (các năm đã ghi nhận). */
 function CorrelationTooltip({
   active,
   label,

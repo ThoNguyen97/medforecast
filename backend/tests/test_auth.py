@@ -8,7 +8,6 @@ from app.database import get_db, Base
 from app.models.user import User
 from app.core.security import hash_password
 
-# CSDL test dạng file
 SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
 engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -35,7 +34,7 @@ def test_user():
     """Tạo người dùng test."""
     db = TestingSessionLocal()
     
-    # Xoá người dùng test còn sót từ lần chạy trước
+    # Dọn người dùng còn sót từ lần chạy trước
     existing_user = db.query(User).filter(User.username == "testuser").first()
     if existing_user:
         db.delete(existing_user)
@@ -180,7 +179,6 @@ def test_inactive_user():
     assert response.status_code == 400
     assert "Inactive user" in response.json()["detail"]
     
-    # Dọn dữ liệu test
     db.delete(inactive_user)
     db.commit()
     db.close()

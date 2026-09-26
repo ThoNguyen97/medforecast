@@ -1,10 +1,7 @@
 import { cn } from '../../utils/cn';
 import { LEVEL_LABELS, type AlertLevel } from '../../types/dashboardV2';
 
-/**
- * Nhãn bốn mức theo DOI. Màu đi kèm chấm + chữ, không bao giờ chỉ có màu.
- * Xám là "chưa đo được" — không phải an toàn.
- */
+/** Nhãn bốn mức theo DOI; Xám là "chưa đo được", không phải an toàn. */
 const STYLE: Record<AlertLevel, { pill: string; dot: string }> = {
   red: { pill: 'bg-red-50 text-red-700 border-red-100', dot: 'bg-[#d03b3b]' },
   amber: { pill: 'bg-amber-50 text-amber-800 border-amber-100', dot: 'bg-[#fab219]' },

@@ -8,11 +8,7 @@ import { cn } from '../../utils/cn';
 
 type Draft = { thresholds: ThresholdParams; care_level: CareLevelParams };
 
-/**
- * Tham số DSS của Tầng 2 và Tầng 3, ghi vào hai bản ghi `system_config` mà DSS
- * đọc (`dss.thresholds`, `dss.care_level`). Thay đổi có hiệu lực ở lần tải kế tiếp
- * của Tổng quan và Cảnh báo thiếu hụt.
- */
+/** Tham số DSS Tầng 2/3, lưu ở `system_config` (`dss.thresholds`, `dss.care_level`). */
 export default function DssParamsSection() {
   const qc = useQueryClient();
   const { data, isLoading, error } = useQuery({
@@ -64,8 +60,7 @@ export default function DssParamsSection() {
     return null;
   }, [draft]);
 
-  // Kiểm tra lỗi trước: khi GET /dss/params lỗi thì data là undefined, nếu nhánh
-  // "đang tải" đứng trước thì spinner sẽ quay mãi.
+  // Xét lỗi trước nhánh "đang tải": khi lỗi data là undefined, spinner sẽ quay mãi.
   if (error) {
     return <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">Không tải được tham số: {(error as Error).message}</div>;
   }

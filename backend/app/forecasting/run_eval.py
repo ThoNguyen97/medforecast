@@ -1,20 +1,10 @@
-"""CLI backtest walk-forward, sinh các bảng kết quả đánh giá mô hình.
+"""CLI backtest walk-forward, ghi phancap/nhom/thoitiet/smearing/ket_hop/thanhvien.csv và cau_hinh.json.
 
-Chạy từ thư mục backend/ (cần statsmodels để có SARIMAX/ETS):
-
-    python -m app.forecasting.run_eval --db data/medforecast.db --out ketqua_backtest
-
-Sinh ra trong --out:
-    phancap.csv        4 hướng phân cấp × các nhóm, đủ chỉ số
-    nhom.csv           mức nhóm + độ phủ khoảng dự báo
-    thoitiet.csv       ensemble có/không thời tiết, cùng cấu hình sản xuất
-    smearing.csv       ensemble có/không smearing (đối chứng)
-    ket_hop.csv        cách kết hợp thành viên (mean / inv_mae / +bias, có/không ETS)
-    thanhvien.csv      tỷ lệ bước mỗi thành viên đóng góp và số lần rớt
-    cau_hinh.json      PRODUCTION_CONFIG đã dùng, thời điểm chạy, có statsmodels không
-
-Tham số mô hình lấy từ config.PRODUCTION_CONFIG. Cờ --no-weather / --smearing /
---lam / --from-period chỉ để đối chứng; kết quả được ghi là biến thể.
+Chạy từ backend/: python -m app.forecasting.run_eval --db data/medforecast.db --out ketqua_backtest
+  --no-weather   đối chứng: tắt thời tiết
+  --smearing     đối chứng: bật smearing
+  --lam          đối chứng: hình phạt Ridge
+  --from-period  đối chứng: cắt lịch sử YYYY-MM
 """
 from __future__ import annotations
 import argparse
@@ -39,7 +29,7 @@ CHI_SO = ["MAE", "RMSE", "RelMAE", "ME", "MPE_pct", "sMAPE_pct", "WAPE_pct"]
 
 
 def _tat_canh_bao():
-    # Chỉ lọc cảnh báo trong CLI: số lần thành viên rớt đã được đếm vào thanhvien.csv.
+    # Số lần thành viên rớt đã đếm vào thanhvien.csv.
     import logging
     logging.getLogger("app.forecasting.models").setLevel(logging.ERROR)
     warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -126,7 +116,6 @@ def main():
     pd.DataFrame(rows_tt).round(3).to_csv(out / "thoitiet.csv", index=False, encoding="utf-8-sig")
     pd.DataFrame(rows_sm).round(3).to_csv(out / "smearing.csv", index=False, encoding="utf-8-sig")
 
-    # Cách kết hợp: thành viên ghi một lần, combiner chạy lại.
     rows_kh = []
     for b in blocks:
         ce = combine_effect(db, b, cfg)

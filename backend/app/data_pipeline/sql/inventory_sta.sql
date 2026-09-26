@@ -1,7 +1,4 @@
--- Tồn kho từ MEDFORECAST_DW trên STA.
--- View đã gộp theo mã vật tư và áp bảng ánh xạ MF_MapVatTu (nếu có).
---
--- Dùng: PIPELINE_INVENTORY_SQL_FILE=inventory_sta.sql
+/* inventory_sta.sql — STA, vw_MedForecast_TonKho: tồn kho đã gộp theo mã vật tư, áp bảng ánh xạ MF_MapVatTu nếu có. */
 SELECT supply_code,
        drug_code,
        ten_hoat_chat,

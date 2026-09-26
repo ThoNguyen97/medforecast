@@ -1,8 +1,4 @@
-"""Test tích hợp API cấu hình hệ thống.
-
-Phạm vi: GET /api/v1/config, GET/PUT /api/v1/config/{key} (PUT chỉ Administrator)
-và phân quyền theo vai trò.
-"""
+"""Test tích hợp API cấu hình hệ thống và phân quyền theo vai trò."""
 
 import pytest
 from fastapi.testclient import TestClient

@@ -1,8 +1,6 @@
-"""Tầng dữ liệu trung gian của MedForecast.
+"""Tầng dữ liệu trung gian: nguồn (STA / file export) → CLEAN (dim/fact) → MART.
 
-Luồng: nguồn (view STA qua SQL Server / file export) → làm sạch/validate → CLEAN (dim/fact) → MART.
-MART phục vụ cả huấn luyện mô hình lẫn báo cáo tồn kho. DB đích chọn qua
-PIPELINE_DB_URL (hoặc DATABASE_URL), mặc định SQLite.
+DB đích chọn qua PIPELINE_DB_URL hoặc DATABASE_URL, mặc định SQLite.
 """
 
 from .icd_hierarchy import IcdHierarchy, TARGET_BLOCKS

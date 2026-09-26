@@ -1,9 +1,6 @@
-/* Số ca theo (tháng × nhóm ICD × rổ chăm sóc), là mẫu số của định mức.
-   Nguồn: STA · vw_MedForecast_CaBenhPhanCap
-
-   Rổ: NGT | NT1 | NT2 | NT3 | NT0. Số ca đã đếm DISTINCT ở mức nhóm bên HIS:
-   một lượt mang J01 và J06 (cùng thuộc J00-J06) chỉ tính một lần.
-   Không có chiều vùng để tỷ trọng phân cấp không bị bước gộp ô nhỏ (k-ẩn danh) làm mờ. */
+/* cases_care_level_sta.sql — STA, vw_MedForecast_CaBenhPhanCap: số ca theo (tháng × nhóm ICD × rổ chăm sóc), mẫu số định mức.
+   Rổ: NGT | NT1 | NT2 | NT3 | NT0. Số ca đã đếm DISTINCT mức nhóm bên HIS.
+   Không có chiều vùng để tỷ trọng phân cấp không bị bước gộp ô nhỏ làm mờ. */
 SELECT  Period,
         [month],
         disease_group,

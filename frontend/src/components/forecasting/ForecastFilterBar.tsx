@@ -18,11 +18,11 @@ interface Props {
   onChange: (filters: ForecastFilters) => void;
   onAnalyze: () => void;
   diseases: DiseaseOption[];
-  /** Map cascade từ DB (tỉnh → list quận có data thật) — gộp với master data VN. */
+  /** Cascade tỉnh → quận có dữ liệu thật, gộp với master data VN. */
   regionDistricts?: Record<string, string[]>;
   isLoading?: boolean;
   disabled?: boolean;
-  /** Nhãn nút phân tích — đổi thành "Phân tích lại" khi đã có kết quả. */
+  /** Nhãn nút phân tích, "Phân tích lại" khi đã có kết quả. */
   buttonLabel?: string;
 }
 

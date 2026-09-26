@@ -51,7 +51,7 @@ export interface ForecastAccuracyReport {
 
 // ── Yêu cầu xuất báo cáo ─────────────────────────────────────────────────────
 
-// Đúng danh sách SUPPORTED_TYPES của POST /reports/export (backend reports.py)
+// Khớp SUPPORTED_TYPES của POST /reports/export
 export type ReportType =
   | 'epidemic'
   | 'forecast'

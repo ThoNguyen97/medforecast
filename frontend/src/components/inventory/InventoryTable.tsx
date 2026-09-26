@@ -5,13 +5,8 @@ import { ROUTES } from '../../utils/constants';
 import LevelPill from '../dashboard/LevelPill';
 import { GREY_REASON_LABELS, type AlertLevel, type GreyReason } from '../../types/dashboardV2';
 
-/**
- * Một dòng thuốc trên trang Danh mục & tồn kho = danh mục (`/inventory`, có id để
- * sửa/xoá) ghép với dòng DOI cùng `supply_code` từ `/dashboard/v2/alerts`
- * (toàn danh mục). `level = null` nghĩa là mã không có tiêu hao trong 12 kỳ đã
- * chốt → không có mẫu số, không đo được DOI; khác với Xám (có tiêu hao nhưng
- * không có dòng tồn kho).
- */
+/** Dòng thuốc = danh mục ghép với dòng DOI cùng `supply_code`.
+ *  `level = null`: không tiêu hao 12 kỳ nên không đo được DOI, khác với Xám. */
 export interface InventoryRow {
   id: number;
   code: string;
@@ -32,9 +27,9 @@ export interface InventoryRow {
 interface Props {
   rows: InventoryRow[];
   isLoading?: boolean;
-  /** Chân trời nhu cầu (ngày) — tham số Quản trị, không viết cứng 30. */
+  /** Chân trời nhu cầu (ngày), tham số Quản trị. */
   horizonDays: number;
-  /** Dòng công thức do backend dựng, dùng chung với trang Cảnh báo thiếu hụt. */
+  /** Dòng công thức do backend dựng, dùng chung với Cảnh báo thiếu hụt. */
   basis?: string;
   total: number;
   page: number;
@@ -74,9 +69,7 @@ export default function InventoryTable({
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            {/* Hai hàng tiêu đề: nhóm trái là sổ cái danh mục — việc chính của
-                trang này; nhóm phải là số của Tầng 1→2→3, để tham chiếu và
-                cũng là số mà trang Cảnh báo thiếu hụt dùng. */}
+            {/* Hàng tiêu đề nhóm */}
             <tr className="text-neutral-400 text-[10px] uppercase tracking-wider">
               <th colSpan={4} className="text-left px-4 pt-3 pb-1 font-semibold">Danh mục</th>
               <th colSpan={2} className="text-right px-4 pt-3 pb-1 font-semibold">Tồn kho</th>

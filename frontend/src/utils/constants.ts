@@ -1,5 +1,4 @@
-// Đường dẫn tương đối: dev đi qua Vite proxy, production đi qua nginx (location /api/) —
-// không phụ thuộc host, tránh lỗi CORS/Network Error khi deploy.
+// Đường dẫn tương đối: dev qua Vite proxy, production qua nginx, tránh CORS
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
 export const TOKEN_KEY = 'medforecast_token';
@@ -7,11 +6,10 @@ export const REFRESH_TOKEN_KEY = 'medforecast_refresh_token';
 export const USER_KEY = 'medforecast_user';
 export const TOKEN_EXPIRY_KEY = 'medforecast_token_expiry';
 
-export const DASHBOARD_REFRESH_INTERVAL_MS = 5 * 60 * 1000; // 5 phút
+export const DASHBOARD_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 
-// Danh mục thuốc: 8 nhãn tính bên PROD (#DrugMeta trong usp_MedForecast_DayDuLieu),
-// đồng bộ nguyên văn vào medical_supplies.category. Khoá = nhãn; hai khoá kỹ thuật
-// medicine/other dành cho dữ liệu nhập tay.
+// 8 nhãn danh mục thuốc đồng bộ nguyên văn từ HIS (khoá = nhãn); medicine/other cho
+// dữ liệu nhập tay
 export const SUPPLY_CATEGORY_LABELS: Record<string, string> = {
   'Kháng sinh': 'Kháng sinh',
   'Thuốc hạ sốt giảm đau': 'Thuốc hạ sốt giảm đau',

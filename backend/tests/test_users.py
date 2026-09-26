@@ -10,7 +10,6 @@ from app.database import Base, get_db
 from app.models.user import User
 from app.core.security import get_password_hash
 
-# CSDL test dạng file
 SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
@@ -201,7 +200,6 @@ def test_delete_user(auth_headers):
     
     assert response.status_code == 204
     
-    # Xoá mềm: bản ghi vẫn còn nhưng bị vô hiệu
     get_response = client.get(f"/api/v1/users/{user_id}", headers=auth_headers)
     assert get_response.status_code == 200
     assert get_response.json()["is_active"] is False

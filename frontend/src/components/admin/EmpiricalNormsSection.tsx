@@ -10,13 +10,7 @@ const PAGE_SIZE = 25;
 const fmt = (v: number | null | undefined, d = 0) =>
   v == null ? '—' : v.toLocaleString('vi-VN', { maximumFractionDigits: d });
 
-/**
- * Định mức thực nghiệm (chỉ đọc).
- *
- * Hiện đúng con số Tầng 2 nhân với Ŷ_g × p̂(g,ro): tử số (tiêu hao), mẫu số (ca)
- * và Norm theo từng rổ chăm sóc, trên cùng cửa sổ với tỷ trọng rổ. Định mức tự
- * cập nhật mỗi lần nạp dữ liệu DW; cách tính điều chỉnh qua tab "Tham số DSS".
- */
+/** Định mức thực nghiệm Tầng 2 theo rổ chăm sóc (chỉ đọc): tử số, mẫu số, Norm. */
 export default function EmpiricalNormsSection() {
   const [block, setBlock] = useState<BlockCode>('J00-J06');
   const [search, setSearch] = useState('');

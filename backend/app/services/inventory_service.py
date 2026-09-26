@@ -127,8 +127,7 @@ class InventoryService:
                     "safety_stock": inventory.safety_stock
                 }
                 
-                # Kiểm cả hai giá trị trước khi gán: gán rồi mới `continue` thì object
-                # đã dirty và commit cuối vẫn ghi dở dang.
+                # Kiểm cả hai giá trị trước khi gán, tránh object dirty rồi commit dở dang.
                 gia_tri = {}
                 hop_le = True
                 for cot in ("current_stock", "safety_stock"):
@@ -177,11 +176,7 @@ class InventoryService:
         return updated_items
     
     def get_low_stock_items(self, threshold_multiplier: float = 1.0) -> List[Inventory]:
-        """Các dòng tồn kho đang hết hàng (current_stock <= 0).
-
-        `threshold_multiplier` không được dùng: safety_stock trong phạm vi DSS hầu như
-        bằng 0. Phân loại theo số ngày đáp ứng (DOI) thuộc app/services/dss_alerts.py.
-        """
+        """Các dòng tồn kho hết hàng (current_stock <= 0); `threshold_multiplier` không dùng vì safety_stock hầu như bằng 0."""
         return (
             self.db.query(Inventory)
             .options(joinedload(Inventory.supply))

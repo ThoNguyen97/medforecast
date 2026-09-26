@@ -1,16 +1,10 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { AlertTriangle, RotateCcw } from 'lucide-react';
 
-/**
- * Chặn lỗi render của một trang, không để nó làm trắng cả ứng dụng.
- *
- * React gỡ toàn bộ cây khi lỗi render không được component nào bắt, kể cả
- * thanh điều hướng. Đặt bên trong Layout để khi một trang hỏng thì sidebar và
- * header vẫn còn, người dùng chuyển sang trang khác được.
- */
+/** Chặn lỗi render của một trang; đặt trong Layout để sidebar/header vẫn còn. */
 interface Props {
   children: ReactNode;
-  /** Đổi giá trị này (ví dụ theo đường dẫn) sẽ tự reset ranh giới lỗi. */
+  /** Đổi giá trị (vd theo đường dẫn) sẽ reset ranh giới lỗi. */
   resetKey?: string;
 }
 
@@ -26,7 +20,7 @@ export default class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    // Giữ nguyên trên console để còn xem stack trace khi phát triển.
+    // Giữ trên console để xem stack trace.
     console.error('[ErrorBoundary] Trang bị lỗi khi render:', error, info);
   }
 

@@ -1,15 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Đối tượng CSDL nằm ngoài `Base.metadata`: 6 bảng tự quản, 2 dòng cấu hình DSS, 4 view.
+"""Đối tượng CSDL ngoài `Base.metadata`: 6 bảng tự quản, 2 dòng cấu hình DSS, 4 view; `dam_bao_luoc_do()` dựng lúc khởi động.
 
-`create_all` chỉ tạo các bảng ORM; thiếu các đối tượng này thì Tầng 2/3 không có
-dữ liệu mà không báo lỗi. `dam_bao_luoc_do()` dựng cả ba nhóm, gọi lúc khởi động
-ứng dụng; mọi câu đều idempotent.
-
-Quy ước chung cho 4 view:
-  * Loại kỳ dở dang: chỉ lấy `period < tháng hiện tại`, vì tháng đang chạy mới có
-    vài ngày tiêu hao sẽ kéo thấp d_daily và thổi phồng DOI.
-  * Chỉ thuốc (`is_vtyt = 0`): thủ tục DayDuLieu và DayKhoCungUng chạy với
-    @GomVTYT = 0 nên VTYT không có tồn kho lẫn định mức, giữ lại chỉ sinh mã Xám.
+Các view chỉ lấy kỳ đã chốt (tháng dở dang kéo thấp d_daily, thổi phồng DOI) và chỉ thuốc
+(is_vtyt = 0, vì VTYT không có tồn kho lẫn định mức).
 """
 from __future__ import annotations
 
@@ -17,10 +10,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Kỳ đã chốt = mọi kỳ nhỏ hơn tháng hiện tại (SQLite so chuỗi 'YYYY-MM').
+# Kỳ đã chốt = kỳ nhỏ hơn tháng hiện tại.
 _KY_DA_CHOT = "period < strftime('%Y-%m', 'now', 'localtime')"
 
-# ── Danh mục còn hoạt động: thuốc có xuất trong 3 kỳ đã chốt gần nhất ──
+# ── v_supply_active: thuốc có xuất trong 3 kỳ chốt gần nhất ──
 V_SUPPLY_ACTIVE = f"""
 CREATE VIEW v_supply_active AS
 SELECT DISTINCT u.supply_code
@@ -35,9 +28,7 @@ WHERE  u.so_luong_toan_vien > 0
           ORDER BY period DESC LIMIT 3))
 """
 
-# ── Tập trọng tâm: thuốc còn hoạt động, tỷ trọng hô hấp ≥ 25% trên 12 kỳ chốt ──
-# Phải nằm trong v_supply_active: mã đã ngừng xuất không cần cảnh báo tồn và
-# làm loãng tỷ lệ phần trăm của tập theo dõi.
+# ── v_supply_focus: thuốc còn hoạt động, tỷ trọng hô hấp ≥ 25% trên 12 kỳ chốt ──
 V_SUPPLY_FOCUS = f"""
 CREATE VIEW v_supply_focus AS
 WITH cua_so AS (
@@ -60,11 +51,8 @@ HAVING SUM(so_luong_toan_vien) > 0
    AND supply_code IN (SELECT supply_code FROM v_supply_active)
 """
 
-# ── Mẫu số hằng ngày dùng chung cho DOI ──
-# d = tiêu hao toàn viện trung bình tháng / 30 trên 12 kỳ đã chốt (không dùng tiêu hao hô hấp).
-# Chia cho số kỳ của cửa sổ (n_ky, tối đa 12, như nhau cho mọi mã), không chia COUNT(*):
-# chia theo số kỳ có xuất làm mã xuất thưa có d_daily bị thổi phồng và sinh Đỏ giả.
-# Cột `so_ky` (số kỳ mã có xuất) chỉ để chẩn đoán.
+# ── v_supply_daily_demand: d = tiêu hao toàn viện trung bình tháng / 30 trên 12 kỳ chốt ──
+# Chia cho số kỳ của cửa sổ chứ không COUNT(*), nếu không mã xuất thưa bị thổi phồng d_daily và sinh Đỏ giả.
 V_SUPPLY_DAILY_DEMAND = f"""
 CREATE VIEW v_supply_daily_demand AS
 WITH cua_so AS (
@@ -85,10 +73,8 @@ GROUP BY supply_code
 HAVING  SUM(so_luong_toan_vien) > 0
 """
 
-# ── Tỷ trọng phân cấp chăm sóc theo khối, đầu vào định mức thực nghiệm ──
-# Mọi tham chiếu system_config bọc COALESCE: thiếu dòng 'dss.care_level' thì
-# `LIMIT NULL` làm SQLite ném "datatype mismatch" lúc SELECT view.
-# `dam_bao_cau_hinh()` gieo sẵn dòng đó; COALESCE là lớp chặn thứ hai.
+# ── v_care_level_share: tỷ trọng phân cấp chăm sóc theo khối ──
+# system_config bọc COALESCE vì thiếu dòng 'dss.care_level' thì `LIMIT NULL` gây "datatype mismatch".
 V_CARE_LEVEL_SHARE = f"""
 CREATE VIEW v_care_level_share AS
 WITH cua_so AS (
@@ -119,10 +105,7 @@ WHERE   f.period >= c.p_min AND f.period <= c.p_max
 GROUP BY f.block_code, f.ro
 """
 
-# ── Cấu hình DSS mặc định ──
-# Tham số của Tầng 2 và Tầng 3, khớp THRESHOLDS_DEFAULT (dss_alerts) và
-# CARE_LEVEL_DEFAULT (dss_demand). Chỉ chèn khi thiếu, không ghi đè giá trị đã sửa
-# ở Quản trị → Tham số DSS.
+# ── Cấu hình DSS mặc định, khớp THRESHOLDS_DEFAULT và CARE_LEVEL_DEFAULT ──
 CAU_HINH_MAC_DINH = {
     "dss.care_level": (
         '{"window_periods": 12, "min_period": "2025-04", '
@@ -140,10 +123,7 @@ CAU_HINH_MAC_DINH = {
 
 
 def dam_bao_cau_hinh(engine=None) -> dict:
-    """Gieo `dss.care_level` / `dss.thresholds` nếu system_config chưa có.
-
-    Trả {config_key: 'đã gieo' | 'đã có' | 'lỗi: ...'}.
-    """
+    """Gieo `dss.care_level` / `dss.thresholds` nếu chưa có; trả {config_key: 'đã gieo' | 'đã có' | 'lỗi: ...'}."""
     from sqlalchemy import text
     if engine is None:
         from app.database import engine as _e
@@ -171,7 +151,7 @@ def dam_bao_cau_hinh(engine=None) -> dict:
     return ket_qua
 
 
-# Thứ tự có ý nghĩa: v_supply_focus tham chiếu v_supply_active nên phải đứng sau.
+# v_supply_focus tham chiếu v_supply_active nên phải đứng sau.
 VIEWS = {
     "v_supply_active": V_SUPPLY_ACTIVE,
     "v_supply_focus": V_SUPPLY_FOCUS,
@@ -189,7 +169,7 @@ PHU_THUOC = {
 
 
 def tao_bang_tu_quan(db=None) -> dict:
-    """Tạo 6 bảng tự quản (4 bảng fact của dss_loader, 2 bảng cache của dss_dashboard), idempotent."""
+    """Tạo 6 bảng tự quản: 4 bảng fact của dss_loader, 2 bảng cache của dss_dashboard."""
     tu_dong = db is None
     if tu_dong:
         from app.database import SessionLocal
@@ -216,11 +196,7 @@ def tao_bang_tu_quan(db=None) -> dict:
 
 
 def dam_bao_luoc_do(engine=None, db=None) -> dict:
-    """Dựng mọi đối tượng ngoài ORM: 6 bảng tự quản, 2 dòng cấu hình DSS, rồi 4 view.
-
-    Thứ tự bắt buộc: view dựa trên các bảng fact (thiếu bảng thì view bị bỏ qua) và
-    v_care_level_share đọc `dss.care_level` trong system_config.
-    """
+    """Dựng mọi đối tượng ngoài ORM theo thứ tự bảng → cấu hình → view (view phụ thuộc hai nhóm trước)."""
     out = dict(tao_bang_tu_quan(db))
     out.update(dam_bao_cau_hinh(engine))
     out.update(tao_views(engine))
@@ -228,10 +204,7 @@ def dam_bao_luoc_do(engine=None, db=None) -> dict:
 
 
 def tao_views(engine=None) -> dict:
-    """Tạo lại bốn view. Trả về {tên_view: 'đã tạo' | 'bỏ qua: ...' | 'lỗi: ...'}.
-
-    Idempotent: view được DROP rồi CREATE, không đụng tới dữ liệu. Chỉ hỗ trợ SQLite.
-    """
+    """DROP rồi CREATE bốn view (chỉ SQLite); trả {tên_view: 'đã tạo' | 'bỏ qua: ...' | 'lỗi: ...'}."""
     from sqlalchemy import text
     if engine is None:
         from app.database import engine as _e

@@ -7,7 +7,7 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Bảng màu giao diện (Stitch Design System)
+        // Bảng màu giao diện
         primary: {
           50: '#eff6ff',
           100: '#dbeafe',

@@ -5,9 +5,9 @@ import type {
   ReportFilters,
 } from '../types/reports';
 
-/** /reports — xem trước độ chính xác dự báo và xuất PDF/Excel. */
+/** /reports: xem trước độ chính xác dự báo và xuất PDF/Excel. */
 export const reportsService = {
-  /** GET /reports/forecast-accuracy — độ lệch dự báo/thực tế theo mô hình và theo tháng. */
+  /** Độ lệch dự báo/thực tế theo mô hình và theo tháng. */
   async getForecastAccuracyReport(filters?: ReportFilters): Promise<ForecastAccuracyReport> {
     const response = await api.get<ForecastAccuracyReport>('/reports/forecast-accuracy', {
       params: {
@@ -20,7 +20,7 @@ export const reportsService = {
     return response.data;
   },
 
-  /** POST /reports/export — sinh báo cáo PDF/Excel, trả Blob để bên gọi tải về. */
+  /** Sinh báo cáo PDF/Excel, trả Blob. */
   async exportReport(payload: ExportReportRequest & { format?: 'pdf' | 'excel' }): Promise<Blob> {
     const response = await api.post('/reports/export', payload, {
       responseType: 'blob',

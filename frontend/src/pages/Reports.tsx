@@ -40,8 +40,7 @@ export default function Reports() {
     status: 'all',
   });
 
-  // Mỗi hook chỉ gọi API khi loại báo cáo đang chọn cần đến, tránh gửi mọi
-  // request khi mở trang.
+  // Mỗi hook chỉ gọi API khi loại báo cáo đang chọn cần đến
   const { data: diseases = [] } = useDiseaseOptions();
   const { data: regions = [] } = useRegionOptions();
 
@@ -57,8 +56,7 @@ export default function Reports() {
     { enabled: kind === 'shortage' },
   );
 
-  // Báo cáo Tồn kho thuốc đọc cùng chuỗi DOI với trang Danh mục & tồn kho và
-  // Cảnh báo (toàn danh mục, một lần, lọc ở client) để nhãn nhất quán.
+  // Cùng chuỗi DOI với trang Danh mục và Cảnh báo để nhãn nhất quán
   const inventory = useQuery({
     queryKey: ['dss', 'alerts', 'report-inventory'],
     queryFn: () => dssService.getAlerts({ focus: false, level: null, limit: 2000, offset: 0 }),
@@ -79,7 +77,7 @@ export default function Reports() {
           end_date: filters.endMonth ? (() => {
             const endDate = new Date(filters.endMonth + '-01');
             endDate.setMonth(endDate.getMonth() + 1);
-            endDate.setDate(0); // Ngày cuối tháng
+            endDate.setDate(0);
             return endDate.toISOString().split('T')[0];
           })() : undefined,
         }
@@ -87,12 +85,10 @@ export default function Reports() {
     { enabled: kind === 'forecast' || kind === 'accuracy' },
   );
 
-  // Báo cáo "Tình hình dịch bệnh" lấy số ca thực tế từ disease_cases, không lấy
-  // từ bảng dự báo.
+  // Số ca thực tế từ disease_cases, không lấy từ bảng dự báo
   const diseaseCases = useQuery({
     queryKey: ['report-disease-cases', filters.diseaseType, filters.region, filters.startMonth, filters.endMonth],
     queryFn: () => {
-      // Bộ lọc tháng → khoảng ngày
       const params: any = {
         limit: 50000,
         disease_type:
@@ -106,10 +102,9 @@ export default function Reports() {
         params.start_date = `${filters.startMonth}-01`;
       }
       if (filters.endMonth) {
-        // Lấy tới ngày cuối của tháng kết thúc
         const endDate = new Date(filters.endMonth + '-01');
         endDate.setMonth(endDate.getMonth() + 1);
-        endDate.setDate(0); // Ngày cuối của tháng trước
+        endDate.setDate(0);
         params.end_date = endDate.toISOString().split('T')[0];
       }
 
@@ -127,7 +122,7 @@ export default function Reports() {
   const handleExport = async (format: 'pdf' | 'excel') => {
     try {
       setExporting(format);
-      // Backend dùng mã 'forecast-accuracy' thay cho 'accuracy'
+      // Backend dùng mã 'forecast-accuracy'
       const backendType = kind === 'accuracy' ? 'forecast-accuracy' : kind;
       const blob = await reportsService.exportReport({
         report_type: backendType,
@@ -146,7 +141,6 @@ export default function Reports() {
     }
   };
 
-  // Dựng chỉ số và phần xem trước theo từng loại báo cáo
   const preview = useMemo(() => {
     switch (kind) {
       case 'epidemic':
@@ -222,12 +216,12 @@ export default function Reports() {
         </div>
       </div>
 
-      {/* Step 1: chọn loại báo cáo */}
+      {/* Chọn loại báo cáo */}
       <Section step="1" title="Chọn loại báo cáo">
         <ReportTypePicker active={kind} onSelect={setKind} />
       </Section>
 
-      {/* Step 2: bộ lọc */}
+      {/* Bộ lọc */}
       <Section step="2" title="Cấu hình bộ lọc">
         <ReportFilterPanel
           kind={kind}
@@ -238,7 +232,7 @@ export default function Reports() {
         />
       </Section>
 
-      {/* Step 3: xem trước */}
+      {/* Xem trước */}
       <Section step="3" title="Xem trước báo cáo" icon={<Eye className="w-4 h-4" />}>
         <ReportPreview
           kind={kind}
@@ -291,12 +285,10 @@ function buildFiltersLabel(
 ): string {
   const parts: string[] = [];
   
-  // Thêm từ khoá tìm kiếm (cho báo cáo không dùng bộ lọc tháng)
   if (kind !== 'epidemic' && kind !== 'forecast' && f.search && f.search.trim()) {
     parts.push(`"${f.search.trim()}"`);
   }
   
-  // Thêm khoảng tháng cho báo cáo dịch bệnh và dự báo
   if ((kind === 'epidemic' || kind === 'forecast') && (f.startMonth || f.endMonth)) {
     if (f.startMonth && f.endMonth) {
       parts.push(`${formatMonth(f.startMonth)} → ${formatMonth(f.endMonth)}`);
@@ -405,7 +397,7 @@ function buildForecastPreview(
 ): PreviewBundle {
   let filtered = history;
   if (!selectedRegion || selectedRegion === 'all') {
-    // "Tất cả": chỉ lấy dự báo toàn quốc để tránh đếm trùng
+    // "Tất cả" chỉ lấy dự báo toàn quốc để tránh đếm trùng
     filtered = history.filter((r) => 
       !r.region || r.region === 'Toàn thành phố' || r.region === 'Toàn quốc'
     );
@@ -413,7 +405,7 @@ function buildForecastPreview(
     filtered = history.filter((r) => r.region === selectedRegion);
   }
   
-  // Lọc theo ngày đã thực hiện ở backend.
+  // Lọc ngày đã làm ở backend
   
   const total = filtered.reduce((acc, r) => acc + (r.predicted_cases ?? 0), 0);
   const high = filtered.filter((r) => r.risk_level === 'high' || r.risk_level === 'very_high')

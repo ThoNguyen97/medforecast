@@ -23,8 +23,7 @@ const PAGE_SIZE = 25;
 const fmt = (v: number | null | undefined, digits = 0) =>
   v == null ? '—' : v.toLocaleString('vi-VN', { maximumFractionDigits: digits });
 
-/** DOI (số ngày) → ngày lịch dd/mm. Thủ kho làm việc theo ngày trên lịch,
- *  không theo số ngày trừu tượng. */
+/** DOI (số ngày) → ngày lịch dd/mm cho thủ kho. */
 const ngayHet = (doi: number | null | undefined) => {
   if (doi == null) return '—';
   const d = new Date();
@@ -32,22 +31,14 @@ const ngayHet = (doi: number | null | undefined) => {
   return d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
 };
 
-/**
- * Cảnh báo thiếu hụt.
- *
- * Dùng cùng chuỗi Tầng 1 → 2 → 3 với Tổng quan (/dashboard/v2/alerts): cùng dự
- * báo Ŷ_g, định mức thực nghiệm và ngưỡng `dss.thresholds`; khác ở chỗ trả mọi
- * dòng, phân trang server, có tìm kiếm và lọc danh mục. Phạm vi dừng ở cảnh báo:
- * Δ_need = max(0, nhu cầu horizon − tồn hữu dụng) là mức thiếu hụt dự kiến,
- * không phải lượng mua.
- */
+/** Cảnh báo thiếu hụt: cùng chuỗi Tầng 1→2→3 với Tổng quan (/dashboard/v2/alerts),
+ *  trả mọi dòng, phân trang server; Δ_need là mức thiếu hụt dự kiến, không phải lượng mua. */
 export default function Alerts() {
   const { setPageTitle } = useUIStore();
   const { isAuthenticated } = useAuthStore();
   useEffect(() => setPageTitle('Cảnh báo thiếu hụt'), [setPageTitle]);
 
-  // ?level=red&focus=all&q=<mã> — Tổng quan và trang Danh mục mở sang đây bằng
-  // đường dẫn này để người dùng không phải lọc lại bằng tay.
+  // ?level=red&focus=all&q=<mã>: Tổng quan và Danh mục mở sang đây kèm bộ lọc
   const [searchParams] = useSearchParams();
   const levelBanDau = searchParams.get('level');
   const [focus, setFocus] = useState(searchParams.get('focus') !== 'all');
@@ -61,7 +52,7 @@ export default function Alerts() {
   const [q, setQ] = useState(searchParams.get('q') ?? '');
   const [page, setPage] = useState(1);
 
-  // gõ xong 300ms mới gọi server
+  // debounce 300ms
   useEffect(() => {
     const t = setTimeout(() => setQ(search.trim()), 300);
     return () => clearTimeout(t);
@@ -137,7 +128,7 @@ export default function Alerts() {
         </div>
       )}
 
-      {/* KPI: Dự báo kỳ tới đứng đầu vì là đầu vào của bốn chỉ số màu phía sau. */}
+      {/* KPI */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <KpiTile
           label="Dự báo kỳ tới"
@@ -198,7 +189,7 @@ export default function Alerts() {
         />
       </div>
 
-      {/* Bộ lọc + bảng */}
+      {/* Bộ lọc, bảng */}
       <div className="bg-white rounded-2xl border border-neutral-200">
         <div className="px-5 py-4 border-b border-neutral-100 flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[220px] max-w-md">

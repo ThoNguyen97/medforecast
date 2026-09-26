@@ -11,7 +11,7 @@ interface Props {
   targetYear: number;
   riskLevel: RiskLevel;
   riskLabel: string;
-  /** Độ chính xác mô hình (%) = 100 − MAPE. Bỏ qua nếu không có. */
+  /** Độ chính xác (%) = 100 − MAPE; bỏ qua nếu không có. */
   accuracyPct?: number | null;
 }
 
@@ -50,7 +50,7 @@ export default function ForecastResultCard({
 }: Props) {
   const cfg = riskConfig[riskLevel];
 
-  // Màu cho độ chính xác: cao→xanh, vừa→hổ phách, thấp→đỏ
+  // Màu độ chính xác: cao xanh, vừa hổ phách, thấp đỏ
   const accColor =
     accuracyPct == null
       ? ''
@@ -67,7 +67,7 @@ export default function ForecastResultCard({
         cfg.ring,
       )}
     >
-      {/* Watermark cảnh báo mờ */}
+      {/* Watermark */}
       <AlertTriangle className="absolute right-4 top-1/2 -translate-y-1/2 w-24 h-24 text-red-200/40 pointer-events-none" />
 
       <div className="relative flex items-center gap-2 text-red-600 text-xs font-semibold uppercase tracking-wide">

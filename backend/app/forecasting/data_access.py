@@ -23,12 +23,7 @@ def list_blocks(db_path: str, region: str = "TOAN_QUOC") -> List[str]:
 def group_series(db_path: str, block: str, region: str = "TOAN_QUOC",
                  complete_only: bool = True,
                  from_period: str | None = None) -> pd.DataFrame:
-    """Chuỗi tháng của cả nhóm: [period, year, month, cases, is_covid].
-
-    `from_period` ('YYYY-MM') cắt lịch sử từ mốc đó, dùng khi chuỗi dịch chuyển mức nền
-    (học trên mức cũ gây lệch một chiều). Cắt càng gần càng ít chu kỳ mùa để học;
-    chọn mốc bằng `run_eval.py --from-period` và so MASE.
-    """
+    """Chuỗi tháng của cả nhóm; `from_period` ('YYYY-MM') cắt lịch sử từ mốc đó."""
     sql = ("select period, year, month, cases, is_covid, is_complete "
            "from mart_monthly_cases_by_block where region=? and block_code=? "
            "order by period")
@@ -47,7 +42,7 @@ def group_series(db_path: str, block: str, region: str = "TOAN_QUOC",
 def code_series(db_path: str, block: str,
                 complete_only: bool = True,
                 from_period: str | None = None) -> Dict[str, pd.DataFrame]:
-    """Chuỗi tháng cho từng mã trong nhóm (gộp toàn quốc từ fact_disease_case)."""
+    """Chuỗi tháng từng mã trong nhóm, gộp toàn quốc."""
     sql = ("select period, year, month, icd_code, sum(cases) as cases, "
            "max(is_covid) as is_covid, min(is_complete) as is_complete "
            "from fact_disease_case where block_code=? "
@@ -76,7 +71,7 @@ def fixed_shares(db_path: str, block: str) -> Dict[str, float]:
 
 
 def weather_series(db_path: str, region: str = "TOAN_QUOC") -> pd.DataFrame:
-    """Thời tiết theo tháng: [period, temp, humidity, rainfall]. Rỗng nếu chưa có."""
+    """Thời tiết theo tháng; rỗng nếu chưa có."""
     rows = _q(db_path,
               "select period, temp, humidity, rainfall from mart_monthly_weather "
               "where region=? order by period", (region,))
@@ -88,7 +83,7 @@ def weather_series(db_path: str, region: str = "TOAN_QUOC") -> pd.DataFrame:
 
 
 def join_weather(cases_df: pd.DataFrame, weather_df: pd.DataFrame) -> pd.DataFrame:
-    """Ghép thời tiết vào chuỗi ca theo period (left join)."""
+    """Left join thời tiết vào chuỗi ca theo period."""
     if weather_df is None or weather_df.empty:
         return cases_df
     return cases_df.merge(weather_df, on="period", how="left")

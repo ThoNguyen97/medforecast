@@ -72,29 +72,21 @@ export function truncateText(text: string, maxLength: number): string {
   return `${text.slice(0, maxLength)}...`;
 }
 
-/**
- * Thông điệp lỗi máy chủ trả về (FastAPI đặt ở `detail`).
- * Dùng thay cho chuỗi lỗi cố định để người dùng thấy hướng dẫn cụ thể từ backend.
- */
+/** Thông điệp lỗi máy chủ (FastAPI đặt ở `detail`). */
 export function loiMayChu(e: unknown, macDinh = 'Có lỗi xảy ra'): string {
   const err = e as { response?: { data?: { detail?: unknown } }; message?: string };
   const detail = err?.response?.data?.detail;
   if (typeof detail === 'string' && detail.trim()) return detail;
   if (Array.isArray(detail) && detail.length) {
-    // lỗi kiểm tra dữ liệu của FastAPI: [{loc, msg, type}, …]
+    // lỗi validation FastAPI: [{loc, msg, type}, …]
     const msg = (detail[0] as { msg?: string })?.msg;
     if (msg) return msg;
   }
   return err?.message || macDinh;
 }
 
-/**
- * Chuỗi thời gian do máy chủ trả về → Date đúng múi giờ.
- *
- * SQLite ghi `CURRENT_TIMESTAMP` theo UTC và `datetime.isoformat()` không kèm
- * offset; ECMAScript hiểu chuỗi không offset là giờ địa phương (lệch 7 tiếng ở
- * Việt Nam). Hàm gắn 'Z' khi thiếu offset rồi đổi sang giờ máy người dùng.
- */
+/** Chuỗi thời gian máy chủ → Date đúng múi giờ: SQLite ghi UTC không kèm offset,
+ *  ECMAScript hiểu là giờ địa phương nên gắn 'Z' khi thiếu offset. */
 function parseThoiGianMayChu(iso: string | null | undefined): Date | null {
   if (!iso) return null;
   const s = String(iso).trim();
@@ -104,7 +96,7 @@ function parseThoiGianMayChu(iso: string | null | undefined): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-/** ISO máy chủ → "dd/mm/yyyy hh:mm" giờ địa phương; `khiTrong` nếu không có. */
+/** ISO máy chủ → "dd/mm/yyyy hh:mm" giờ địa phương; `khiTrong` nếu rỗng. */
 export function formatThoiGianMayChu(
   iso: string | null | undefined,
   khiTrong = '—',

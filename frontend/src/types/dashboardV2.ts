@@ -1,10 +1,5 @@
-/**
- * Hợp đồng dữ liệu GET /api/v1/dashboard/v2 và /v2/forecast (phạm vi DSS thuần).
- * Nguồn sự thật: backend/app/services/dss_dashboard.py
- *
- * Không có trường nào thuộc phân hệ mua sắm. "Thiếu hụt dự kiến" là
- * delta_need = max(0, d_forecast − s_usable), tính trên horizon_days.
- */
+/** Hợp đồng dữ liệu /dashboard/v2 và /v2/forecast (backend/app/services/dss_dashboard.py).
+ *  delta_need = max(0, d_forecast − s_usable) trên horizon_days; không có trường mua sắm. */
 
 /** 'YYYY-MM' */
 export type Period = string;
@@ -14,9 +9,7 @@ export type BlockCode = 'J00-J06' | 'J09-J18' | 'J20-J22';
 /** Rổ phân cấp chăm sóc (NGT tách riêng khỏi NT3). */
 export type CareBucket = 'NGT' | 'NT1' | 'NT2' | 'NT3' | 'NT0';
 
-/**
- * Bốn mức theo DOI. `grey` = không đo được, không được hiển thị như xanh.
- */
+/** Bốn mức theo DOI; `grey` = không đo được, không hiển thị như xanh. */
 export type AlertLevel = 'red' | 'amber' | 'green' | 'grey';
 
 export type GreyReason = 'no_norm' | 'no_forecast' | 'no_stock_data' | 'period_not_closed';
@@ -113,21 +106,13 @@ interface LevelCounts {
   san_sang: boolean;
 }
 
-/**
- * Mức cảnh báo vận hành của danh mục — tổng hợp từ bộ đếm DOI của Tầng 3.
- *
- * Dùng chung thang bốn mức với từng mã thuốc (`AlertLevel`) để mỗi màu chỉ
- * mang một nghĩa: `red` = nguy cấp, `amber` = cảnh báo, `green` = an toàn,
- * `grey` = chưa đủ dữ liệu (không mã nào đo được DOI).
- * Nguồn: `period_service.danh_gia_muc_canh_bao`.
- */
+/** Mức cảnh báo vận hành của danh mục, tổng hợp từ bộ đếm DOI Tầng 3
+ *  (period_service.danh_gia_muc_canh_bao); dùng chung thang `AlertLevel`. */
 interface OperationalAlert {
   level: AlertLevel;
-  /** Nhãn trạng thái viết hoa, do backend phát — xem OPERATIONAL_LEVEL_LABELS. */
+  /** Nhãn viết hoa do backend phát; xem OPERATIONAL_LEVEL_LABELS. */
   label: string;
-  /** Cơ chế căn cứ, một dòng. */
   basis: string;
-  /** Số mã Đỏ/Vàng trên tổng mã đo được, kèm ngưỡng ngày. */
   detail: string;
   red: number;
   amber: number;
@@ -187,7 +172,7 @@ export interface TrendPoint {
 export interface TrendSection {
   periods: Period[];
   total: TrendPoint[];
-  // Chưa có mart (DB mới khởi tạo) thì backend trả {} cho by_block và last_year.
+  // Chưa có mart thì backend trả {} cho by_block và last_year
   by_block: Partial<Record<BlockCode, TrendPoint[]>>;
   last_year: {
     total?: TrendPoint[];
@@ -237,7 +222,7 @@ export interface QualitySection {
   by_block?: QualityBlock[];
   ghi_chu?: string;
   canh_bao?: string;
-  /** Sổ theo dõi trong vận hành (forecast_runs): kỳ đã chốt được đối chiếu. */
+  /** Sổ theo dõi vận hành (forecast_runs). */
   track_record?: {
     n_runs: number;
     n_verified: number;
@@ -265,7 +250,7 @@ export interface DataStatusSection {
   } | null;
   fefo: { codes: number; total: number };
   nguon_ton_kho: string | null;
-  /** Ngày đánh giá FEFO/DOI = MAX(snapshot_date) của ảnh chụp lô (không phải hôm nay). */
+  /** Ngày đánh giá FEFO/DOI = MAX(snapshot_date), không phải hôm nay. */
   as_of?: string | null;
   as_of_nguon?: string | null;
 }
@@ -313,7 +298,7 @@ export const LEVEL_LABELS: Record<AlertLevel, string> = {
   grey: 'Xám',
 };
 
-/** Nhãn trạng thái vận hành — dự phòng khi backend chưa gửi `label`. */
+/** Nhãn dự phòng khi backend chưa gửi `label`. */
 export const OPERATIONAL_LEVEL_LABELS: Record<AlertLevel, string> = {
   red: 'NGUY CẤP',
   amber: 'CẢNH BÁO',

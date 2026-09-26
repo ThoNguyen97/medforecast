@@ -41,9 +41,7 @@ class ConfigService:
 
     def _che_mat_khau(self, cfg: SystemConfig) -> SystemConfig:
         """Bỏ `password_enc` khỏi `his_sync.connection` trước khi trả qua /config.
-
-        Endpoint /config mở cho mọi người dùng đã đăng nhập; bản ghi được expunge khỏi
-        session để không ghi đè giá trị gốc. Bản đầy đủ chỉ SyncService đọc.
+        Expunge bản ghi khỏi session để không ghi đè giá trị gốc; bản đầy đủ chỉ SyncService đọc.
         """
         if cfg.config_key != "his_sync.connection":
             return cfg

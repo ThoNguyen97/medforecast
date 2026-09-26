@@ -78,7 +78,7 @@ export default function Sidebar() {
         </ul>
       </nav>
 
-      {/* Hành động cuối sidebar */}
+      {/* Cuối sidebar */}
       <div className="border-t border-neutral-100 px-3 py-3 space-y-1">
         <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-neutral-600 hover:bg-neutral-50">
           <HelpCircle size={18} />

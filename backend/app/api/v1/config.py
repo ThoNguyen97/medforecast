@@ -1,14 +1,5 @@
-"""API cấu hình hệ thống (bảng system_config, khoá → giá trị).
-
-Thao tác ghi chỉ dành cho Administrator và được ghi vào audit_logs.
-Ngưỡng DSS (`dss.thresholds`) và tham số Tầng 2 (`dss.care_level`) sửa qua
-/api/v1/dss/params, nơi có kiểm tra miền giá trị.
-
-Routes
-------
-GET  /api/v1/config                        – Liệt kê mọi cấu hình
-GET  /api/v1/config/{key}                  – Lấy một cấu hình theo khoá
-PUT  /api/v1/config/{key}                  – Cập nhật một cấu hình (Admin)
+"""API cấu hình hệ thống (system_config, khoá → giá trị).
+Ghi chỉ dành cho Administrator, có audit. Ngưỡng DSS sửa qua /dss/params.
 """
 
 import logging
@@ -27,8 +18,6 @@ router = APIRouter(tags=["configuration"])
 logger = logging.getLogger(__name__)
 
 
-# ── Helpers ──
-
 def _get_client_ip(request: Request) -> str:
     """Lấy IP client, ưu tiên X-Forwarded-For khi chạy sau proxy."""
     forwarded = request.headers.get("X-Forwarded-For")
@@ -36,8 +25,6 @@ def _get_client_ip(request: Request) -> str:
         return forwarded.split(",")[0].strip()
     return request.client.host if request.client else "unknown"
 
-
-# ── Endpoints ──
 
 @router.get("", response_model=List[SystemConfigResponse])
 def list_configs(
@@ -69,12 +56,8 @@ def update_config_by_key(
     current_user: User = Depends(get_admin_user),
 ) -> Any:
     """Tạo/sửa một dòng cấu hình (Admin), ghi audit_logs.
-
-    Ba khoá có endpoint riêng kèm kiểm tra dữ liệu bị chặn ở đây, tránh ghi
-    đè ngưỡng DSS hay mật khẩu HIS bằng chuỗi tự do:
-    `dss.thresholds`, `dss.care_level` → PUT /dss/params;
-    `his_sync.connection` → PUT /sync/config.
-    """
+    Khoá dss.thresholds, dss.care_level, his_sync.connection bị chặn: có endpoint
+    riêng kèm kiểm tra dữ liệu."""
     if key in ("dss.thresholds", "dss.care_level", "his_sync.connection"):
         raise HTTPException(
             status_code=422,

@@ -1,9 +1,4 @@
-"""Dự báo mức nhóm từ tầng MART (`mart_monthly_cases_by_block`, kỳ đã chốt).
-
-`forecast_group()`: Ŷ_g + khoảng thực nghiệm cho một khối bằng
-`group_forecast.forecast_group_next` (cùng engine với backtest).
-`group_series_fingerprint()`: khoá cache theo chuỗi ca + thời tiết + cấu hình.
-"""
+"""Dự báo mức nhóm từ tầng MART (kỳ đã chốt), cùng engine với backtest, kèm dấu vân tay làm khoá cache."""
 from __future__ import annotations
 from typing import List, Optional
 
@@ -32,7 +27,7 @@ class HierarchicalForecastService:
         self.db = db
 
     def _rows(self, sql: str, params: dict | None = None):
-        """Chạy SELECT; lỗi SQL (vd bảng chưa tồn tại) → ghi log cảnh báo và trả []."""
+        """Chạy SELECT; lỗi SQL thì ghi cảnh báo và trả []."""
         try:
             return self.db.execute(text(sql), params or {}).fetchall()
         except SQLAlchemyError as exc:
@@ -70,12 +65,8 @@ class HierarchicalForecastService:
     def forecast_group(self, block: str, region: str = TOAN_QUOC,
                        target_year: Optional[int] = None,
                        target_month: Optional[int] = None) -> dict:
-        """Ŷ_g + khoảng tin cậy cho một nhóm (không phân rã về từng mã).
-
-        Args:
-            target_year, target_month: kỳ đích tuỳ chọn (trang Phân tích, kể cả quá khứ
-                để đối chiếu; chỉ học trên các tháng trước kỳ đích). Bỏ trống → kỳ ngay
-                sau kỳ đã chốt mới nhất (Tầng 1, /dashboard/v2/forecast).
+        """Ŷ_g và khoảng tin cậy cho một nhóm.
+        Kỳ đích bỏ trống là kỳ ngay sau kỳ đã chốt mới nhất; kỳ đích quá khứ chỉ học trên các tháng trước đó.
         """
         group = self._group_df(block, region)
         if group.empty:
@@ -99,8 +90,7 @@ class HierarchicalForecastService:
         wdf = self._weather_df(region)
         group_w = group.merge(wdf, on="period", how="left") if not wdf.empty else group
 
-        # Ensemble dự báo 1 bước sau điểm neo; kỳ đích xa hơn vẫn tính theo mùa `tm`
-        # nhưng được đánh dấu ngoại suy nhiều bước (khoảng 1 bước không còn đúng nghĩa).
+        # Ensemble khớp 1 bước sau điểm neo; kỳ đích xa hơn được đánh dấu ngoại suy nhiều bước.
         horizon = (ty - int(last["year"])) * 12 + (tm - int(last["month"]))
         gf = forecast_group_next(group_w, tm, cfg)
         base_group, lo, hi, n_resid = float(gf["point"]), gf["lower"], gf["upper"], gf["n_resid"]
@@ -129,7 +119,7 @@ class HierarchicalForecastService:
             "model": {"members_used": gf["members_used"], "members_failed": gf["members_failed"],
                       "weights": gf["weights"], "bias_factor": gf["bias_factor"],
                       "point_raw": round(gf["point_raw"], 1), "config": cfg.as_record()},
-            # Để nơi gọi tính "độ chính xác tại chỗ" như du_bao_nhom() mà không khớp lại.
+            # Cho nơi gọi tính "độ chính xác tại chỗ" mà không khớp lại.
             "walk_forward": gf.get("walk_forward"),
         }
 

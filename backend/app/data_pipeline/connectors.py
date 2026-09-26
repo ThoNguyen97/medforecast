@@ -1,26 +1,7 @@
-"""Connector nguồn dữ liệu, trừu tượng hóa để đổi nguồn không phải sửa pipeline.
+"""Connector nguồn dữ liệu (file export CSV/Excel hoặc view STA qua pyodbc), cùng hợp đồng cột.
 
-- FileConnector     : đọc file export CSV/Excel.
-- SqlServerConnector: đọc view vw_MedForecast_* trong MEDFORECAST_DW (STA) qua pyodbc.
-
-Cả hai trả về cùng một "hợp đồng dữ liệu" (cùng tên cột) để các tầng sau không
-cần biết nguồn đến từ đâu.
-
-Hợp đồng:
-  fetch_case_supply(since_period) -> DataFrame[
-      month, disease_code, disease_name, region, cases,
-      supply_code, supply_name, supply_quantity, supply_unit, supply_category, note]
-  fetch_inventory() -> DataFrame[
-      supply_code, drug_code, ten_hoat_chat, unit, group_name, category,
-      stock_quantity, description]
-
-Cột `cases`: tổng số ca của (tháng × mã ICD × tỉnh), lặp lại trên mọi dòng vật tư
-của cùng nhóm; pipeline lấy `max()` theo nhóm để khử lặp. Nguồn không được trả
-`1 AS cases` theo từng lượt khám, nếu không chuỗi số ca phẳng bằng 1 mà không báo lỗi.
-
-Nạp tăng dần: mã ICD thường được chốt trễ vài tuần, nên connector lùi
-`PIPELINE_LOOKBACK_MONTHS` tháng (mặc định 3) và nạp lại cửa sổ đó. An toàn vì
-pipeline ghi fact theo kiểu xóa-rồi-chèn từng tháng (idempotent).
+Cột `cases` là tổng ca của (tháng × mã ICD × tỉnh) lặp trên mọi dòng vật tư; pipeline lấy max() để khử lặp.
+Nạp tăng dần lùi PIPELINE_LOOKBACK_MONTHS tháng (mặc định 3) vì mã ICD chốt trễ; an toàn do fact ghi xóa-rồi-chèn.
 """
 from __future__ import annotations
 
@@ -41,9 +22,8 @@ CASE_COLUMNS = [
     "supply_code", "supply_name", "supply_quantity", "supply_unit",
     "supply_category", "note",
 ]
-# Số ca theo nhóm ICD là luồng riêng, không suy ra được từ CASE_COLUMNS: cộng số ca
-# các mã con sẽ đếm hai lần lượt khám mang hai mã cùng nhóm (J01 + J06). Chỉ HIS còn
-# mã lượt khám để đếm DISTINCT; nguồn không cấp được thì trả rỗng và pipeline cộng dồn.
+# Luồng riêng vì cộng số ca các mã con sẽ đếm trùng lượt khám mang hai mã cùng nhóm;
+# nguồn không cấp được thì trả rỗng và pipeline cộng dồn.
 CASE_GROUP_COLUMNS = [
     "month", "disease_group", "disease_group_name", "region", "cases",
 ]
@@ -55,16 +35,14 @@ CASE_NUMERIC = ["cases", "supply_quantity"]
 CASE_GROUP_NUMERIC = ["cases"]
 INV_NUMERIC = ["stock_quantity"]
 
-# Số tháng lùi lại khi nạp tăng dần, để bắt dữ liệu được nhập/mã hóa muộn.
+# Số tháng lùi khi nạp tăng dần, bắt dữ liệu mã hóa muộn.
 LOOKBACK_MONTHS = int(os.environ.get("PIPELINE_LOOKBACK_MONTHS", "3"))
-# Đọc theo lô để không nạp toàn bộ lịch sử HIS vào RAM.
 SQL_CHUNK_SIZE = int(os.environ.get("PIPELINE_SQL_CHUNKSIZE", "50000"))
-# Thời gian chờ tối đa khi truy vấn HIS (giây).
+# Giây.
 SQL_TIMEOUT = int(os.environ.get("PIPELINE_SQL_TIMEOUT", "60"))
-# Mốc rất sớm dùng khi chưa từng đồng bộ (nạp toàn bộ lịch sử).
+# Mốc khi chưa từng đồng bộ (nạp toàn bộ lịch sử).
 EPOCH_DATE = "1900-01-01"
 
-# Thư mục chứa câu SQL đọc nguồn, tách khỏi mã Python để chỉnh theo schema mà không sửa code.
 SQL_DIR = Path(__file__).parent / "sql"
 
 
@@ -73,12 +51,12 @@ _RE_LINE_COMMENT = re.compile(r"--[^\n]*")
 
 
 def _bo_chu_thich(sql: str) -> str:
-    """Bóc chú thích /* */ và -- khỏi câu SQL (lý do: xem ghi chú ở khối SQL bên dưới)."""
+    """Bóc chú thích /* */ và -- khỏi câu SQL, tránh text() coi `:ten` trong chú thích là tham số."""
     return _RE_LINE_COMMENT.sub(" ", _RE_BLOCK_COMMENT.sub(" ", sql)).strip()
 
 
 def _load_sql(filename: str) -> str:
-    """Đọc câu SQL từ thư mục sql/; thiếu file thì ghi log và trả "" để app vẫn khởi động."""
+    """Đọc câu SQL trong sql/; thiếu file thì log và trả ""."""
     path = SQL_DIR / filename
     try:
         return _bo_chu_thich(path.read_text(encoding="utf-8"))
@@ -97,7 +75,7 @@ def _period_key(month_str: str) -> str:
 
 
 def shift_period(period: str, months: int) -> Optional[str]:
-    """'YYYY-MM' dịch đi `months` tháng (âm = lùi). None nếu period sai định dạng."""
+    """Dịch 'YYYY-MM' đi `months` tháng (âm = lùi); None nếu sai định dạng."""
     try:
         y, m = str(period).split("-")
         total = int(y) * 12 + (int(m) - 1) + months
@@ -110,7 +88,7 @@ def shift_period(period: str, months: int) -> Optional[str]:
 
 def lookback_period(since_period: Optional[str],
                     months: int = LOOKBACK_MONTHS) -> Optional[str]:
-    """Mốc bắt đầu nạp = watermark lùi `months` tháng (bao gồm chính mốc đó)."""
+    """Mốc bắt đầu nạp = watermark lùi `months` tháng."""
     if not since_period:
         return None
     return shift_period(since_period, -abs(months)) or since_period
@@ -118,10 +96,7 @@ def lookback_period(since_period: Optional[str],
 
 def _conform(df: pd.DataFrame, columns: Iterable[str],
              numeric: Iterable[str]) -> pd.DataFrame:
-    """Ép DataFrame về đúng hợp đồng cột: bù cột thiếu, bỏ cột thừa, ép kiểu số.
-
-    Tránh KeyError khó truy ở tầng sau khi SQL nguồn trả thiếu/thừa/lệch thứ tự cột.
-    """
+    """Ép DataFrame về đúng hợp đồng cột: bù cột thiếu, bỏ cột thừa, ép kiểu số."""
     columns = list(columns)
     if df is None:
         df = pd.DataFrame(columns=columns)
@@ -149,11 +124,7 @@ class SourceConnector(abc.ABC):
     def fetch_inventory(self) -> pd.DataFrame: ...
 
     def fetch_case_group(self, since_period: Optional[str] = None) -> pd.DataFrame:
-        """Số ca đã đếm DISTINCT ở mức nhóm ICD.
-
-        Không bắt buộc: trả rỗng thì pipeline cộng dồn từ mã (chấp nhận đếm trùng
-        ca đa chẩn đoán trong cùng nhóm, có ghi cảnh báo).
-        """
+        """Số ca đếm DISTINCT ở mức nhóm ICD; trả rỗng thì pipeline cộng dồn từ mã."""
         return _conform(None, CASE_GROUP_COLUMNS, CASE_GROUP_NUMERIC)
 
 
@@ -175,7 +146,6 @@ class FileConnector(SourceConnector):
         df = _conform(df, CASE_COLUMNS, CASE_NUMERIC)
         start = lookback_period(since_period)
         if start:
-            # `>=` + lookback: nạp lại vài tháng gần nhất để bắt dữ liệu về muộn.
             df = df[df["month"].map(_period_key) >= start]
         return df
 
@@ -184,7 +154,7 @@ class FileConnector(SourceConnector):
         return _conform(df, INV_COLUMNS, INV_NUMERIC)
 
     def fetch_case_group(self, since_period: Optional[str] = None) -> pd.DataFrame:
-        """File export số ca theo nhóm (từ MF_CaBenh_Nhom); không có file thì trả rỗng."""
+        """File export số ca theo nhóm; không có file thì trả rỗng."""
         path = self.data_dir / self.case_group_file
         if not path.exists():
             return _conform(None, CASE_GROUP_COLUMNS, CASE_GROUP_NUMERIC)
@@ -197,14 +167,9 @@ class FileConnector(SourceConnector):
 
 
 class SqlServerConnector(SourceConnector):
-    """Đọc view vw_MedForecast_* trong MEDFORECAST_DW (SQL Server trên STA).
+    """Đọc view vw_MedForecast_* trên STA qua pyodbc (cần driver msodbcsql17/18).
 
-    Yêu cầu pyodbc và driver ODBC msodbcsql17/18 (riêng `unixodbc-dev` chưa đủ). Chuỗi kết nối:
-      mssql+pyodbc://user:pass@host:1433/DB?driver=ODBC+Driver+18+for+SQL+Server
-          &Encrypt=yes&TrustServerCertificate=yes
-
-    Câu SQL trong thư mục sql/ phải giữ tên cột đầu ra (CASE_COLUMNS / INV_COLUMNS) và
-    tham số `:since_date`. Đổi file qua PIPELINE_CASE_SQL_FILE / PIPELINE_INVENTORY_SQL_FILE.
+    Câu SQL trong sql/ phải giữ tên cột đầu ra và tham số `:since_date`.
     """
     name = "sqlserver"
 
@@ -214,14 +179,12 @@ class SqlServerConnector(SourceConnector):
                  case_group_sql: Optional[str] = None,
                  chunk_size: int = SQL_CHUNK_SIZE):
         self.conn_str = conn_str
-        # Thứ tự ưu tiên: tham số truyền vào > file chỉ định qua biến môi trường
-        # > file mặc định trong sql/ (bản đọc view STA).
+        # Ưu tiên: tham số > biến môi trường > file mặc định trong sql/.
         self.case_sql = case_sql or _sql_from_env(
             "PIPELINE_CASE_SQL_FILE", "case_sta.sql")
         self.inventory_sql = inventory_sql or _sql_from_env(
             "PIPELINE_INVENTORY_SQL_FILE", "inventory_sta.sql")
-        # Luồng số ca theo nhóm do thủ tục PROD tính sẵn; không đặt biến môi trường
-        # thì để trống và pipeline cộng dồn từ mã.
+        # Không đặt biến môi trường thì để trống, pipeline cộng dồn từ mã.
         self.case_group_sql = case_group_sql if case_group_sql is not None else (
             _load_sql(os.environ["PIPELINE_CASE_GROUP_SQL_FILE"])
             if os.environ.get("PIPELINE_CASE_GROUP_SQL_FILE") else "")
@@ -237,21 +200,17 @@ class SqlServerConnector(SourceConnector):
 
     def _engine_(self):
         if self._engine is None:
-            from sqlalchemy import create_engine  # import trễ để dev không cần driver
+            from sqlalchemy import create_engine
             self._engine = create_engine(
                 self.conn_str,
-                pool_pre_ping=True,      # phát hiện kết nối đã chết (VPN/firewall ngắt)
-                pool_recycle=1800,       # làm mới kết nối mỗi 30 phút
+                pool_pre_ping=True,      # phát hiện kết nối chết khi VPN/firewall ngắt
+                pool_recycle=1800,
                 connect_args={"timeout": SQL_TIMEOUT},
             )
         return self._engine
 
     def _read(self, sql: str, params: dict) -> pd.DataFrame:
-        """Đọc theo lô.
-
-        Bắt buộc bọc text(): với chuỗi SQL thô, pandas đẩy tham số thẳng xuống DBAPI,
-        mà pyodbc (paramstyle 'qmark') không nhận dict.
-        """
+        """Đọc theo lô; phải bọc text() vì pyodbc (paramstyle qmark) không nhận dict tham số."""
         stmt = text(sql)
         reader = pd.read_sql(stmt, self._engine_(), params=params or None,
                              chunksize=self.chunk_size)
@@ -289,18 +248,8 @@ class SqlServerConnector(SourceConnector):
         return _conform(df, CASE_GROUP_COLUMNS, CASE_GROUP_NUMERIC)
 
 
-# ── Nạp câu SQL ──
-# Câu SQL nằm trong sql/, không nhúng trong Python, để chỉnh theo schema mà không sửa code.
-#   sql/case_sta.sql          ca bệnh + vật tư (vw_MedForecast_CaBenh)
-#   sql/case_group_sta.sql    số ca theo nhóm ICD (vw_MedForecast_CaBenhNhom)
-#   sql/inventory_sta.sql     tồn kho (vw_MedForecast_TonKho)
-#
-# Chú thích SQL được bóc trước khi gửi: SQLAlchemy text() coi mọi `:ten` là tham số kể cả
-# trong /* */, còn pyodbc bóc chú thích trước khi đếm dấu hỏi, gây lệch số tham số.
-#
-# Chỉ định file khác qua PIPELINE_CASE_SQL_FILE / PIPELINE_INVENTORY_SQL_FILE
-# (đường dẫn tuyệt đối, hoặc tên file trong thư mục sql/).
 def _sql_from_env(env_var: str, default_file: str) -> str:
+    """Đọc SQL từ file chỉ định qua biến môi trường (đường dẫn tuyệt đối hoặc tên trong sql/)."""
     name = os.environ.get(env_var, default_file)
     path = Path(name)
     if path.is_absolute() or path.parent != Path("."):

@@ -1,8 +1,4 @@
-"""Test tích hợp luồng xác thực và phân quyền.
-
-Phạm vi: POST /api/v1/auth/login, /logout, /refresh; GET /api/v1/auth/me; kiểm tra
-JWT, tài khoản bị khoá và bảo vệ route theo vai trò.
-"""
+"""Test tích hợp xác thực và phân quyền: JWT, tài khoản bị khoá, bảo vệ route theo vai trò."""
 
 import pytest
 from fastapi.testclient import TestClient
@@ -169,7 +165,7 @@ class TestGetCurrentUser:
 
 class TestRefreshToken:
     def test_refresh_token_returns_new_token(self, client, active_admin):
-        # /refresh chỉ nhận refresh token (type = "refresh")
+        # /refresh chỉ nhận refresh token
         token = create_access_token(data={"sub": active_admin.username, "type": "refresh"})
         resp = client.post(
             "/api/v1/auth/refresh",
@@ -235,7 +231,6 @@ class TestProtectedRoutes:
             "/api/v1/inventory/",
             headers={"Authorization": f"Bearer {token}"},
         )
-        # 200 với danh sách rỗng: đã xác thực
         assert resp.status_code == 200
 
     def test_admin_can_access_audit_logs(self, client, active_admin):

@@ -2,7 +2,7 @@ import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse,
 import { API_BASE_URL, TOKEN_KEY, REFRESH_TOKEN_KEY, TOKEN_EXPIRY_KEY } from '../utils/constants';
 import { useAuthStore } from '../store/authStore';
 
-// Chặn chuyển hướng /login nhiều lần khi nhiều request cùng nhận 401.
+// Chặn chuyển hướng /login nhiều lần khi nhiều request cùng nhận 401
 let isLoggingOut = false;
 
 const api: AxiosInstance = axios.create({
@@ -50,7 +50,7 @@ api.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
-      // /auth/refresh nhận refresh token (hạn 7 ngày), không phải access token vừa hết hạn.
+      // /auth/refresh nhận refresh token, không phải access token vừa hết hạn
       const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
       if (refreshToken) {
         try {
@@ -73,7 +73,6 @@ api.interceptors.response.use(
           }
           return api(originalRequest);
         } catch {
-          // Làm mới thất bại: đăng xuất
           forceLogout();
           return Promise.reject(new Error('Session expired'));
         }

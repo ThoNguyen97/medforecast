@@ -13,41 +13,34 @@ class DiseaseForecast(Base):
     forecast_month = Column(Date, nullable=False, index=True)  # Tháng dự báo (ngày đầu tháng)
     forecast_date = Column(Date, nullable=False, index=True)  # Ngày tạo dự báo
     
-    # Thông tin bệnh
     icd_code = Column(String(20), nullable=False, index=True)  # mã ICD 3 ký tự hoặc mã nhóm (J00-J06…)
     disease_name = Column(String(200), nullable=False, index=True)
     disease_type = Column(String(100), index=True)  # respiratory
     
-    # Kết quả dự báo
     predicted_cases = Column(Integer, nullable=False)
     
-    # Phân bổ theo mức độ
-    predicted_mild = Column(Integer)  # Số ca nhẹ
-    predicted_moderate = Column(Integer)  # Số ca trung bình
-    predicted_severe = Column(Integer)  # Số ca nặng
+    predicted_mild = Column(Integer)
+    predicted_moderate = Column(Integer)
+    predicted_severe = Column(Integer)
     
-    # Khoảng dự báo thực nghiệm (walk-forward) — cận dưới / cận trên
+    # Khoảng dự báo thực nghiệm (walk-forward)
     confidence_lower = Column(Integer)
     confidence_upper = Column(Integer)
     
-    # Thông tin mô hình
     model_used = Column(String(50))  # ensemble | top_down | cung_ky …
     model_accuracy_mae = Column(Numeric(10, 2))
     model_accuracy_rmse = Column(Numeric(10, 2))
     model_accuracy_mape = Column(Numeric(5, 2))
     forecast_period_days = Column(Integer, default=30)
     
-    # Phân loại rủi ro
     risk_level = Column(String(20))  # 'low' | 'medium' | 'high' | 'very_high'
-    baseline_cases = Column(Integer)  # Ca nền (TB cùng kỳ các năm)
+    baseline_cases = Column(Integer)  # TB cùng kỳ các năm
     weather_factor = Column(Numeric(5, 3))
     trend_factor = Column(Numeric(5, 3))
-    explanation = Column(String(1000))  # Giải thích mô hình
+    explanation = Column(String(1000))
     
-    # Địa điểm
     location = Column(String(100), index=True)
     
-    # Theo dõi sai số
     actual_cases = Column(Integer)
     deviation_pct = Column(Numeric(7, 2))
     

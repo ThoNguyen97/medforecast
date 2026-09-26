@@ -1,11 +1,5 @@
-"""Client Open-Meteo (https://open-meteo.com): API công khai, không cần API key, CC BY 4.0.
-
-Bao ba API:
-- Forecast API:        https://api.open-meteo.com/v1/forecast
-- Historical Archive:  https://archive-api.open-meteo.com/v1/archive
-- Air Quality:         https://air-quality-api.open-meteo.com/v1/air-quality
-
-Toạ độ tỉnh/thành được khai báo cứng, không gọi geocoding.
+"""Client Open-Meteo (Forecast, Historical Archive, Air Quality): API công khai, không cần API key.
+Toạ độ tỉnh/thành khai báo cứng, không gọi geocoding.
 """
 from __future__ import annotations
 
@@ -51,13 +45,12 @@ class OpenMeteoClient:
 
     @staticmethod
     def lookup_coords(province: str) -> Optional[Tuple[float, float]]:
-        """Tìm lat/lon theo tên tỉnh/thành (khớp chính xác, rồi khớp chuỗi con không phân biệt hoa thường)."""
+        """Lat/lon theo tên tỉnh/thành: khớp chính xác, rồi khớp chuỗi con."""
         if not province:
             return None
         key = province.strip()
         if key in PROVINCE_COORDS:
             return PROVINCE_COORDS[key]
-        # Dự phòng: so khớp chuỗi con, không phân biệt hoa thường.
         norm = key.lower()
         for name, coords in PROVINCE_COORDS.items():
             if name.lower() == norm or norm in name.lower() or name.lower() in norm:
@@ -81,11 +74,7 @@ class OpenMeteoClient:
         longitude: float,
         forecast_days: int = 16,
     ) -> List[Dict[str, Any]]:
-        """Dự báo hằng ngày (tối đa 16 ngày).
-
-        Returns:
-            list[{date, temperature, temperature_max, temperature_min, humidity, rainfall}]
-        """
+        """Dự báo hằng ngày tối đa 16 ngày: [{date, temperature, temperature_max, temperature_min, humidity, rainfall}]."""
         params = {
             "latitude": latitude,
             "longitude": longitude,
@@ -134,11 +123,7 @@ class OpenMeteoClient:
         start_date: date,
         end_date: date,
     ) -> List[Dict[str, Any]]:
-        """Dữ liệu lịch sử hằng ngày.
-
-        Returns:
-            list[{date, temperature, humidity, rainfall}]
-        """
+        """Lịch sử hằng ngày: [{date, temperature, humidity, rainfall}]."""
         params = {
             "latitude": latitude,
             "longitude": longitude,
@@ -173,11 +158,7 @@ class OpenMeteoClient:
         forecast_days: int = 5,
         past_days: int = 0,
     ) -> List[Dict[str, Any]]:
-        """AQI + PM2.5 hằng ngày (trung bình từ số liệu theo giờ).
-
-        forecast_days và past_days bị API giới hạn; khoảng dài hơn dùng
-        get_air_quality_historical().
-        """
+        """AQI + PM2.5 trung bình ngày; khoảng dài hơn giới hạn API dùng get_air_quality_historical()."""
         params = {
             "latitude": latitude,
             "longitude": longitude,
@@ -243,10 +224,8 @@ class OpenMeteoClient:
         target_month: int,
         target_year: int,
     ) -> Dict[str, Any]:
-        """Thời tiết trung bình của một tháng.
-
-        Tháng đã qua → archive API; tháng bắt đầu sau 16 ngày tới → cùng tháng năm
-        trước; còn lại → ghép archive (phần đã qua) và forecast (phần còn lại).
+        """Thời tiết trung bình một tháng: tháng đã qua dùng archive, tháng xa hơn 16 ngày dùng cùng tháng năm trước,
+        còn lại ghép archive và forecast.
         """
         today = date.today()
         from calendar import monthrange

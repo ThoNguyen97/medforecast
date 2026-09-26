@@ -1,15 +1,12 @@
 # -*- coding: utf-8 -*-
 """Danh mục ba nhóm ICD hô hấp, nguồn duy nhất cho backend.
-
-Bộ lọc và combobox theo nhóm vì dự báo ở cấp nhóm rồi phân bổ top-down về mã:
-chuỗi nhóm ổn định, còn chuỗi mã lẻ thưa làm mô hình mất ổn định. Mức mã vẫn
-có trong dữ liệu để phân bổ và ánh xạ vật tư; chỉ tầng hiển thị/lọc theo nhóm.
+Lọc/hiển thị theo nhóm vì dự báo ở cấp nhóm rồi phân bổ top-down về mã.
 """
 from __future__ import annotations
 
 from typing import List, Optional
 
-# Thứ tự cố định, cũng là thứ tự hiển thị trên UI
+# Thứ tự cố định, cũng là thứ tự hiển thị
 NHOM_ICD: dict[str, str] = {
     "J00-J06": "Nhiễm khuẩn cấp đường hô hấp trên",
     "J09-J18": "Cúm và viêm phổi",
@@ -36,18 +33,14 @@ def nhom_cua_ma(icd_code: str) -> Optional[str]:
 
 
 def dieu_kien_nhom(DiseaseCase, nhom: str):
-    """Điều kiện SQLAlchemy lọc DiseaseCase theo nhóm.
-
-    Dùng cột disease_group (do đồng bộ điền), OR thêm dải mã để không bỏ sót
-    bản ghi có disease_group NULL.
-    """
+    """Điều kiện SQLAlchemy lọc DiseaseCase theo nhóm; OR thêm dải mã để không bỏ sót bản ghi disease_group NULL."""
     from sqlalchemy import or_
     return or_(DiseaseCase.disease_group == nhom,
                DiseaseCase.icd_code.in_(ma_thuoc_nhom(nhom)))
 
 
 def dieu_kien_benh(DiseaseCase, khoa: str):
-    """Bộ lọc 'bệnh' dùng chung: nhận khoá nhóm ('J09-J18') hoặc mã lẻ ('J20') khi drill-down."""
+    """Bộ lọc bệnh dùng chung: nhận khoá nhóm ('J09-J18') hoặc mã lẻ ('J20')."""
     if khoa in NHOM_ICD:
         return dieu_kien_nhom(DiseaseCase, khoa)
     return DiseaseCase.icd_code == khoa

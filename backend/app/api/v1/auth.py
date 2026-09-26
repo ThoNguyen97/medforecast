@@ -76,8 +76,7 @@ def get_current_user_info(current_user: User = Depends(get_current_user)) -> Any
 
 @router.post("/refresh", response_model=Token)
 def refresh_token(current_user: User = Depends(get_user_from_refresh_token)) -> Any:
-    """Cấp access token mới. Header Authorization phải mang refresh token
-    (type = "refresh"); access token hết hạn không đổi được token mới."""
+    """Cấp access token mới; header Authorization phải mang refresh token (type = "refresh")."""
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         data={"sub": current_user.username}, expires_delta=access_token_expires

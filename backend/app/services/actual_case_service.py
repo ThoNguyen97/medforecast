@@ -29,9 +29,7 @@ def so_ca_thuc_te(
     location: Optional[str],
 ) -> Optional[int]:
     """Tổng ca thực tế của (nhóm bệnh, tháng, khu vực).
-
-    None khi kỳ chưa chốt hoặc chưa có bản ghi (khác với "có dữ liệu và bằng 0"),
-    để giao diện hiện "—" thay vì độ lệch vô nghĩa.
+    None khi kỳ chưa chốt hoặc chưa có bản ghi, khác với "có dữ liệu và bằng 0".
     """
     if not thang_da_chot(thang):
         return None

@@ -24,7 +24,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-// Đã đăng nhập thì không vào lại trang /login
+// Đã đăng nhập thì không vào lại /login
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuthStore();
 
@@ -49,7 +49,7 @@ export default function App() {
           }
         />
 
-        {/* Route cần đăng nhập, bọc trong Layout */}
+        {/* Route cần đăng nhập */}
         <Route
           path="/"
           element={

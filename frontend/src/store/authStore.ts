@@ -28,7 +28,7 @@ export const useAuthStore = create<AuthStore>()(
       setAuth: (user, token, refreshToken, expiresIn) => {
         const tokenExpiry = Date.now() + expiresIn * 1000;
 
-        // Lưu cả vào localStorage để interceptor Axios đọc được
+        // Lưu localStorage để interceptor Axios đọc được
         localStorage.setItem(TOKEN_KEY, token);
         localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
         localStorage.setItem(USER_KEY, JSON.stringify(user));
@@ -68,7 +68,7 @@ export const useAuthStore = create<AuthStore>()(
       isTokenExpired: () => {
         const { tokenExpiry } = get();
         if (!tokenExpiry) return true;
-        // Coi là hết hạn sớm 5 phút để kịp làm mới token
+        // Hết hạn sớm 5 phút để kịp làm mới
         return Date.now() > tokenExpiry - 5 * 60 * 1000;
       },
     }),

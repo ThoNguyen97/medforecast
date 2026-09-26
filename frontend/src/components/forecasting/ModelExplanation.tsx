@@ -11,7 +11,7 @@ const ICON_PALETTE = [
   { icon: TrendingUp, color: 'text-amber-500', bg: 'bg-amber-50' },
 ];
 
-/** Tách bullet "Tiêu đề — Nội dung" thành 2 phần để render đẹp. */
+/** Tách bullet "Tiêu đề — Nội dung" thành 2 phần. */
 function splitBullet(text: string): { title: string; body: string } {
   const sep = text.includes('—') ? '—' : ' - ';
   const idx = text.indexOf(sep);

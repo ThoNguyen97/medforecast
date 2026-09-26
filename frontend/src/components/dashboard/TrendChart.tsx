@@ -17,7 +17,7 @@ interface Row {
   period: string;
   month: string;
   nam_nay: number | null;
-  /** Kỳ đang mở: số đang thu thập dở — chỉ hiện ở tooltip, không vẽ lên đường. */
+  /** Kỳ đang mở: chỉ hiện ở tooltip, không vẽ lên đường. */
   nam_nay_mo: number | null;
   nam_truoc: number | null;
   chua_chot: boolean;
@@ -30,12 +30,8 @@ function monthLabel(period: string) {
   return `T${parseInt(period.slice(5, 7), 10)}`;
 }
 
-/**
- * Xu hướng ca bệnh 12 kỳ, năm nay so với cùng kỳ năm trước, kèm điểm dự báo
- * kỳ tới và dải khoảng tin cậy. Kỳ đang mở được đánh dấu "chưa chốt" (*) và
- * không vẽ lên biểu đồ — số đang thu thập dở chỉ hiện trong tooltip; đường
- * năm nay dừng ở kỳ chốt cuối rồi nối nét đứt sang điểm dự báo.
- */
+/** Xu hướng ca bệnh 12 kỳ so với cùng kỳ năm trước, kèm điểm dự báo và khoảng tin cậy.
+ *  Kỳ đang mở (*) không vẽ lên đường; đường năm nay nối nét đứt sang điểm dự báo. */
 export default function TrendChart({
   trend,
   forecast,
@@ -46,7 +42,7 @@ export default function TrendChart({
   block: BlockCode | 'all';
 }) {
   const rows = useMemo<Row[]>(() => {
-    // CSDL chưa có dữ liệu: backend trả by_block = {} và last_year = {}, nên cần ?.
+    // CSDL trống: backend trả by_block = {} và last_year = {}, nên cần ?.
     const thisYear = block === 'all' ? trend.total ?? [] : trend.by_block?.[block] ?? [];
     const lastYear = block === 'all'
       ? trend.last_year?.total ?? []
@@ -74,7 +70,7 @@ export default function TrendChart({
       la_du_bao: false,
     }));
 
-    // Điểm neo: kỳ đã chốt cuối cùng → nét đứt sang kỳ dự báo.
+    // Điểm neo: kỳ chốt cuối, nối nét đứt sang kỳ dự báo.
     const anchorIdx = [...out].map((r) => !r.chua_chot).lastIndexOf(true);
     if (fcPoint == null || !target) return out;
     if (anchorIdx >= 0) {

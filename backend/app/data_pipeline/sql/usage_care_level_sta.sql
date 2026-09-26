@@ -1,11 +1,6 @@
-/* Tiêu hao theo (tháng × nhóm ICD × rổ chăm sóc × vật tư), là tử số của định mức.
-   Nguồn: STA · vw_MedForecast_TieuHaoPhanCap
-
-   Định mức = so_luong / cases(nhóm, rổ). Dùng số lượng, không dùng số dòng toa:
-   số dòng/lượt và số đơn vị/dòng biến thiên ngược chiều giữa ngoại trú và nội trú.
-
-   is_vtyt = 1: y lệnh vật tư không mang phân cấp chăm sóc, tầng sau phải
-   gộp NT1+NT2+NT3+NT0 trước khi chia. */
+/* usage_care_level_sta.sql — STA, vw_MedForecast_TieuHaoPhanCap: tiêu hao theo (tháng × nhóm ICD × rổ × vật tư), tử số định mức.
+   Định mức = so_luong / cases(nhóm, rổ); dùng số lượng vì số dòng toa biến thiên ngược chiều giữa ngoại trú và nội trú.
+   is_vtyt = 1 không mang phân cấp chăm sóc, tầng sau gộp NT1+NT2+NT3+NT0 trước khi chia. */
 SELECT  Period,
         [month],
         disease_group,

@@ -6,10 +6,8 @@ import { GREY_REASON_LABELS, type AlertRow } from '../../types/dashboardV2';
 const fmt = (v: number | null | undefined, digits = 0) =>
   v == null ? '—' : v.toLocaleString('vi-VN', { maximumFractionDigits: digits });
 
-/**
- * Bảng cảnh báo theo DOI. Cột "Thiếu hụt dự kiến" = Δ_need trên horizon —
- * để trống (không phải 0) khi Tầng 2 chưa chạy vì chưa có dự báo.
- */
+/** Bảng cảnh báo theo DOI. "Thiếu hụt dự kiến" = Δ_need trên horizon,
+ *  để trống (không phải 0) khi Tầng 2 chưa chạy. */
 export default function AlertsTable({
   rows,
   demandReady,

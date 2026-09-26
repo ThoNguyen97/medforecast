@@ -1,20 +1,13 @@
-/* ═════════════════════════════════════════════════════════════════════════
-   prod/04_usp_MedForecast_DayKhoCungUng.sql
-   Chạy trên: HIS PROD (GIAAN115_HIS). Điều kiện: prod/01 (linked server),
-   sta/02 (bảng MF_TonKho_Lo).
-   Mục đích: chụp tồn kho theo lô (kèm hạn dùng) và đẩy xuống STA MF_TonKho_Lo
-   cho T3 (FEFO + DOI). Sau khi triển khai thủ tục này mới chạy sta/05.
-
-   Cách chạy:
-     EXEC dbo.usp_MedForecast_DayKhoCungUng @ChiXem = 1;   -- xem, không đẩy
-     EXEC dbo.usp_MedForecast_DayKhoCungUng;               -- đẩy ảnh chụp hôm nay
-   ═════════════════════════════════════════════════════════════════════════ */
+/* prod/04_usp_MedForecast_DayKhoCungUng.sql
+   Chạy trên: HIS PROD (GIAAN115_HIS). Điều kiện: prod/01, sta/02; triển khai xong mới chạy sta/05.
+   Mục đích: chụp tồn kho theo lô kèm hạn dùng, đẩy xuống STA MF_TonKho_Lo cho T3 (FEFO + DOI).
+   Chạy: EXEC dbo.usp_MedForecast_DayKhoCungUng [@ChiXem = 1]; */
 USE GIAAN115_HIS
 GO
 
 CREATE OR ALTER PROCEDURE dbo.usp_MedForecast_DayKhoCungUng
-    @BENHVIEN_ID  VARCHAR(8) = NULL,   -- điền khi DB chứa nhiều bệnh viện
-    @GomVTYT      BIT        = 0,      -- 0 = chỉ thuốc (khớp DayDuLieu và view SQLite)
+    @BENHVIEN_ID  VARCHAR(8) = NULL,   -- khi DB chứa nhiều bệnh viện
+    @GomVTYT      BIT        = 0,      -- 0 = chỉ thuốc
     @ChiXem       BIT        = 0
 AS
 BEGIN
@@ -25,7 +18,7 @@ BEGIN
     DECLARE @nLo INT = 0, @nLoKhongHan INT = 0, @nHetHan INT = 0;
 
     BEGIN TRY
-        /* 1) Danh mục vật tư — cùng bộ lọc với usp_MedForecast_DayDuLieu */
+        /* 1) Danh mục vật tư, cùng bộ lọc với DayDuLieu */
         IF OBJECT_ID('tempdb..#Meta') IS NOT NULL DROP TABLE #Meta;
         SELECT  D.DUOC_ID,
                 D.MADUOC AS SupplyCode
@@ -37,10 +30,7 @@ BEGIN
           AND  (@BENHVIEN_ID IS NULL OR D.BENHVIEN_ID = @BENHVIEN_ID);
         CREATE UNIQUE CLUSTERED INDEX IX_Meta ON #Meta(DUOC_ID);
 
-        /* 2) Tồn theo lô.
-           LEFT JOIN sang bảng lô: dòng tồn không tra được lô vẫn xuống STA
-           với lot_id = 0 / expiry NULL, nếu không tổng tồn theo lô nhỏ hơn
-           tồn thật và T3 báo thiếu hụt giả. Lô đã huỷ (HUY = '1') bị loại. */
+        /* 2) Tồn theo lô; LEFT JOIN giữ dòng không tra được lô (lot_id = 0) để tổng tồn không hụt */
         IF OBJECT_ID('tempdb..#Lo') IS NOT NULL DROP TABLE #Lo;
         SELECT
             @Hom                                                    AS NgaySnapshot,
@@ -71,8 +61,7 @@ BEGIN
         PRINT CONCAT(N'Tồn theo lô: ', @nLo, N' dòng; ', @nLoKhongHan,
                      N' không có hạn dùng; ', @nHetHan, N' đã quá hạn còn trong kho.');
 
-        /* Bất biến: tổng tồn theo lô = tổng tồn thô (>0). Lệch là JOIN nhân bản
-           hoặc rơi dòng — dừng, không đẩy số sai xuống STA. */
+        /* Bất biến: tổng tồn theo lô = tổng tồn thô; lệch là JOIN nhân bản hoặc rơi dòng */
         DECLARE @TongLo FLOAT = (SELECT ISNULL(SUM(quantity), 0) FROM #Lo);
         DECLARE @TongTK FLOAT = (
             SELECT ISNULL(SUM(CAST(tk.SOLUONG AS FLOAT)), 0)
@@ -112,8 +101,7 @@ BEGIN
         IF @nLo = 0
             THROW 50011, N'Không lấy được dòng tồn kho theo lô nào — DỪNG, không đụng vào STA.', 1;
 
-        /* 4) Đẩy: xoá ảnh chụp hôm nay rồi chèn (chạy lại trong ngày không
-           trùng), giữ nguyên ảnh chụp các ngày trước. */
+        /* 4) Đẩy: xoá ảnh chụp hôm nay rồi chèn, giữ các ngày trước */
         DELETE FROM [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_TonKho_Lo]
         WHERE  NgaySnapshot = @Hom;
 

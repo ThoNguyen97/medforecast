@@ -12,7 +12,6 @@ const CONFIG_KEYS = {
 
 // ─── Queries ─────────────────────────────────────────────────────────────────
 
-/** Toàn bộ cấu hình hệ thống. */
 export function useConfigs() {
   return useQuery({
     queryKey: CONFIG_KEYS.all,
@@ -20,7 +19,6 @@ export function useConfigs() {
   });
 }
 
-/** Một mục cấu hình theo khoá. */
 export function useConfigByKey(key: string) {
   return useQuery({
     queryKey: CONFIG_KEYS.single(key),
@@ -29,7 +27,6 @@ export function useConfigByKey(key: string) {
   });
 }
 
-/** Nhật ký thay đổi cấu hình (audit log). */
 export function useAuditLogs(params?: {
   skip?: number;
   limit?: number;
@@ -47,7 +44,6 @@ export function useAuditLogs(params?: {
 
 // ─── Mutations ────────────────────────────────────────────────────────────────
 
-/** Cập nhật một khoá cấu hình. */
 export function useUpdateConfig() {
   const queryClient = useQueryClient();
 
@@ -57,7 +53,7 @@ export function useUpdateConfig() {
     onSuccess: (_result, { key }) => {
       queryClient.invalidateQueries({ queryKey: CONFIG_KEYS.all });
       queryClient.invalidateQueries({ queryKey: CONFIG_KEYS.single(key) });
-      // Làm mới audit log để lịch sử thay đổi hiện ngay.
+      // Làm mới audit log
       queryClient.invalidateQueries({ queryKey: ['audit-logs'] });
     },
   });

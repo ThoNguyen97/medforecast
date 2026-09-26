@@ -10,16 +10,16 @@ export interface AnalyzeRequest {
   region?: string | null;
   target_month: number;
   target_year: number;
-  /** true = ghi nhận kết quả vào DB (nút "Ghi nhận dự báo"). */
+  /** true = ghi nhận kết quả vào DB. */
   save?: boolean;
-  /** Chỉ dùng khi save=true: cho phép ghi đè bản đã ghi nhận của cùng khóa. */
+  /** Khi save=true: cho phép ghi đè bản cùng khóa. */
   overwrite?: boolean;
 }
 
 export interface AnalyzeResponse {
-  /** false = chưa ghi nhận dự báo nào cho khóa này (chỉ có ở POST /forecast/saved). */
+  /** false = chưa ghi nhận (chỉ có ở POST /forecast/saved). */
   found?: boolean;
-  /** true = kỳ này đã có bản ghi nhận, cần người dùng xác nhận ghi đè. */
+  /** true = kỳ đã có bản ghi nhận, cần xác nhận ghi đè. */
   conflict?: boolean;
   message?: string;
   existing?: {
@@ -29,7 +29,7 @@ export interface AnalyzeResponse {
     created_by: string | null;
   };
   forecast: {
-    /** null khi mới phân tích mà chưa bấm "Ghi nhận dự báo". */
+    /** null khi chưa ghi nhận. */
     id: number | null;
     predicted_cases: number;
     baseline: number;
@@ -43,12 +43,11 @@ export interface AnalyzeResponse {
     region: string;
     target_month: number;
     target_year: number;
-    /** Kết quả này đã được ghi nhận vào DB hay mới chỉ là bản xem trước. */
+    /** Đã ghi nhận vào DB hay chỉ là bản xem trước. */
     is_recorded?: boolean;
-    /** Thời điểm ghi nhận (ISO) — null khi chưa ghi nhận. */
+    /** Thời điểm ghi nhận (ISO); null khi chưa ghi nhận. */
     recorded_at?: string | null;
-    /** Lý do backend từ chối ghi nhận khi khoá không có căn cứ dự báo
-     *  (chuỗi quá ngắn, không có ca cùng kỳ). */
+    /** Lý do backend từ chối ghi nhận khi không có căn cứ dự báo. */
     khong_ghi_nhan?: string | null;
   };
   explanation_bullets: string[];
@@ -103,8 +102,7 @@ export interface ForecastHistoryItem {
   created_at: string | null;
   /** Tài khoản đã ghi nhận dự báo này. */
   created_by: string | null;
-  /** true = bản Toàn quốc (location = NULL) — số chính thức nuôi Tổng quan/Cảnh báo;
-   *  các bản theo tỉnh chỉ tham khảo, không cộng lại thành Toàn quốc. */
+  /** true = bản Toàn quốc (location = NULL), số chính thức cho Tổng quan/Cảnh báo. */
   is_nationwide?: boolean;
 }
 
@@ -124,13 +122,9 @@ export const forecastAnalysisService = {
     return res.data;
   },
 
-  /**
-   * Nạp bản dự báo đã ghi nhận theo khóa (nhóm bệnh, khu vực, tháng).
-   * Chỉ đọc, không chạy mô hình; trả null nếu kỳ đó chưa ghi nhận.
-   */
+  /** Nạp bản đã ghi nhận theo khóa; chỉ đọc, null nếu chưa ghi nhận. */
   async loadSaved(payload: AnalyzeRequest): Promise<AnalyzeResponse | null> {
-    // Truy vấn đọc: timeout ngắn hơn mặc định 60s để báo lỗi sớm khi backend
-    // không phản hồi.
+    // Timeout ngắn hơn mặc định để báo lỗi sớm
     const res = await api.post<AnalyzeResponse>('/forecast/saved', payload, {
       timeout: 20000,
     });

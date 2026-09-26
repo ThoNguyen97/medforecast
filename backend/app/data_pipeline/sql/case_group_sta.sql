@@ -1,13 +1,6 @@
--- Số ca theo nhóm ICD, đọc từ MEDFORECAST_DW trên STA.
---
--- Không cộng từ case_sta.sql: một lượt khám có thể mang hai mã cùng nhóm
--- (J01 chính + J06 phụ đều thuộc J00-J06), cộng mã con sẽ đếm lượt đó hai lần.
--- Chỉ PROD còn TIEPNHAN_ID để đếm DISTINCT mức nhóm, nên PROD tính sẵn vào MF_CaBenh_Nhom.
---
--- Hạt: (tháng × nhóm × vùng). region = 'TOAN_QUOC' là dòng toàn quốc, đếm DISTINCT
--- riêng chứ không phải tổng các tỉnh.
---
--- Dùng: PIPELINE_CASE_GROUP_SQL_FILE=case_group_sta.sql
+/* case_group_sta.sql — STA, vw_MedForecast_CaBenhNhom: số ca theo (tháng × nhóm ICD × vùng).
+   Nguồn đếm DISTINCT lượt khám mức nhóm, không cộng từ case_sta.sql vì một lượt có thể mang hai mã cùng nhóm.
+   Dòng region = 'TOAN_QUOC' đếm riêng, không phải tổng các tỉnh. Nạp tăng dần theo tham số since_date. */
 SELECT [month],
        disease_group,
        disease_group_name,

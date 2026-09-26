@@ -21,10 +21,9 @@ describe('LoadingSpinner', () => {
 
   it('does not render label text when not provided', () => {
     render(<LoadingSpinner />);
-    // Không truyền label hiển thị thì chỉ span sr-only chứa nội dung này
+    // Không có label thì chỉ span sr-only chứa nội dung
     const srLabel = screen.getByText('Đang tải...', { selector: '.sr-only' });
     expect(srLabel).toBeInTheDocument();
-    // Không có span nhãn hiển thị
     expect(screen.queryByText('Đang tải...', { selector: '.text-sm' })).not.toBeInTheDocument();
   });
 
@@ -42,8 +41,7 @@ describe('PageLoader', () => {
 
   it('renders default label', () => {
     render(<PageLoader />);
-    // PageLoader hiển thị "Đang tải..." ở cả span nhìn thấy lẫn span sr-only
-    // Kiểm tra riêng span nhìn thấy
+    // "Đang tải..." có ở cả span nhìn thấy lẫn sr-only; kiểm riêng span nhìn thấy
     const spans = screen.getAllByText('Đang tải...');
     expect(spans.length).toBeGreaterThanOrEqual(1);
   });

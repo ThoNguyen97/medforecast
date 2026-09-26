@@ -5,7 +5,6 @@ Chạy: cd backend && python scripts/create_admin_user.py
 import sys
 from pathlib import Path
 
-# Cho phép import gói app khi chạy trực tiếp script
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.database import SessionLocal

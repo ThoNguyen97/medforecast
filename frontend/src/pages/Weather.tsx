@@ -73,7 +73,7 @@ export default function Weather() {
   const [filterMonth, setFilterMonth] = useState<string>('all');
   const [filterProvince, setFilterProvince] = useState<string>('all');
   const [provinces, setProvinces] = useState<string[]>([]);
-  // Tỉnh → danh sách quận có dữ liệu trong DB
+  // Tỉnh → quận có dữ liệu trong DB
   const [provinceDistricts, setProvinceDistricts] = useState<Record<string, string[]>>({});
 
   // Phân trang
@@ -118,8 +118,7 @@ export default function Weather() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterYear, filterMonth, filterProvince]);
 
-  // `items` là ảnh chụp DB lúc mount; DB có thể đổi ngoài app (ETL) khi tab
-  // vẫn mở, nên nạp lại mỗi khi tab được hiển thị lại.
+  // DB có thể đổi ngoài app (ETL) khi tab vẫn mở, nên nạp lại khi tab hiện lại.
   useEffect(() => {
     const napLai = () => {
       if (document.visibilityState === 'visible') {
@@ -139,8 +138,7 @@ export default function Weather() {
   const loadData = async () => {
     setLoading(true);
     try {
-      // Bảng phải phản ánh đúng environmental_data hiện tại; DB có thể đổi ngoài
-      // app nên chặn cache HTTP.
+      // DB có thể đổi ngoài app nên chặn cache HTTP
       const res = await api.get('/environmental/', {
         params: { limit: 50000, _t: Date.now() },
         headers: { 'Cache-Control': 'no-cache' },
@@ -157,7 +155,6 @@ export default function Weather() {
 
   const loadDistinctValues = async () => {
     try {
-      // Gộp admin.regions, giá trị trong DB và master VN
       const [adminRes, distinctRes] = await Promise.all([
         api.get('/admin/regions').catch(() => ({ data: [] as any[] })),
         api.get('/environmental/distinct-values').catch(() => ({
@@ -177,8 +174,7 @@ export default function Weather() {
       const dbCascade: Record<string, string[]> =
         distinctRes.data?.province_districts ?? {};
 
-      // Dropdown tỉnh: chỉ giữ giá trị là tỉnh thật; chuẩn hoá tên
-      // ("Thành phố Hồ Chí Minh" → "TP. Hồ Chí Minh") trước khi so master.
+      // Chỉ giữ tỉnh thật; chuẩn hoá tên trước khi so master
       const LEGACY_ALLOW = new Set(['Toàn thành phố']);
       const extraFromAdminDb = [...adminProvinces, ...dbProvinces]
         .map((n) => normalizeProvinceName(n))
@@ -190,7 +186,7 @@ export default function Weather() {
       if (merged.includes('Toàn thành phố')) final.unshift('Toàn thành phố');
       setProvinces(final);
 
-      // Chuẩn hoá khoá cascade để khớp giá trị dropdown (master)
+      // Chuẩn hoá khoá cascade khớp dropdown
       const normCascade: Record<string, string[]> = {};
       for (const [prov, dists] of Object.entries(dbCascade)) {
         const key = normalizeProvinceName(prov);
@@ -206,7 +202,7 @@ export default function Weather() {
 
   const loadTrend = async () => {
     try {
-      // Xu hướng theo tháng đã chọn; chọn "all" thì dùng tháng hiện tại
+      // Chọn "all" thì dùng tháng hiện tại
       const month = filterMonth !== 'all' 
         ? Number(filterMonth) 
         : new Date().getMonth() + 1;
@@ -223,20 +219,16 @@ export default function Weather() {
     }
   };
 
-  // Lọc theo năm / tháng / tỉnh rồi phân trang
   const filtered = useMemo(() => {
     return items.filter((it) => {
-      // Theo năm
       if (filterYear) {
         const year = it.recorded_at?.slice(0, 4);
         if (year !== filterYear) return false;
       }
-      // Theo tháng (khi khác 'all')
       if (filterMonth !== 'all') {
         const month = it.recorded_at?.slice(5, 7);
         if (month !== filterMonth) return false;
       }
-      // Theo tỉnh
       if (filterProvince !== 'all' && normalizeProvinceName(it.location) !== normalizeProvinceName(filterProvince)) return false;
       
       return true;
@@ -361,7 +353,6 @@ export default function Weather() {
         data_source: 'manual',
       };
       if (editing) {
-        // Dùng PUT để giữ nguyên id và created_at
         await api.put(`/environmental/${editing.id}`, payload);
       } else {
         await api.post('/environmental/', payload);
@@ -554,7 +545,7 @@ export default function Weather() {
             Chưa có dữ liệu xu hướng. Hãy thêm hoặc import dữ liệu.
           </div>
         ) : (
-          /* Small multiples: mỗi đại lượng một trục riêng, không dùng trục kép */
+          /* Small multiples */
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {[
               { key: 'temp', name: 'Nhiệt độ', unit: '°C', color: SERIES.s6 },

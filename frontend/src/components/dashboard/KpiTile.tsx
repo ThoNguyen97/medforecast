@@ -2,11 +2,7 @@ import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '../../utils/cn';
 
-/**
- * Thẻ KPI của Dashboard. Số lớn + nhãn + một dòng ngữ cảnh + chân thẻ.
- * `tone` chỉ tô một dải mảnh bên trái — không đổ màu cả thẻ để năm thẻ
- * đứng cạnh nhau vẫn đọc như một hàng.
- */
+/** Thẻ KPI của Dashboard; `tone` chỉ tô dải mảnh bên trái. */
 export type KpiTone = 'neutral' | 'blue' | 'red' | 'amber' | 'green';
 
 const STRIPE: Record<KpiTone, string> = {

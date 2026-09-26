@@ -1,8 +1,7 @@
 import api from './api';
 import type { SystemConfig, ConfigUpdateRequest, AuditLog } from '../types/config';
 
-// Ngưỡng cảnh báo DSS (`dss.thresholds`: Đỏ ≤ 18 / Vàng ≤ 36 ngày DOI) đọc qua
-// dssService, không qua service này.
+// Ngưỡng cảnh báo DSS (`dss.thresholds`) đọc qua dssService, không qua đây
 
 export const configService = {
   /** Toàn bộ cấu hình hệ thống. */
@@ -23,11 +22,7 @@ export const configService = {
     return response.data;
   },
 
-  /**
-   * Nhật ký thay đổi cấu hình (chỉ Quản trị viên).
-   * Backend phân trang theo page/page_size (AuditLogListResponse); tham số skip/limit
-   * phía client được quy đổi sang page/page_size.
-   */
+  /** Nhật ký thay đổi cấu hình (chỉ Quản trị viên); skip/limit quy đổi sang page/page_size. */
   async getAuditLogs(params?: {
     skip?: number;
     limit?: number;
@@ -48,7 +43,6 @@ export const configService = {
       start_date: params?.start_date,
       end_date: params?.end_date,
     };
-    // Bỏ giá trị undefined để không gửi tham số rỗng
     Object.keys(queryParams).forEach(
       (k) => queryParams[k] === undefined && delete queryParams[k],
     );

@@ -13,11 +13,7 @@ _BACKEND_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _neo_duong_dan_sqlite() -> None:
-    """Biến đường dẫn SQLite tương đối thành tuyệt đối theo backend/.
-
-    Đường dẫn tương đối được resolve theo thư mục làm việc của tiến trình; chạy
-    uvicorn ngoài backend/ sẽ âm thầm tạo và dùng một file DB khác.
-    """
+    """Biến đường dẫn SQLite tương đối thành tuyệt đối theo backend/, tránh lệ thuộc cwd."""
     url = settings.DATABASE_URL
     if not url.startswith("sqlite:///"):
         return

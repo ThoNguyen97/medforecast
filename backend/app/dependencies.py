@@ -10,10 +10,7 @@ security = HTTPBearer()
 
 
 def _user_tu_token(token: str, db: Session, loai: str) -> User:
-    """Giải mã JWT, kiểm tra loại token ('access' | 'refresh') rồi tra người dùng.
-
-    Refresh token không được dùng thay access token và ngược lại.
-    """
+    """Giải mã JWT, kiểm tra loại token ('access' | 'refresh') rồi tra người dùng."""
     payload = verify_token(token)
     if payload is None:
         raise HTTPException(

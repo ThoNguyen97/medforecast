@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { syncService } from '../services/syncService';
 
-/** Chạy ETL từ view MEDFORECAST_DW (STA) vào SQLite; xong thì làm mới các truy vấn phụ thuộc. */
+/** Chạy ETL từ MEDFORECAST_DW vào SQLite rồi làm mới truy vấn phụ thuộc. */
 export function useRunSync() {
   const queryClient = useQueryClient();
   return useMutation({

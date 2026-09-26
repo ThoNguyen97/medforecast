@@ -27,7 +27,7 @@ interface SupplyItem {
   ratio: number;
   used_quantity: number;
   disease_label: string;
-  /** 'norm' = tính từ định mức thực nghiệm theo khối ICD (dss_demand). */
+  /** 'norm' = tính từ định mức thực nghiệm (dss_demand). */
   source?: 'norm';
   khoi?: string | null;
 }
@@ -63,7 +63,7 @@ export default function DiseaseCaseDetail() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string>('');
 
-  // Bộ lọc trong trang chi tiết
+  // Bộ lọc
   const [supplyKeyword, setSupplyKeyword] = useState('');
   const [diseaseFilter, setDiseaseFilter] = useState<string>('all');
   
@@ -112,7 +112,6 @@ export default function DiseaseCaseDetail() {
     });
   }, [data, diseaseFilter, supplyKeyword]);
 
-  // Đổi bộ lọc thì quay về trang 1
   useEffect(() => {
     setCurrentPage(1);
   }, [diseaseFilter, supplyKeyword]);
@@ -151,7 +150,7 @@ export default function DiseaseCaseDetail() {
   const delta = data.summary.delta_cases_pct;
 
   const onExport = async () => {
-    // POST /reports/export (mang JWT) — báo cáo dịch bệnh đúng tháng của ca này.
+    // Báo cáo dịch bệnh đúng tháng của ca này
     const ym = `${data.case.year}-${String(data.case.month).padStart(2, '0')}`;
     const lastDay = new Date(data.case.year, data.case.month, 0).getDate();
     try {
@@ -215,9 +214,8 @@ export default function DiseaseCaseDetail() {
         </div>
       </div>
 
-      {/* KPI cards + bộ lọc nhanh */}
+      {/* KPI, bộ lọc nhanh */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Tổng loại thuốc */}
         <div className="bg-gradient-to-br from-blue-50 to-white rounded-2xl border border-blue-100 p-5">
           <p className="text-xs font-semibold uppercase text-blue-700 tracking-wide">
             Tổng loại thuốc
@@ -247,7 +245,6 @@ export default function DiseaseCaseDetail() {
           )}
         </div>
 
-        {/* Tổng số ca bệnh */}
         <div className="bg-gradient-to-br from-emerald-50 to-white rounded-2xl border border-emerald-100 p-5">
           <p className="text-xs font-semibold uppercase text-emerald-700 tracking-wide">
             Tổng số ca bệnh
@@ -272,7 +269,6 @@ export default function DiseaseCaseDetail() {
           )}
         </div>
 
-        {/* Bộ lọc nhanh */}
         <div className="bg-white rounded-2xl border border-neutral-200 p-5">
           <p className="text-xs font-semibold uppercase text-neutral-500 tracking-wide mb-3">
             Bộ lọc nhanh dữ liệu
@@ -307,7 +303,7 @@ export default function DiseaseCaseDetail() {
         </div>
       </div>
 
-      {/* Bảng danh sách thuốc đã cấp phát */}
+      {/* Bảng thuốc cấp phát */}
       <div className="bg-white rounded-2xl border border-neutral-200">
         <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-100">
           <div className="flex items-center gap-2">

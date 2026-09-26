@@ -1,27 +1,6 @@
 """Danh mục quản trị: bệnh, nhóm bệnh, khu vực — lưu JSON trong system_config.
-
-Đọc: mọi người dùng đã đăng nhập; ghi: Administrator. GET không ghi DB.
-Tham số DSS không nằm ở đây mà ở /dss/params.
-
-Routes
-------
-GET    /api/v1/admin/diseases               – Lấy danh sách bệnh (admin)
-POST   /api/v1/admin/diseases               – Thêm bệnh
-PUT    /api/v1/admin/diseases/{key}         – Cập nhật bệnh
-DELETE /api/v1/admin/diseases/{key}         – Xoá bệnh
-
-GET    /api/v1/admin/disease-groups         – Lấy danh sách nhóm bệnh (admin)
-POST   /api/v1/admin/disease-groups         – Thêm nhóm bệnh
-PUT    /api/v1/admin/disease-groups/{key}   – Cập nhật nhóm bệnh (tên, danh sách mã bệnh)
-DELETE /api/v1/admin/disease-groups/{key}   – Xoá nhóm bệnh
-
-GET    /api/v1/admin/regions                – Lấy danh sách khu vực
-POST   /api/v1/admin/regions                – Thêm khu vực
-DELETE /api/v1/admin/regions/{name}         – Xoá khu vực
-
-`admin.disease_groups` chỉ là danh mục tham khảo/hiển thị: sửa ở đây không đổi
-3 nhóm ICD của mô hình dự báo (NHOM_ICD trong app/utils/icd_groups.py). Đổi phạm
-vi nhóm dự báo phải sửa icd_groups.py và backtest lại.
+Đọc: mọi người dùng; ghi: Administrator. GET không ghi DB.
+Nhóm bệnh ở đây chỉ để hiển thị, không đổi NHOM_ICD của mô hình dự báo.
 """
 from __future__ import annotations
 
@@ -48,11 +27,8 @@ REGIONS_KEY = "admin.regions"
 
 # ── Helpers ──
 
-
 def _get_or_init(db: Session, key: str, default: str) -> SystemConfig:
-    """Dòng cấu hình theo khoá; chưa có thì trả bản mặc định chưa ghi DB.
-    Nhờ vậy GET không có tác dụng phụ; dòng chỉ được persist khi endpoint
-    ghi gọi `_save_list` (add + commit)."""
+    """Dòng cấu hình theo khoá; chưa có thì trả bản mặc định chưa ghi DB (persist khi `_save_list`)."""
     cfg = db.query(SystemConfig).filter(SystemConfig.config_key == key).first()
     if cfg:
         return cfg
@@ -77,7 +53,6 @@ def _save_list(db: Session, cfg: SystemConfig, items: List[Dict[str, Any]], user
 
 
 # ── Danh mục bệnh ──
-
 
 class DiseaseItem(BaseModel):
     key: str = Field(..., min_length=2, max_length=64)
@@ -168,11 +143,9 @@ def _seed_diseases() -> List[Dict[str, Any]]:
 
 # ── Nhóm bệnh ──
 
-
 class DiseaseGroupItem(BaseModel):
     key: str = Field(..., min_length=2, max_length=64)
     name: str = Field(..., min_length=1, max_length=120)
-    # Mã bệnh (key trong danh mục bệnh) thuộc nhóm.
     icd_codes: List[str] = Field(default_factory=list)
 
 
@@ -232,7 +205,7 @@ def delete_disease_group(
 
 
 def _seed_disease_groups() -> List[Dict[str, Any]]:
-    # Khởi tạo từ NHOM_ICD của mô hình dự báo; chỉnh sửa về sau chỉ ảnh hưởng hiển thị.
+    # Seed từ NHOM_ICD; sửa về sau chỉ ảnh hưởng hiển thị.
     return [
         {"key": nhom, "name": ten, "icd_codes": ma_thuoc_nhom(nhom)}
         for nhom, ten in NHOM_ICD.items()
@@ -240,7 +213,6 @@ def _seed_disease_groups() -> List[Dict[str, Any]]:
 
 
 # ── Khu vực ──
-
 
 class RegionItem(BaseModel):
     name: str = Field(..., min_length=1, max_length=120)

@@ -1,23 +1,7 @@
-"""Bộ huấn luyện đóng gói: xuất đầu vào mô hình từ DB ra file có phiên bản và nạp lại.
+"""Bộ huấn luyện đóng gói: xuất đầu vào mô hình từ DB ra CSV/Parquet có manifest (sha256) và nạp lại.
 
-Kèm manifest (số dòng, sha256, cột) để huấn luyện/dự báo chạy được trên máy không có DB:
-
-    python -m app.forecasting.train   --data dataset/v1     # huấn luyện + backtest từ file
-    python -m app.forecasting.predict --model ...           # dự báo từ artifact đã huấn luyện
-    python -m app.forecasting.dataset --db data/medforecast.db --out ../dataset/v1
-
-Các file dữ liệu (CSV UTF-8 có BOM để Excel mở đúng dấu; Parquet nếu có pyarrow):
-
-    nhom_thang.csv     period × block_code: cases, is_covid, is_complete, thời tiết
-                       cùng kỳ và trễ 1–2 tháng — đúng đầu vào của Tầng 1 mức nhóm
-    ma_thang.csv       period × block_code × icd_code: cases (đã gộp toàn quốc)
-    ty_trong_co_dinh.csv  block_code × icd_code × share — cho top-down cố định
-    dim_icd.csv        từ điển mã ICD: tên mã, khối, tên khối (tham chiếu, không
-                       phải dữ liệu quan sát) — để dựng lại danh mục khi cài mới
-
-Khử định danh: chỉ có số đếm theo tháng, không mã bệnh nhân, ngày khám hay địa chỉ
-dưới cấp tỉnh (bản phát hành gộp toàn quốc). Ô nhỏ (cases < 5 ở mức mã) được giữ
-vì là đếm theo tháng trên toàn viện (xem dataset/v1/DATASHEET.md).
+Dữ liệu đã khử định danh, chỉ có số đếm theo tháng gộp toàn quốc (xem dataset/v1/DATASHEET.md).
+Chạy: python -m app.forecasting.dataset --db data/medforecast.db --out ../dataset/v1
 """
 from __future__ import annotations
 
@@ -39,13 +23,8 @@ FILES = {"nhom": "nhom_thang.csv", "ma": "ma_thang.csv", "ty_trong": "ty_trong_c
 
 
 # ── Xuất ──
-
 def _add_lags(df: pd.DataFrame) -> pd.DataFrame:
-    """Thêm cột thời tiết trễ 1–2 tháng trên chuỗi đã sắp theo tháng của một khối.
-
-    Là đặc trưng HarmonicPoisson (weather_lags=(1,2)) và SARIMAX (lag 1) dùng, ghi ra
-    file để tham khảo; khi nạp lại mô hình tự tính lại.
-    """
+    """Thêm cột thời tiết trễ 1–2 tháng, chỉ để tham khảo vì mô hình tự tính lại khi nạp."""
     out = df.sort_values("period").reset_index(drop=True).copy()
     for c in WCOLS:
         if c in out:
@@ -55,7 +34,7 @@ def _add_lags(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_frames(db_path: str, region: str = "TOAN_QUOC") -> Dict[str, pd.DataFrame]:
-    """Dựng các bảng từ DB bằng cùng hàm đọc mà backtest/service dùng (data_access)."""
+    """Dựng các bảng từ DB qua data_access, cùng hàm đọc với backtest/service."""
     weather = da.weather_series(db_path, region)
     nhom_parts, ma_parts, tt_parts = [], [], []
     for b in da.list_blocks(db_path, region):
@@ -73,13 +52,12 @@ def build_frames(db_path: str, region: str = "TOAN_QUOC") -> Dict[str, pd.DataFr
 
     nhom = pd.concat(nhom_parts, ignore_index=True)
     ma = pd.concat(ma_parts, ignore_index=True) if ma_parts else pd.DataFrame()
-    # is_complete mức mã lấy theo kỳ của nhóm (cùng mốc chốt).
+    # is_complete mức mã lấy theo kỳ của nhóm.
     if not ma.empty:
         flag = nhom[["period", "block_code", "is_complete"]].drop_duplicates()
         ma = ma.merge(flag, on=["period", "block_code"], how="left")
     ty_trong = pd.DataFrame(tt_parts)
 
-    # Từ điển ICD để tham chiếu khi dựng lại danh mục.
     dim = pd.DataFrame(da._q(db_path,
         "select icd_code, icd_name, block_code, block_name, is_target from dim_icd "
         "order by icd_code"),
@@ -110,7 +88,7 @@ def export(db_path: str, out_dir: str | Path, region: str = "TOAN_QUOC",
             try:
                 pq = p.with_suffix(".parquet"); df.to_parquet(pq, index=False)
                 entry["parquet"] = pq.name
-            except Exception:                                 # noqa: BLE001 — pyarrow tuỳ chọn
+            except Exception:                                 # noqa: BLE001
                 pass
         files[key] = entry
 
@@ -141,16 +119,10 @@ def export(db_path: str, out_dir: str | Path, region: str = "TOAN_QUOC",
     return manifest
 
 
-# ── Nạp lại theo cấu trúc walk_forward_frames / forecast_group_next cần ──
-
+# ── Nạp lại ──
 def load(data_dir: str | Path, complete_only: bool = True,
          from_period: Optional[str] = None) -> Dict[str, object]:
-    """Đọc dataset/vX → {blocks, group[b], codes[b], shares[b], weather, manifest}.
-
-    `complete_only=True` bỏ kỳ chưa chốt (giống service). Thời tiết trả bảng riêng
-    [period, temp, humidity, rainfall] để `join_weather` ghép như khi đọc DB; cột *_lag
-    trong CSV chỉ để tham khảo.
-    """
+    """Đọc dataset/vX → {blocks, group[b], codes[b], shares[b], weather, manifest}; thời tiết trả bảng riêng để `join_weather`."""
     d = Path(data_dir)
     nhom = pd.read_csv(d / FILES["nhom"], encoding="utf-8-sig", dtype={"period": str})
     ma = pd.read_csv(d / FILES["ma"], encoding="utf-8-sig", dtype={"period": str})
@@ -185,7 +157,6 @@ def load(data_dir: str | Path, complete_only: bool = True,
 
 
 def main(argv=None):
-    """CLI: python -m app.forecasting.dataset --db data/medforecast.db --out ../dataset/v1"""
     import argparse
     ap = argparse.ArgumentParser(description="Xuất bộ huấn luyện đóng gói từ DB SQLite")
     ap.add_argument("--db", default="data/medforecast.db")

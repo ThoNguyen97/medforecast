@@ -119,9 +119,8 @@ class InventoryResponse(ORMBase, InventoryBase):
     id: int
     last_updated: datetime
     supply: Optional[MedicalSupplyResponse] = None
-    # Tồn âm có thật trong dữ liệu HIS (xuất trước, nhập bù sau). ge=0 ở
-    # InventoryBase chỉ để chặn nhập sai; ở chiều trả ra phải bỏ ràng buộc, nếu
-    # không một dòng âm gây ResponseValidationError (500) cho cả danh sách.
+    # Tồn âm có thật trong HIS (xuất trước, nhập bù sau); giữ ge=0 ở chiều trả ra
+    # sẽ gây ResponseValidationError cho cả danh sách.
     current_stock: int
     safety_stock: int
 
@@ -131,7 +130,6 @@ class InventoryResponse(ORMBase, InventoryBase):
 class EnvironmentalDataBase(BaseModel):
     recorded_at: datetime
     location: str = Field(..., min_length=1)
-    # Kiểm tra miền giá trị hợp lệ
     temperature: Optional[float] = Field(None, ge=10, le=45, description="°C, 10-45")
     humidity: Optional[float] = Field(None, ge=0, le=100, description="%, 0-100")
     rainfall: Optional[float] = Field(None, ge=0, description="mm, ≥ 0")

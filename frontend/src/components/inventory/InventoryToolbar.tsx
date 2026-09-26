@@ -9,7 +9,7 @@ export interface InventoryFilters {
   search: string;
   category: string; // 'all' | nhãn danh mục
   status: InventoryStatusFilter;
-  showUnmeasured: boolean; // hiện cả mã không có tiêu hao 12 kỳ (không đo được DOI)
+  showUnmeasured: boolean; // hiện cả mã không tiêu hao 12 kỳ
 }
 
 interface CategoryOption {
@@ -63,7 +63,7 @@ export default function InventoryToolbar({ filters, onChange, categories }: Prop
             onChange={(v) =>
               update({
                 status: v as InventoryStatusFilter,
-                // Chọn nhãn "không tiêu hao" thì phải hiện nhóm đó.
+                // Chọn nhãn "không tiêu hao" thì phải hiện nhóm đó
                 showUnmeasured: v === 'unmeasured' ? true : filters.showUnmeasured,
               })
             }

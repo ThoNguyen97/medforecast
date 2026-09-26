@@ -18,7 +18,7 @@ def setup_logging(log_level: str = "INFO") -> None:
     root_logger = logging.getLogger()
     root_logger.setLevel(numeric_level)
 
-    # Tránh nhân đôi handler khi gọi lại nhiều lần (ví dụ trong test)
+    # Tránh nhân đôi handler khi gọi lại
     if root_logger.handlers:
         root_logger.handlers.clear()
 
@@ -39,16 +39,12 @@ def setup_logging(log_level: str = "INFO") -> None:
     root_logger.addHandler(console_handler)
     root_logger.addHandler(file_handler)
 
-    # Giảm log của thư viện bên thứ ba
     logging.getLogger("uvicorn.access").setLevel(logging.INFO)
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
-    # echo=True đặt mức trực tiếp trên logger con "sqlalchemy.engine.Engine",
-    # nên phải đặt mức cho chính logger con này.
+    # echo=True đặt mức trên logger con Engine nên phải hạ riêng
     logging.getLogger("sqlalchemy.engine.Engine").setLevel(logging.WARNING)
 
-    # Chặn vòng lặp tự kích hoạt khi chạy uvicorn --reload: watchfiles ghi log INFO
-    # vào tệp log nằm trong thư mục đang theo dõi, gây reload liên tục.
-    # Hạ watchfiles xuống WARNING cắt vòng lặp kể cả khi thiếu `--reload-dir app`.
+    # watchfiles ghi INFO vào tệp log trong thư mục đang theo dõi gây reload liên tục
     logging.getLogger("watchfiles").setLevel(logging.WARNING)
     logging.getLogger("watchfiles.main").setLevel(logging.WARNING)
 

@@ -1,11 +1,4 @@
-"""Engine/session cho DB trung gian.
-
-Tách khỏi app.database để pipeline chạy độc lập (CLI, cron) và dễ test.
-Ưu tiên PIPELINE_DB_URL, sau đó DATABASE_URL, cuối cùng SQLite mặc định.
-
-Ví dụ SQLite:   sqlite:///./data/medforecast.db
-Ví dụ Postgres: postgresql+psycopg2://user:pass@host:5432/medforecast
-"""
+"""Engine/session cho DB trung gian, tách khỏi app.database để pipeline chạy độc lập (CLI, cron)."""
 from __future__ import annotations
 
 import os
@@ -18,10 +11,9 @@ Base = declarative_base()
 
 
 def get_db_url() -> str:
-    """URL của DB tầng dữ liệu: PIPELINE_DB_URL → DATABASE_URL → app.config → SQLite mặc định.
+    """URL DB tầng dữ liệu: PIPELINE_DB_URL → DATABASE_URL → app.config → SQLite mặc định.
 
-    Bậc app.config giữ bảng mart/fact trong cùng file DB với app khi không có `.env`;
-    nếu thiếu, pipeline ghi vào `medforecast_dw.db` riêng và Dashboard không thấy dữ liệu.
+    Bậc app.config giữ mart/fact cùng file DB với app khi không có `.env`, nếu không Dashboard không thấy dữ liệu.
     """
     url = os.environ.get("PIPELINE_DB_URL") or os.environ.get("DATABASE_URL")
     if url:
@@ -51,5 +43,5 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def init_db():
     """Tạo toàn bộ bảng của pipeline nếu chưa có."""
-    from . import models  # noqa: F401  (đăng ký bảng vào metadata)
+    from . import models  # noqa: F401
     Base.metadata.create_all(bind=engine)

@@ -1,10 +1,6 @@
 """CLI chạy đồng bộ pipeline một lần.
 
-Nguồn file:
-  python -m app.data_pipeline.run --source file --data-dir ../data --icd-dir ../data
-Nguồn SQL Server (MEDFORECAST_DW trên STA):
-  python -m app.data_pipeline.run --source sqlserver \
-      --conn "mssql+pyodbc://user:pass@host/MEDFORECAST_DW?driver=ODBC+Driver+17+for+SQL+Server"
+Chạy: python -m app.data_pipeline.run --source file|sqlserver [--conn URL] [--full] [--target-only]
 """
 from __future__ import annotations
 
@@ -27,7 +23,7 @@ def main():
     ap.add_argument("--target-only", action="store_true", help="chỉ giữ 3 nhóm hô hấp đích")
     args = ap.parse_args()
 
-    # Không bắt buộc có TM_ICD*.xlsx: nguồn STA đã kèm sẵn cột disease_group.
+    # TM_ICD*.xlsx không bắt buộc: nguồn STA đã kèm cột disease_group.
     hier = IcdHierarchy.from_dir_optional(args.icd_dir)
 
     if args.source == "file":

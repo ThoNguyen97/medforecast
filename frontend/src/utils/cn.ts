@@ -1,4 +1,4 @@
-/** Nối className có điều kiện (thay thế gọn cho clsx/classnames). */
+/** Nối className có điều kiện. */
 export function cn(...classes: (string | boolean | undefined | null)[]): string {
   return classes.filter(Boolean).join(' ');
 }

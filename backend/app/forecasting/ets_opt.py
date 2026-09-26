@@ -1,17 +1,13 @@
-"""ETS Holt–Winters (tuỳ chọn, cần statsmodels), thành viên làm mượt hàm mũ của ensemble.
+"""Thành viên ETS Holt–Winters của ensemble (cần statsmodels).
 
-Bổ sung cho các thành viên hồi quy mùa và SARIMAX: bám mức nền gần đây tốt hơn khi
-mức nền trôi (COVID 2020–2021). Trọng số thích ứng (combine.py) tự hạ nếu không giúp.
-
-Cấu hình: xu hướng cộng giảm chấn + mùa cộng 12 tháng, khớp trên log1p(cases) để ổn
-định phương sai và không âm; tháng COVID được nội suy vì ETS cần chuỗi liên tục.
+Xu hướng cộng giảm chấn, mùa cộng 12, khớp trên log1p(cases); tháng COVID nội suy vì ETS cần chuỗi liên tục.
 """
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 
-MIN_OBS = 24   # ≥ 2 chu kỳ mùa
+MIN_OBS = 24   # hai chu kỳ mùa
 
 
 class EtsForecaster:
@@ -47,7 +43,7 @@ class EtsForecaster:
         self.fitted = True
         return self
 
-    def predict(self, next_month: int) -> float:   # noqa: ARG002 — mùa đã nằm trong trạng thái
+    def predict(self, next_month: int) -> float:   # noqa: ARG002
         if self._res is None:
             raise RuntimeError("ETS chưa fit")
         eta = float(np.ravel(self._res.forecast(1))[0])

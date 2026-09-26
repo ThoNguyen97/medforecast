@@ -48,7 +48,7 @@ describe('formatCurrency', () => {
 
 describe('formatDate', () => {
   it('formats a date string to dd/mm/yyyy', () => {
-    // Mốc cố định để ngày/tháng/năm không phụ thuộc múi giờ
+    // Mốc cố định, không phụ thuộc múi giờ
     const result = formatDate('2024-01-15');
     expect(result).toMatch(/15/);
     expect(result).toMatch(/01|1/);
@@ -65,7 +65,6 @@ describe('formatDateTime', () => {
   it('includes both date and time parts', () => {
     const result = formatDateTime('2024-01-15T10:30:00');
     expect(result).toMatch(/2024/);
-    // Phần giờ luôn dùng dấu hai chấm
     expect(result).toMatch(/:/);
   });
 });

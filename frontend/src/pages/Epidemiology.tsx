@@ -35,7 +35,7 @@ interface CaseRow {
   recorded_at: string;
   icd_code: DiseaseType | string;
   disease_name: string;
-  // disease_type giữ để tương thích API (null hoặc 'respiratory')
+  // disease_type giữ để tương thích API
   disease_type?: DiseaseType | string;
   case_count: number;
   location: string;
@@ -64,10 +64,10 @@ export default function Epidemiology() {
   const [exporting, setExporting] = useState(false);
   const [exportMsg, setExportMsg] = useState<string | null>(null);
 
-  // Bộ lọc tạm (giá trị đang nhập trên form)
+  // Bộ lọc đang nhập
   const [tempDisease, setTempDisease] = useState<string>('all');
 
-  // Mã ICD → nhóm ICD ('J13' → 'J09-J18'), dùng khi bản ghi không có disease_group.
+  // Mã ICD → nhóm ICD khi bản ghi không có disease_group
   const nhomCuaMa = (icd?: string): string | null => {
     const n = parseInt((icd ?? '').replace(/^J/i, ''), 10);
     if (Number.isNaN(n)) return null;
@@ -86,8 +86,7 @@ export default function Epidemiology() {
   const [startMonth, setStartMonth] = useState<string>('');
   const [endMonth, setEndMonth] = useState<string>('');
 
-  // Combobox "Nhóm bệnh" gồm ba nhóm ICD vì dự báo chạy ở cấp nhóm (chuỗi mã lẻ
-  // quá thưa làm mô hình mất ổn định); mã lẻ vẫn hiện ở từng dòng.
+  // Lọc theo nhóm ICD vì dự báo chạy ở cấp nhóm (chuỗi mã lẻ quá thưa).
   const [diseaseOptions, setDiseaseOptions] = useState<{ key: string; label: string }[]>([]);
   const [regionOptions, setRegionOptions] = useState<string[]>([]);
 
@@ -128,9 +127,7 @@ export default function Epidemiology() {
   const loadData = async () => {
     setLoading(true);
     try {
-      // Tải toàn bộ rồi lọc ở client theo icd_code và tên tỉnh đã chuẩn hoá: backend
-      // so khớp tuyệt đối (disease_type luôn = 'respiratory', location lưu tên đầy
-      // đủ) nên lọc phía server dễ trả về 0 dòng.
+      // Tải toàn bộ rồi lọc ở client: backend so khớp tuyệt đối nên lọc server dễ trả 0 dòng.
       const params: any = { limit: 50000 };
       const data = await epidemiologyService.getDiseaseCases(params);
       setItems(data as any);
@@ -143,8 +140,7 @@ export default function Epidemiology() {
 
   const loadDistinctValues = async () => {
     try {
-      // Ưu tiên danh mục khu vực từ trang Quản trị, gộp thêm giá trị có trong DB
-      // để không bỏ sót khu vực.
+      // Gộp danh mục khu vực Quản trị với giá trị trong DB
       const [adminRes, distinctRes] = await Promise.all([
         api.get('/admin/regions').catch(() => ({ data: [] as any[] })),
         api.get('/disease-cases/distinct-values').catch(() => ({
@@ -152,8 +148,7 @@ export default function Epidemiology() {
         })),
       ]);
 
-      // Dropdown lọc theo nhóm ICD (nguồn /distinct-values); dùng danh mục tĩnh
-      // khi backend không trả disease_groups.
+      // Danh mục tĩnh khi backend không trả disease_groups
       const nhom = (distinctRes.data?.disease_groups ?? []) as {
         key: string; name: string;
       }[];
@@ -167,8 +162,7 @@ export default function Epidemiology() {
             ],
       );
 
-      // Tỉnh/Thành: lấy trường province của admin.regions (nếu có), gộp với giá
-      // trị trong DB.
+      // Tỉnh/Thành: province của admin.regions gộp giá trị trong DB
       const adminRegions: any[] = adminRes.data || [];
       const adminProvinces = new Set<string>();
       for (const r of adminRegions) {
@@ -177,14 +171,12 @@ export default function Epidemiology() {
         if (prov && typeof prov === 'string') {
           adminProvinces.add(prov);
         } else if (name) {
-          // Không có province → coi là Tỉnh/Thành
           adminProvinces.add(name);
         }
       }
 
       const dbRegions: string[] = distinctRes.data?.regions ?? [];
 
-      // Dropdown tỉnh: ưu tiên master 63 tỉnh.
       const LEGACY_ALLOW = new Set(['Toàn thành phố']);
       const extraFromAdminDb = [...adminProvinces, ...dbRegions]
         .map((n) => normalizeProvinceName(n))
@@ -223,17 +215,14 @@ export default function Epidemiology() {
   };
 
   const filtered = useMemo(() => {
-    // Tháng (YYYY-MM) → khoảng ngày
     let fromStr = startMonth ? `${startMonth}-01` : '';
     let toStr = endMonth ? `${endMonth}-01` : '';
     
-    // Đảo lại nếu người dùng nhập ngược
     if (fromStr && toStr && fromStr > toStr) {
       [fromStr, toStr] = [toStr, fromStr];
     }
     
     const from = fromStr ? new Date(`${fromStr}T00:00:00`) : null;
-    // Tháng kết thúc lấy tới ngày cuối tháng
     const to = toStr ? new Date(new Date(toStr).getFullYear(), new Date(toStr).getMonth() + 1, 0, 23, 59, 59) : null;
 
     return items.filter((it) => {
@@ -269,8 +258,7 @@ export default function Epidemiology() {
     window.open(`${api.defaults.baseURL}/disease-cases/template`, '_blank');
   };
 
-  // Xuất Excel theo bộ lọc đã áp dụng (selected*, không phải temp*); gọi API
-  // kèm JWT, nhận blob rồi tải về.
+  // Xuất Excel theo bộ lọc đã áp dụng (selected*, không phải temp*)
   const handleExportExcel = async () => {
     if (exporting) return;
     setExporting(true);
@@ -396,7 +384,6 @@ export default function Epidemiology() {
     const diseaseName = diseaseNameMap[formDisease] || formDisease;
     try {
       if (editing) {
-        // Dùng PUT để giữ nguyên id và created_at
         await api.put(`/disease-cases/${editing.id}`, {
           recorded_at: isoDate,
           icd_code: formDisease,
@@ -421,7 +408,7 @@ export default function Epidemiology() {
       loadData();
       queryClient.invalidateQueries({ queryKey: ['disease-cases'] });
     } catch (err: any) {
-      // Backend trả 409 khi trùng tháng/bệnh/khu vực
+      // 409 = trùng tháng/bệnh/khu vực
       const detail = err?.response?.data?.detail;
       const message =
         typeof detail === 'string'
@@ -444,12 +431,10 @@ export default function Epidemiology() {
   // ── Hàm hỗ trợ ─────────────────────────────────────────────────────────────
 
   const diseaseLabel = (input: CaseRow | string | { icd_code?: string; disease_name?: string; disease_type?: string }) => {
-    // Nhận mã ICD hoặc giá trị disease_type
     if (typeof input === 'string') {
       return DISEASE_TYPE_LABELS[input] || input;
     }
     if (!input || typeof input !== 'object') return '—';
-    // Ưu tiên: disease_name > nhãn ICD > disease_type
     if ('disease_name' in input && input.disease_name) return input.disease_name as string;
     if (input.icd_code && DISEASE_TYPE_LABELS[input.icd_code]) return DISEASE_TYPE_LABELS[input.icd_code];
     if (input.icd_code) return input.icd_code;
@@ -457,8 +442,7 @@ export default function Epidemiology() {
     return input.disease_type || '—';
   };
 
-  // Tên nhóm ICD ở cột "Nhóm bệnh", khớp NHOM_ICD của backend
-  // (app/utils/icd_groups.py).
+  // Khớp NHOM_ICD của backend (app/utils/icd_groups.py)
   const NHOM_ICD_NAME: Record<string, string> = {
     'J00-J06': 'Nhiễm khuẩn cấp đường hô hấp trên',
     'J09-J18': 'Cúm và viêm phổi',
@@ -550,8 +534,7 @@ export default function Epidemiology() {
         </div>
       </div>
 
-      {/* Bộ lọc một hàng (Từ tháng · Đến tháng · Nhóm bệnh · Tỉnh/Thành · nút);
-          control cao h-9, màn hẹp tự xuống dòng theo flex-wrap. */}
+      {/* Bộ lọc */}
       <div className="bg-white rounded-2xl border border-neutral-200 px-5 py-4">
         <div className="flex flex-wrap items-end gap-x-3 gap-y-3">
           <div className="inline-flex items-center gap-2 h-9 pr-1 text-sm font-semibold text-blue-700">
@@ -559,7 +542,6 @@ export default function Epidemiology() {
             Bộ lọc nâng cao
           </div>
 
-          {/* Từ tháng */}
           <label className="block w-44">
             <span className="block text-xs font-medium text-neutral-600 mb-1">Từ tháng</span>
             <div className="relative">
@@ -573,7 +555,6 @@ export default function Epidemiology() {
             </div>
           </label>
 
-          {/* Đến tháng */}
           <label className="block w-44">
             <span className="block text-xs font-medium text-neutral-600 mb-1">Đến tháng</span>
             <div className="relative">
@@ -587,7 +568,6 @@ export default function Epidemiology() {
             </div>
           </label>
 
-          {/* Nhóm bệnh */}
           <label className="block flex-1 min-w-[220px] max-w-xs">
             <span className="block text-xs font-medium text-neutral-600 mb-1">Nhóm bệnh</span>
             <div className="relative">
@@ -608,7 +588,6 @@ export default function Epidemiology() {
             </div>
           </label>
 
-          {/* Tỉnh/Thành */}
           <label className="block w-52">
             <span className="block text-xs font-medium text-neutral-600 mb-1">Tỉnh/Thành</span>
             <div className="relative">
@@ -629,7 +608,6 @@ export default function Epidemiology() {
             </div>
           </label>
 
-          {/* Nút */}
           <button
             type="button"
             onClick={handleApplyFilters}
@@ -842,7 +820,7 @@ export default function Epidemiology() {
                     } else {
                       setFormRegion(e.target.value);
                     }
-                    setFormDistrict(''); // đổi tỉnh thì xoá quận/huyện đã chọn
+                    setFormDistrict('');
                   }}
                   className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm bg-white"
                 >

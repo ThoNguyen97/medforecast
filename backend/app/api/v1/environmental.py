@@ -161,12 +161,7 @@ async def import_environmental_csv_upload(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Import dữ liệu môi trường từ CSV, upsert theo (tháng, tỉnh, quận).
-
-    Cột: month, province_city, district_ward, avg_temp, humidity, rainfall, aqi, pm25.
-    Kiểm tra: nhiệt độ 10–45°C, độ ẩm 0–100%, mưa/AQI/PM2.5 ≥ 0. Khu vực mới
-    được tự đăng ký vào admin.regions.
-    """
+    """Import dữ liệu môi trường từ CSV, upsert theo (tháng, tỉnh, quận); khu vực mới tự đăng ký vào admin.regions."""
     import csv as _csv
     import io as _io
     import json as _json
@@ -189,8 +184,7 @@ async def import_environmental_csv_upload(
 
     for idx, row in enumerate(reader, start=2):
         month = (row.get("month") or "").strip()
-        # Chuẩn hoá tên tỉnh khi ghi ("Thành phố Hồ Chí Minh" → "TP. Hồ Chí Minh")
-        # để khoá upsert không sinh dòng trùng.
+        # Chuẩn hoá tên tỉnh để khoá upsert không sinh dòng trùng.
         prov = ten_chuan((row.get("province_city") or row.get("location") or "").strip())
         dist = (row.get("district_ward") or "").strip()
 
@@ -350,10 +344,7 @@ async def env_trend(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Trung bình các yếu tố thời tiết của cùng một tháng qua các năm.
-
-    Trả danh sách [{year, temp, humidity, rainfall, aqi, pm25}].
-    """
+    """Trung bình các yếu tố thời tiết của cùng một tháng qua các năm."""
     from app.models.environmental_data import EnvironmentalData
     from sqlalchemy import extract, func as _func
 
@@ -445,8 +436,6 @@ def delete_environmental_record(
 
 
 # ── Open-Meteo ──
-# Thời tiết và chất lượng không khí từ API công khai Open-Meteo (không cần API key).
-
 
 @router.post("/sync-openmeteo")
 def sync_openmeteo(
@@ -465,12 +454,7 @@ def sync_openmeteo(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Đồng bộ thời tiết từ Open-Meteo vào environmental_data, gộp theo tháng.
-
-    Quá khứ `months_back` tháng lấy từ archive API; `forecast_days` ngày tới lấy
-    từ forecast API; AQI/PM2.5 lấy từ air-quality API (lịch sử + 5 ngày dự báo).
-    Mỗi tháng upsert một dòng cấp tỉnh theo (recorded_at = đầu tháng, location).
-    """
+    """Đồng bộ thời tiết và AQI từ Open-Meteo, gộp theo tháng, upsert một dòng cấp tỉnh mỗi tháng."""
     from datetime import date as _date, timedelta as _timedelta
     from app.services.openmeteo_client import OpenMeteoClient
     from app.models.environmental_data import EnvironmentalData
@@ -483,14 +467,14 @@ def sync_openmeteo(
                    f"Thêm vào PROVINCE_COORDS trong openmeteo_client.py.",
         )
     lat, lon = coords
-    # lookup_coords nhận mọi biến thể tên; khoá upsert bên dưới cần tên chuẩn.
+    # Khoá upsert cần tên chuẩn.
     province = ten_chuan(province)
 
     client = OpenMeteoClient()
 
-    # Bước 1: dữ liệu lịch sử từ đầu tháng thứ `months_back` trước đến hôm qua.
+    # Lịch sử: từ đầu tháng thứ `months_back` trước đến hôm qua.
     today = _date.today()
-    earliest = (today.replace(day=1) - _timedelta(days=1)).replace(day=1)  # đầu tháng trước
+    earliest = (today.replace(day=1) - _timedelta(days=1)).replace(day=1)
     for _ in range(months_back - 1):
         earliest = (earliest - _timedelta(days=1)).replace(day=1)
 
@@ -504,14 +488,13 @@ def sync_openmeteo(
         logger.error("Open-Meteo archive fetch failed: %s", exc)
         historical_rows = []
 
-    # Bước 2: dự báo theo ngày.
     try:
         forecast_rows = client.get_daily_forecast(lat, lon, forecast_days=forecast_days)
     except Exception as exc:
         logger.error("Open-Meteo forecast fetch failed: %s", exc)
         forecast_rows = []
 
-    # Bước 3: AQI/PM2.5 lịch sử cùng khoảng với thời tiết, cộng 5 ngày dự báo.
+    # AQI/PM2.5: lịch sử cùng khoảng, cộng 5 ngày dự báo.
     try:
         aq_rows = client.get_air_quality_historical(lat, lon, earliest, historical_end)
     except Exception as exc:
@@ -526,7 +509,6 @@ def sync_openmeteo(
 
     aq_map = {r["date"]: r for r in aq_rows}
 
-    # Gộp theo (năm, tháng), ghép AQI/PM2.5 theo ngày.
     all_rows = historical_rows + forecast_rows
     monthly: dict[tuple[int, int], dict] = {}
     for r in all_rows:

@@ -6,25 +6,22 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
-# Nạp .env vào os.environ để các biến PIPELINE_* (nguồn đồng bộ HIS) dùng được.
+# Nạp .env vào os.environ cho các biến PIPELINE_*.
 load_dotenv()
 
 from app.config import settings
 from app.core.logging import setup_logging
 from app.database import Base, engine
 
-# ── Logging ──────────────────────────────────────────────────────────────────
 setup_logging(settings.LOG_LEVEL)
 logger = logging.getLogger(__name__)
 
-# ── Database ──────────────────────────────────────────────────────────────────
-# Nạp mọi model để SQLAlchemy đăng ký trước create_all
+# Nạp mọi model trước create_all
 import app.models  # noqa: F401, E402
 
 Base.metadata.create_all(bind=engine)
 logger.info("Database tables verified / created.")
 
-# Ghi log đường dẫn tuyệt đối của file SQLite đang dùng để dễ đối chiếu khi vận hành.
 if settings.DATABASE_URL.startswith("sqlite:///"):
     from pathlib import Path as _Path
     _db = _Path(settings.DATABASE_URL[len("sqlite:///"):]).resolve()
@@ -32,7 +29,6 @@ if settings.DATABASE_URL.startswith("sqlite:///"):
                 _db, _db.exists(), _db.stat().st_size if _db.exists() else 0,
                 _Path.cwd())
 
-# Tạo bảng tầng dữ liệu (mart/fact) trong cùng CSDL ứng dụng.
 try:
     from app.data_pipeline.db import init_db as _pipeline_init_db
     _pipeline_init_db()
@@ -40,8 +36,7 @@ try:
 except Exception as _e:  # noqa: BLE001
     logger.warning("Pipeline table init skipped (non-fatal): %s", _e)
 
-# Lược đồ ngoài ORM (bảng tự quản, cấu hình DSS, view SQLite) mà create_all không
-# quản lý; thiếu view thì Tầng 2/3 trả rỗng mà không báo lỗi. Idempotent.
+# Lược đồ ngoài ORM (view SQLite, cấu hình DSS); thiếu view thì Tầng 2/3 trả rỗng.
 try:
     from app.data_pipeline.views import dam_bao_luoc_do as _dam_bao
     _kq = _dam_bao()
@@ -53,12 +48,9 @@ try:
 except Exception as _e:  # noqa: BLE001
     logger.warning("Bỏ qua dựng lược đồ ngoài ORM (non-fatal): %s", _e)
 
-# ── Application ───────────────────────────────────────────────────────────────
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Vòng đời ứng dụng: dọn log quá hạn lưu trữ khi khởi động."""
-    # Lỗi dọn log không chặn khởi động
     try:
         from app.database import SessionLocal
         from app.services.audit_log_service import AuditLogService
@@ -89,7 +81,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ── CORS ──────────────────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
@@ -101,7 +92,6 @@ app.add_middleware(
 logger.info("CORS configured for origins: %s", settings.cors_origins_list)
 
 
-# ── Routes ────────────────────────────────────────────────────────────────────
 @app.get("/", tags=["root"])
 async def root():
     """Thông tin cơ bản của dịch vụ."""
@@ -123,7 +113,6 @@ async def health_check():
     }
 
 
-# ── API Routes ────────────────────────────────────────────────────────────────
 from app.api.v1 import (auth, users, inventory, environmental, disease_cases,
                         supply_requirements, dashboard, reports, config, audit_logs,
                         forecast_analysis, admin_catalog, sync, dss_config)

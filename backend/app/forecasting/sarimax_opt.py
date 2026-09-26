@@ -1,9 +1,6 @@
-"""SARIMAX (tùy chọn, cần statsmodels), thành viên ensemble dùng thời tiết trễ làm exog.
+"""Thành viên SARIMAX của ensemble (cần statsmodels), thời tiết trễ làm exog.
 
-build_default_ensemble() tự thử import lớp này; thiếu statsmodels thì bỏ qua.
-- Smearing tính trên phần dư thang log, bỏ 13 quan sát đầu (mùa + sai phân) chưa ổn định.
-- Fit lỗi thì `_ok=False` và predict báo lỗi để Ensemble ghi lý do, không trả giá trị thay thế.
-- is_covid không dùng làm exog: SARIMAX có sai phân nên chịu được cú sốc mức nền.
+Fit lỗi thì predict báo lỗi để Ensemble ghi lý do; không dùng is_covid làm exog vì sai phân đã chịu được cú sốc mức nền.
 """
 from __future__ import annotations
 from typing import Optional
@@ -11,8 +8,8 @@ import numpy as np
 import pandas as pd
 
 WCOLS = ["temp", "humidity", "rainfall"]
-BURN_IN = 13   # s + d = 12 + 1
-MIN_OBS = 26   # ≥ 2 chu kỳ mùa + sai phân
+BURN_IN = 13   # s + d
+MIN_OBS = 26   # hai chu kỳ mùa + sai phân
 
 
 class SarimaxForecaster:
@@ -33,16 +30,11 @@ class SarimaxForecaster:
         return "sarimax_weather" if self._used_exog else "sarimax"
 
     def _exog(self, df: pd.DataFrame) -> Optional[np.ndarray]:
-        """Thời tiết trễ 1 tháng, chuẩn hoá z-score theo cửa sổ huấn luyện.
-
-        Exog thô (mưa hàng trăm mm) với enforce_stationarity=False làm hệ số phình khi
-        không hội tụ và exp() thổi dự báo lên cực lớn; chuẩn hoá đưa các cột về thang O(1).
-        mean/std được lưu để áp cho hàng dự báo.
-        """
+        """Thời tiết trễ 1 tháng chuẩn hoá z-score; exog thô làm hệ số phình khi không hội tụ và exp() thổi dự báo."""
         if not (self.use_weather and all(c in df.columns for c in WCOLS)):
             return None
         if df[WCOLS].notna().sum().min() < 12:
-            return None                                   # chưa đủ thời tiết
+            return None
         cols, last = [], []
         self._ex_mu, self._ex_sd = [], []
         for c in WCOLS:
@@ -53,8 +45,7 @@ class SarimaxForecaster:
             sd = sd if sd > 0 else 1.0
             self._ex_mu.append(mu); self._ex_sd.append(sd)
             cols.append((v - mu) / sd)
-            # Exog cho bước dự báo n: huấn luyện dùng w[t − lag], nên bước n cần
-            # w[n − lag] = dòng thứ `lag` từ cuối, chưa shift (exog[-1] trễ thêm một bước).
+            # Bước dự báo n cần w[n − lag] = dòng thứ `lag` từ cuối, chưa shift.
             r_last = raw.iloc[-self.weather_lag] if len(raw) >= self.weather_lag else np.nan
             r_last = float(r_last) if pd.notna(r_last) else mu
             last.append((r_last - mu) / sd)
@@ -65,11 +56,10 @@ class SarimaxForecaster:
         self._ok = False
         self.fitted = False
         try:
-            from statsmodels.tsa.statespace.sarimax import SARIMAX  # lazy
+            from statsmodels.tsa.statespace.sarimax import SARIMAX
             y = np.log1p(df["cases"].to_numpy(float))
             if len(y) < MIN_OBS:
-                # statsmodels ném IndexError khó hiểu trên chuỗi ngắn hơn ~2 chu kỳ mùa;
-                # báo lỗi rõ để Ensemble ghi lý do.
+                # statsmodels ném IndexError khó hiểu trên chuỗi ngắn.
                 raise ValueError(f"chuỗi {len(y)} tháng < {MIN_OBS}, quá ngắn cho SARIMAX mùa 12")
             exog = self._exog(df)
             self._used_exog = exog is not None
@@ -88,7 +78,7 @@ class SarimaxForecaster:
             self.fitted = True
         except Exception:
             self._ok = False
-            self.fitted = False               # Ensemble sẽ bỏ qua và ghi lý do
+            self.fitted = False
             raise
         return self
 

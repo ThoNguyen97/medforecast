@@ -1,14 +1,5 @@
 """API tham số DSS và bảng tra định mức thực nghiệm cho màn Quản trị.
-
-Hai bản ghi system_config được quản lý ở đây là nguồn tham số duy nhất của DSS:
-`dss.care_level` (Tầng 2, định mức thực nghiệm từ fact_usage/cases_by_care_level)
-và `dss.thresholds` (Tầng 3, ngưỡng DOI).
-
-Routes
-------
-GET  /api/v1/dss/params     – Tham số Tầng 2 + Tầng 3 kèm mô tả (mọi người đọc được)
-PUT  /api/v1/dss/params     – Sửa (Admin), ghi audit_logs qua ConfigService
-GET  /api/v1/dss/norms      – Định mức thực nghiệm theo nhóm × rổ × mã (chỉ đọc)
+Quản lý hai khoá system_config: dss.care_level (Tầng 2) và dss.thresholds (Tầng 3).
 """
 from __future__ import annotations
 
@@ -31,7 +22,7 @@ router = APIRouter(tags=["dss-config"])
 logger = logging.getLogger(__name__)
 
 
-# ── Mô tả tham số: hiển thị dưới ô nhập để người sửa biết hệ quả ──
+# ── Mô tả tham số (hiển thị dưới ô nhập) ──
 
 MO_TA: Dict[str, Dict[str, Dict[str, Any]]] = {
     "thresholds": {
@@ -147,8 +138,7 @@ def _kiem(nhom: str, gia_tri: Dict[str, Any]) -> Dict[str, Any]:
 def update_params(body: DssParamsUpdate, request: Request,
                   db: Session = Depends(get_db),
                   current_user: User = Depends(get_admin_user)) -> Dict[str, Any]:
-    """Sửa một phần hoặc toàn bộ tham số (Admin). Khoá không gửi giữ nguyên, ghi
-    chú `nguon` trong JSON được giữ; mỗi lần lưu ghi một dòng audit_logs (UPDATE_CONFIG)."""
+    """Sửa một phần hoặc toàn bộ tham số (Admin); khoá không gửi giữ nguyên, có ghi audit_logs."""
     svc = ConfigService(db)
     ip = request.client.host if request.client else "unknown"
     da_doi: Dict[str, Any] = {}
@@ -188,8 +178,7 @@ def get_norms(block: str = Query("J00-J06", description="J00-J06 | J09-J18 | J20
               offset: int = Query(0, ge=0),
               db: Session = Depends(get_db),
               current_user: User = Depends(get_current_user)) -> Dict[str, Any]:
-    """Định mức thực nghiệm Tầng 2 đang dùng (hệ số nhân với Ŷ_g × p̂) để đối chiếu.
-    Chỉ đọc: định mức tự cập nhật sau mỗi lần đồng bộ HIS."""
+    """Định mức thực nghiệm Tầng 2 đang dùng (chỉ đọc, tự cập nhật sau đồng bộ HIS)."""
     try:
         return dss_demand.norms_payload(db, block=block, q=q, limit=limit, offset=offset)
     except ValueError as exc:

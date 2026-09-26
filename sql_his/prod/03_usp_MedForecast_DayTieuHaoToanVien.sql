@@ -1,25 +1,16 @@
 ﻿USE GIAAN115_HIS
 GO
 
-/* =============================================================================
-   prod/03_usp_MedForecast_DayTieuHaoToanVien.sql
-   Chạy trên: HIS PROD (GIAAN115_HIS). Điều kiện: prod/01 (linked server),
-   sta/03 (bảng MF_TieuHao_Tong).
-   Mục đích: gom tiêu hao theo (tháng × vật tư) trên toàn viện, tách phần thuộc
-   lượt khám có chẩn đoán hô hấp, rồi đẩy xuống STA MF_TieuHao_Tong (mẫu số DOI
-   và D_baseline). Nạp lại toàn bộ cửa sổ @SoThang tháng mỗi lần chạy.
-
-   @GomVTYT mặc định 1 dù DSS chỉ xét thuốc: lọc is_vtyt = 0 được làm ở các view
-   SQLite (app/data_pipeline/views.py). Giữ VTYT ở đây để còn số liệu đối chứng
-   cho quyết định loại VTYT: VTYT tiêu thụ theo lượt khám, không theo chẩn đoán,
-   nên tỷ trọng hô hấp của chúng không phản ánh nhu cầu do dịch tễ chi phối.
-   Bật/tắt VTYT không đổi kết quả DOI của thuốc.
-============================================================================= */
+/* prod/03_usp_MedForecast_DayTieuHaoToanVien.sql
+   Chạy trên: HIS PROD (GIAAN115_HIS). Điều kiện: prod/01, sta/03.
+   Mục đích: gom tiêu hao tháng × vật tư toàn viện, tách phần thuộc lượt có chẩn đoán hô hấp,
+   đẩy xuống STA MF_TieuHao_Tong (mẫu số DOI và D_baseline); nạp lại cả cửa sổ @SoThang mỗi lần.
+   @GomVTYT giữ 1 để còn số liệu đối chứng; view SQLite lọc is_vtyt = 0, không đổi DOI của thuốc. */
 CREATE OR ALTER PROCEDURE dbo.usp_MedForecast_DayTieuHaoToanVien
-    @BENHVIEN_ID   VARCHAR(8)    = NULL,   -- điền khi DB chứa nhiều bệnh viện
-    @SoThang       INT           = 24,     -- cửa sổ nạp lại; hạ xuống nếu chạy quá lâu
+    @BENHVIEN_ID   VARCHAR(8)    = NULL,   -- khi DB chứa nhiều bệnh viện
+    @SoThang       INT           = 24,     -- cửa sổ nạp lại
     @NhomBenhDich  NVARCHAR(400) = N'J00-J06,J09-J18,J20-J22',
-    @GomVTYT       BIT           = 1,      -- giữ 1: view SQLite lọc is_vtyt = 0 (xem đầu file)
+    @GomVTYT       BIT           = 1,
     @ChiXem        BIT           = 0
 AS
 BEGIN
@@ -36,7 +27,7 @@ BEGIN
         PRINT CONCAT(N'Tiêu hao toàn viện từ ', CONVERT(varchar(10), @Tu, 120),
                      N' đến ', CONVERT(varchar(10), @Den, 120));
 
-        /* ── 1) Danh mục vật tư ─────────────────────────────────────────── */
+        /* 1) Danh mục vật tư */
         IF OBJECT_ID('tempdb..#Meta') IS NOT NULL DROP TABLE #Meta;
         SELECT  D.DUOC_ID,
                 D.MADUOC        AS SupplyCode,
@@ -53,7 +44,7 @@ BEGIN
           AND  (@BENHVIEN_ID IS NULL OR D.BENHVIEN_ID = @BENHVIEN_ID);
         CREATE UNIQUE CLUSTERED INDEX IX_Meta ON #Meta(DUOC_ID);
 
-        /* ── 2) Danh mục ICD đích ───────────────────────────────────────── */
+        /* 2) Danh mục ICD đích */
         IF OBJECT_ID('tempdb..#NhomDich') IS NOT NULL DROP TABLE #NhomDich;
         SELECT LTRIM(RTRIM(value)) AS Nhom
         INTO   #NhomDich
@@ -75,8 +66,7 @@ BEGIN
         WHERE  icd.MAICD IS NOT NULL AND LEN(LTRIM(RTRIM(icd.MAICD))) >= 3;
         CREATE UNIQUE CLUSTERED INDEX IX_Ma3 ON #Ma3(Ma3);
 
-        /* ── 3) Tất cả lượt khám trong cửa sổ, kèm tháng ────────────────── */
-        /*     Bước nặng nhất; nếu chạy quá lâu, hạ @SoThang.                */
+        /* 3) Mọi lượt khám trong cửa sổ; bước nặng nhất, chạy lâu thì hạ @SoThang */
         IF OBJECT_ID('tempdb..#KbAll') IS NOT NULL DROP TABLE #KbAll;
         SELECT CAST('NT' AS VARCHAR(3)) AS Loai,
                KB.KHAMBENH_ID,
@@ -99,7 +89,7 @@ BEGIN
 
         SELECT @nLuot = COUNT(DISTINCT TIEPNHAN_ID) FROM #KbAll;
 
-        /* ── 4) Lượt khám có chẩn đoán hô hấp (chính hoặc phụ) ──────────── */
+        /* 4) Lượt khám có chẩn đoán hô hấp chính hoặc phụ */
         IF OBJECT_ID('tempdb..#KbHH') IS NOT NULL DROP TABLE #KbHH;
         SELECT DISTINCT Loai, KHAMBENH_ID
         INTO   #KbHH
@@ -139,7 +129,7 @@ BEGIN
         ) z;
         CREATE CLUSTERED INDEX IX_KbHH ON #KbHH(Loai, KHAMBENH_ID);
 
-        /* ── 5) Gom tiêu hao: toàn viện và phần hô hấp ──────────────────── */
+        /* 5) Gom tiêu hao toàn viện và phần hô hấp */
         IF OBJECT_ID('tempdb..#KQ') IS NOT NULL DROP TABLE #KQ;
         SELECT
             t.Thang                                AS Period,
@@ -185,18 +175,16 @@ BEGIN
         PRINT CONCAT(N'Dòng = ', @nDong, N', mã = ', @nMa, N', lượt khám = ', @nLuot,
                      N', tỷ trọng hô hấp chung = ', @TyTrongChung, N'%');
 
-        /* Bất biến: phần hô hấp không vượt tổng; vượt nghĩa là JOIN sang
-           #KbHH đã nhân bản dòng toa.                                        */
+        /* Bất biến: phần hô hấp không vượt tổng, vượt là JOIN #KbHH nhân bản dòng toa */
         IF EXISTS (SELECT 1 FROM #KQ WHERE so_luong_hohap > so_luong_toan_vien + 0.001)
             THROW 50021, N'Có dòng mà lượng hô hấp lớn hơn lượng toàn viện — JOIN đang nhân bản. Không đẩy.', 1;
 
-        /* Kiểm tra hợp lý: tỷ trọng hô hấp chung kỳ vọng quanh 7,80%; ngoài
-           (0, 40] thì nhiều khả năng bộ lọc ICD sai.                          */
+        /* Tỷ trọng hô hấp chung kỳ vọng quanh 7,80%; ngoài (0, 40] thường do bộ lọc ICD sai */
         IF @TyTrongChung IS NULL OR @TyTrongChung <= 0 OR @TyTrongChung > 40
             PRINT CONCAT(N'CẢNH BÁO: tỷ trọng hô hấp chung = ', @TyTrongChung,
                          N'% — lệch xa mức tham chiếu 7,80%. Kiểm tra bộ lọc ICD trước khi tin kết quả.');
 
-        /* ── 6) Đẩy xuống STA hoặc chỉ xem ──────────────────────────────── */
+        /* 6) Đẩy xuống STA hoặc chỉ xem */
         IF @ChiXem = 1
         BEGIN
             PRINT N'CHẾ ĐỘ CHỈ XEM — không đẩy.';
@@ -234,8 +222,7 @@ BEGIN
         DELETE FROM [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_TieuHao_Tong]
         WHERE  Period >= @Tu;
 
-        /* d_baseline_thang và ty_trong_hohap là cột tính sẵn bên STA,
-           không liệt kê trong INSERT.                                         */
+        /* d_baseline_thang, ty_trong_hohap là cột tính sẵn bên STA */
         INSERT INTO [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_TieuHao_Tong]
               (Period, [month], supply_code, supply_name, supply_unit, is_vtyt,
                so_luong_toan_vien, so_luong_hohap, so_dong_toa, so_luot, NgayCapNhat)

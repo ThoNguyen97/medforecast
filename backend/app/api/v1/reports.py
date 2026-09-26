@@ -1,13 +1,5 @@
-"""API báo cáo: xem trước JSON và xuất PDF/Excel.
-
-Routes
-------
-GET  /api/v1/reports/forecast-accuracy   độ lệch dự báo/thực tế theo bản ghi disease_forecasts
-POST /api/v1/reports/export              xuất một trong 6 loại: epidemic, forecast, inventory,
-                                         shortage, forecast-accuracy, dashboard-summary
-
-Số ca bệnh neo vào kỳ đã chốt (period_service); số thiếu hụt đi qua cùng chuỗi
-Tầng 1→2→3 của dss_dashboard/dss_alerts, để báo cáo xuất ra khớp với màn hình.
+"""API báo cáo: xem trước JSON và xuất PDF/Excel (6 loại báo cáo).
+Số ca neo vào kỳ đã chốt; thiếu hụt đi cùng chuỗi Tầng 1→2→3 để khớp màn hình.
 """
 
 import io
@@ -67,8 +59,7 @@ async def get_forecast_accuracy_report(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Dict:
-    """Chỉ số MAE/RMSE/MAPE của các bản dự báo đã ghi nhận theo thời gian, tổng hợp
-    theo mô hình. Khoảng mặc định: 30 ngày trước đến 60 ngày tới."""
+    """MAE/RMSE/MAPE của các bản dự báo đã ghi nhận, tổng hợp theo mô hình."""
     start, end = _default_date_range(start_date, end_date)
 
     logger.info(
@@ -202,9 +193,7 @@ async def export_report(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Response:
-    """Xuất PDF/Excel: epidemic (tình hình dịch bệnh), forecast (dự báo ca),
-    inventory (tồn kho), shortage (thiếu hụt), forecast-accuracy (độ lệch
-    dự báo), dashboard-summary (toàn bộ KPI Tổng quan)."""
+    """Xuất PDF/Excel một trong 6 loại báo cáo (report_type)."""
     SUPPORTED_TYPES = {
         "epidemic", "forecast", "inventory", "shortage",
         "forecast-accuracy", "dashboard-summary",
@@ -277,7 +266,7 @@ async def export_report(
             else _render_shortage_excel(data, start, end)
         )
 
-    # Không tới được do SUPPORTED_TYPES đã chặn; giữ để hàm luôn trả hoặc raise.
+    # Không tới được (SUPPORTED_TYPES đã chặn).
     raise HTTPException(status_code=400,
                         detail=f"Loại báo cáo không hỗ trợ: {payload.report_type}")
 
@@ -304,19 +293,14 @@ async def _build_accuracy_data(
 
 # ── Dựng PDF ──
 
-# Font Unicode (DejaVu Sans) đăng ký lười một lần để hiển thị tiếng Việt;
-# đăng ký thất bại thì giữ Helvetica (không có dấu).
+# Font Unicode đăng ký lười một lần; thất bại thì giữ Helvetica (không dấu).
 PDF_FONT_REGULAR = "Helvetica"
 PDF_FONT_BOLD = "Helvetica-Bold"
 _FONT_REGISTERED = False
 
 
 def _register_unicode_fonts() -> None:
-    """Đăng ký DejaVu Sans (Regular + Bold) nếu chưa đăng ký.
-
-    Ưu tiên font đi kèm matplotlib để không phụ thuộc font hệ thống; không tìm
-    thấy thì giữ Helvetica và ghi cảnh báo.
-    """
+    """Đăng ký DejaVu Sans (ưu tiên font đi kèm matplotlib) nếu chưa đăng ký."""
     global _FONT_REGISTERED, PDF_FONT_REGULAR, PDF_FONT_BOLD
     if _FONT_REGISTERED:
         return
@@ -504,13 +488,7 @@ def _render_accuracy_pdf(forecasts: list, start: date, end: date) -> Response:
 
 
 async def _build_dashboard_summary_data(db: Session) -> Dict:
-    """Toàn bộ chỉ số của trang Tổng quan cho báo cáo `dashboard-summary`.
-
-    Số ca neo vào kỳ đã chốt gần nhất (period_service ← mart_monthly_cases_by_block,
-    is_complete = 1), không phải tháng lịch hiện tại vốn chỉ có vài ngày dữ liệu
-    và làm các tỷ lệ xu hướng sai lệch lớn. Nhu cầu và cảnh báo đi cùng chuỗi
-    Tầng 1→2→3 của dss_dashboard để khớp màn hình.
-    """
+    """Toàn bộ chỉ số trang Tổng quan cho báo cáo `dashboard-summary`; số ca neo vào kỳ đã chốt."""
     from app.services import dss_dashboard, dss_alerts, period_service as ps
 
     today = date.today()
@@ -543,8 +521,7 @@ async def _build_dashboard_summary_data(db: Session) -> Dict:
             "last_year": int(ps.cases_in_period(db, ps.shift_period(p, -12)) or 0),
         })
 
-    # Top 5 thuốc theo thiếu hụt delta_need = max(0, d_forecast − s_usable),
-    # cùng nguồn với trang Cảnh báo thiếu hụt.
+    # Top 5 thuốc theo thiếu hụt delta_need, cùng nguồn với trang Cảnh báo.
     focus_rows = list(al_focus.get("rows") or [])
     top_demand = sorted(
         (r for r in focus_rows if r.get("d_forecast") is not None),
@@ -854,14 +831,9 @@ async def _build_inventory_data(
     db: Session,
     category: Optional[str],
 ) -> Dict:
-    """Báo cáo tồn kho thuốc, cùng chuỗi với trang Quản lý thuốc và Cảnh báo
-    (dss_alerts.alert_rows, toàn danh mục): tồn hữu dụng FEFO, tiêu hao/ngày,
-    DOI và nhãn Đỏ/Vàng/Xanh/Xám. Không xếp loại theo `inventory.safety_stock`
-    vì cột này hầu như không có dữ liệu từ HIS.
-    """
+    """Báo cáo tồn kho thuốc, cùng chuỗi dss_alerts.alert_rows với trang Cảnh báo (DOI, nhãn màu)."""
     from app.services import dss_alerts, dss_dashboard
 
-    # Truyền nhu cầu dự báo để DOI dùng mẫu số D_i/horizon như trên giao diện.
     _, _, nhu_cau, _ = dss_dashboard.tang1_tang2(db)
     al = dss_alerts.alert_rows(db, demand=nhu_cau, only_focus=False)
     th = al.get("tong_hop") or {}
@@ -911,13 +883,8 @@ async def _build_shortage_data(
     end: date,
     disease_type: Optional[str],
 ) -> Dict:
-    """Báo cáo thiếu hụt thuốc, cùng nguồn với trang Cảnh báo thiếu hụt
-    (dss_dashboard.tang1_tang2 → dss_alerts.alert_rows).
-
-    Là ảnh chụp tại thời điểm xuất (Đỏ/Vàng theo DOI, nhu cầu `horizon_days`
-    ngày tới), không phải tổng theo khoảng [start, end]. Nhu cầu thuốc không
-    tách theo bệnh nên `disease_type` bị bỏ qua.
-    """
+    """Báo cáo thiếu hụt thuốc: ảnh chụp tại thời điểm xuất, cùng nguồn với trang Cảnh báo.
+    Không tổng theo [start, end]; `disease_type` bị bỏ qua."""
     from app.services import dss_dashboard, dss_alerts
 
     _, _, nhu_cau, _ = dss_dashboard.tang1_tang2(db)

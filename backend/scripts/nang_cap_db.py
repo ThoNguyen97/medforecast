@@ -1,21 +1,8 @@
-"""Nâng cấp lược đồ SQLite (`data/medforecast.db`) cho khớp với mã nguồn.
-
-`Base.metadata.create_all` chỉ tạo bảng còn thiếu, không thêm cột vào bảng đã có,
-nên truy vấn chạm cột mới sẽ lỗi "no such column". Script so lược đồ khai báo
-(`Base.metadata` + bảng mart/fact của data_pipeline) với file SQLite rồi:
-  • tạo bảng còn thiếu,
-  • sinh `ALTER TABLE ... ADD COLUMN` cho cột còn thiếu,
-  • chỉ báo cáo các khác biệt SQLite không xử lý an toàn được (xoá cột, đổi kiểu,
-    đổi khoá); các việc này phải chép bảng thủ công.
-
-Mặc định chỉ in kế hoạch (chạy khô); `--ap-dung` mới thực thi và tự sao lưu file DB trước.
-
-    cd backend
-    python -m scripts.nang_cap_db              # xem sẽ đổi gì
-    python -m scripts.nang_cap_db --ap-dung    # thực thi + sao lưu
-
-Nếu có thể dựng lại từ đầu, dùng `scripts/khoi_tao_moi.py`; script này dành cho
-CSDL đang chứa dữ liệu đã đồng bộ từ HIS.
+"""Nâng cấp lược đồ SQLite đang có dữ liệu cho khớp mã nguồn: tạo bảng thiếu,
+ALTER thêm cột thiếu, chỉ báo cáo khác biệt SQLite không tự xử lý được.
+Chạy: cd backend && python -m scripts.nang_cap_db
+  --ap-dung         thực thi (mặc định chỉ in kế hoạch)
+  --khong-sao-luu   bỏ bước sao lưu file DB
 """
 from __future__ import annotations
 
@@ -25,7 +12,6 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-# cho phép chạy cả `python scripts/nang_cap_db.py` lẫn `python -m scripts.nang_cap_db`
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from dotenv import load_dotenv          # noqa: E402
@@ -34,10 +20,9 @@ load_dotenv()
 from sqlalchemy import inspect, text    # noqa: E402
 
 from app.database import Base, engine   # noqa: E402
-import app.models                       # noqa: F401,E402  (đăng ký bảng nghiệp vụ)
+import app.models                       # noqa: F401,E402
 
-# Tầng dữ liệu (mart_/dim_/stg_/fact_/sync_state) khai báo trên một declarative_base
-# riêng (`app.data_pipeline.db.Base`) nên phải nạp thêm để không bỏ sót bảng.
+# Tầng dữ liệu dùng declarative_base riêng nên phải nạp thêm
 try:
     from app.data_pipeline.db import Base as PipelineBase   # noqa: E402
     import app.data_pipeline.models                         # noqa: F401,E402
@@ -52,8 +37,6 @@ def _cac_bang() -> dict:
         tables.update(PipelineBase.metadata.tables)
     return tables
 
-
-# ── Tiện ích ─────────────────────────────────────────────────────────────────
 
 def _kieu_sql(col) -> str:
     """Chuỗi kiểu dữ liệu theo phương ngữ đang dùng (SQLite)."""
@@ -88,10 +71,8 @@ def _duong_dan_db() -> Path | None:
     return Path(engine.url.database or "")
 
 
-# ── So sánh ──────────────────────────────────────────────────────────────────
-
 def _khao_sat():
-    """Trả về (bảng_thiếu, cột_thiếu, cảnh_báo); không ghi gì vào CSDL."""
+    """Trả về (bảng_thiếu, cột_thiếu, cảnh_báo), không ghi CSDL."""
     insp = inspect(engine)
     co_trong_db = set(insp.get_table_names())
 
@@ -110,7 +91,7 @@ def _khao_sat():
                 continue
             kieu = _kieu_sql(col)
             mac_dinh = _mac_dinh(col)
-            # SQLite từ chối ADD COLUMN NOT NULL mà không có DEFAULT.
+            # SQLite từ chối ADD COLUMN NOT NULL không DEFAULT
             if not col.nullable and mac_dinh is None:
                 canh_bao.append(
                     f"{ten}.{col.name}: khai báo NOT NULL nhưng không có giá trị mặc "
@@ -124,7 +105,7 @@ def _khao_sat():
                     cau += " NOT NULL"
             cot_thieu.append((ten, cau, f"{ten}.{col.name} ({kieu})"))
 
-        # Cột thừa / lệch kiểu: chỉ báo cáo, không tự xoá dữ liệu.
+        # Cột thừa chỉ báo cáo, không tự xoá
         trong_model = {c.name for c in bang.columns}
         thua = sorted(set(thuc_te) - trong_model)
         if thua:
@@ -134,8 +115,6 @@ def _khao_sat():
 
     return bang_thieu, cot_thieu, canh_bao
 
-
-# ── Chạy ─────────────────────────────────────────────────────────────────────
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Nâng cấp lược đồ DB cho máy đã chạy trước đó.")
@@ -154,10 +133,8 @@ def main() -> int:
 
     bang_thieu, cot_thieu, canh_bao = _khao_sat()
 
-    # Bảng tự quản và view nằm ngoài Base.metadata nên _khao_sat() không thấy;
-    # thiếu chúng thì Dashboard trả rỗng mà không báo lỗi. Các lệnh đều là
-    # CREATE ... IF NOT EXISTS / DROP VIEW + CREATE, không đụng dữ liệu, nên chạy
-    # luôn mà không cần --ap-dung.
+    # View và bảng tự quản nằm ngoài Base.metadata; lệnh idempotent, không đụng
+    # dữ liệu nên chạy luôn không cần --ap-dung
     try:
         from app.data_pipeline.views import dam_bao_luoc_do
         kq_view = dam_bao_luoc_do(engine)
@@ -193,14 +170,12 @@ def main() -> int:
         shutil.copy2(db, luu)
         print(f"\n✓ Đã sao lưu: {luu.name}")
 
-    # 1) Bảng còn thiếu: create_all trên cả hai metadata.
     if bang_thieu:
         Base.metadata.create_all(bind=engine)
         if PipelineBase is not None:
             PipelineBase.metadata.create_all(bind=engine)
         print(f"✓ Đã tạo {len(bang_thieu)} bảng.")
 
-    # 2) Cột còn thiếu: ALTER TABLE từng cột.
     ok = 0
     with engine.begin() as conn:
         for _, cau, mo_ta in cot_thieu:

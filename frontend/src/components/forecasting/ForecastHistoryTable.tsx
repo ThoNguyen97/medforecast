@@ -18,7 +18,7 @@ import { formatThoiGianMayChu } from '../../utils/formatters';
 interface Props {
   rows: ForecastHistoryItem[];
   isLoading?: boolean;
-  /** Gọi sau khi xoá để nạp lại danh sách. */
+  /** Gọi sau khi xoá để nạp lại. */
   onChanged?: () => void;
 }
 
@@ -26,13 +26,12 @@ type YeuCauXoa =
   | { kieu: 'mot'; row: ForecastHistoryItem }
   | { kieu: 'tatca' };
 
-/** Số liệu cộng dồn dùng chung cho mọi cấp của cây.
- *  Số ca thực tế và độ lệch không hiện ở đây — chúng nằm ở màn hình Báo cáo. */
+/** Số liệu cộng dồn dùng chung cho mọi cấp của cây; số thực tế/độ lệch nằm ở Báo cáo. */
 interface TongHop {
   duBao: number;
   /** Thời điểm ghi nhận gần nhất trong nhánh. */
   ghiNhanLuc: string | null;
-  /** Tài khoản của bản ghi nhận gần nhất trong nhánh. */
+  /** Tài khoản ghi nhận gần nhất trong nhánh. */
   nguoiGhiNhan: string | null;
 }
 
@@ -50,7 +49,7 @@ function cong(ds: ForecastHistoryItem[]): TongHop {
   return { duBao, ghiNhanLuc, nguoiGhiNhan };
 }
 
-/** Bản ghi nhận mới nhất trong danh sách (so theo created_at); null nếu rỗng. */
+/** Bản ghi nhận mới nhất theo created_at; null nếu rỗng. */
 function moiNhat(ds: ForecastHistoryItem[]): ForecastHistoryItem | null {
   if (ds.length === 0) return null;
   return ds.reduce((a, b) => ((b.created_at ?? '') > (a.created_at ?? '') ? b : a));
@@ -64,8 +63,7 @@ export default function ForecastHistoryTable({
   const { user } = useAuthStore();
   const laQuanTri = user?.role === 'Administrator';
 
-  /** Xoá được khi là người đã ghi nhận bản đó, hoặc là Quản trị viên.
-   *  (Backend kiểm tra lại y hệt — đây chỉ là phần hiển thị.) */
+  /** Xoá được khi là người ghi nhận hoặc Quản trị viên; backend kiểm tra lại. */
   const duocXoa = (r: ForecastHistoryItem) =>
     laQuanTri || (!!r.created_by && r.created_by === user?.username);
 
@@ -74,7 +72,7 @@ export default function ForecastHistoryTable({
   const [showFilter, setShowFilter] = useState(false);
   const [filterMonth, setFilterMonth] = useState<string>('all');
   const [filterDisease, setFilterDisease] = useState<string>('all');
-  /** Nút đang mở, khoá dạng "10/2026" (cấp tháng) và "10/2026|Cúm..." (cấp nhóm). */
+  /** Nút đang mở, khoá "10/2026" (tháng) hoặc "10/2026|Cúm..." (nhóm). */
   const [dangMo, setDangMo] = useState<Record<string, boolean>>({});
 
   const xoaMot = useMutation({
@@ -97,7 +95,7 @@ export default function ForecastHistoryTable({
 
   const dangXoa = xoaMot.isPending || xoaTatCa.isPending;
 
-  // Toàn bộ bản ghi (kể cả Toàn quốc) dùng để liệt kê tháng/nhóm bệnh cho bộ lọc.
+  // Toàn bộ bản ghi (kể cả Toàn quốc) để liệt kê tháng/nhóm bệnh cho bộ lọc.
   const uniqueMonths = useMemo(
     () => Array.from(new Set(rows.map((r) => r.month))).sort(),
     [rows],
@@ -118,14 +116,8 @@ export default function ForecastHistoryTable({
     [rows, filterMonth, filterDisease],
   );
 
-  /** Cây 3 cấp: tháng → nhóm bệnh → (Toàn quốc chính thức + chi tiết theo tỉnh).
-   *
-   *  Bản Toàn quốc (location=NULL) dùng công thức top-down riêng của Tầng 1,
-   *  không phải tổng các tỉnh. Vì vậy số chính thức của tháng/nhóm bệnh luôn
-   *  lấy từ bản Toàn quốc mới nhất (khớp Tổng quan/Cảnh báo); cộng các tỉnh sẽ
-   *  ra một tổng khác. Các bản theo tỉnh vẫn hiện đầy đủ (xoá được) nhưng chỉ
-   *  để tham khảo dịch tễ, tách khỏi con số chính thức.
-   */
+  /** Cây 3 cấp: tháng → nhóm bệnh → (Toàn quốc chính thức + chi tiết tỉnh).
+   *  Số chính thức lấy từ bản Toàn quốc mới nhất (top-down Tầng 1), không cộng các tỉnh. */
   const cay = useMemo(() => {
     type Xo = { toanQuoc: ForecastHistoryItem[]; tinh: ForecastHistoryItem[] };
     const theoThang = new Map<string, Map<string, Xo>>();
@@ -143,8 +135,7 @@ export default function ForecastHistoryTable({
           .sort((a, b) => a[0].localeCompare(b[0], 'vi'))
           .map(([tenNhom, { toanQuoc, tinh }]) => {
             const chinhThuc = moiNhat(toanQuoc);
-            // Ghi nhận lại Toàn quốc tạo bản mới chứ không sửa bản cũ — các
-            // bản cũ hơn vẫn hiện (và xoá được) cùng khu vực "theo tỉnh".
+            // Ghi nhận lại Toàn quốc tạo bản mới; bản cũ vẫn hiện cùng khu vực "theo tỉnh".
             const toanQuocCu = toanQuoc.filter((r) => r !== chinhThuc);
             return {
               tenNhom,
@@ -170,9 +161,7 @@ export default function ForecastHistoryTable({
 
   const bat = (khoa: string) =>
     setDangMo((m) => ({ ...m, [khoa]: !(m[khoa] ?? false) }));
-  // Mặc định thu gọn theo tháng: mỗi tháng một dòng tổng (số chính thức từ bản
-  // Toàn quốc). Bấm tháng → hiện 3 nhóm bệnh; bấm nhóm → hiện chi tiết tỉnh
-  // (tham khảo dịch tễ).
+  // Mặc định thu gọn theo tháng; bấm tháng mở nhóm bệnh, bấm nhóm mở chi tiết tỉnh.
   const moThang = (k: string) => dangMo[k] ?? false;
   const moNhom = (k: string) => dangMo[k] ?? false;
 
@@ -306,8 +295,7 @@ export default function ForecastHistoryTable({
                 const mo = moThang(khoaThang);
                 return (
                   <Fragment key={khoaThang}>
-                    {/* CẤP 1 — tháng: số chính thức = tổng các bản Toàn quốc (nuôi
-                        Tổng quan/Cảnh báo), không phải cộng các tỉnh. */}
+                    {/* Cấp 1: tháng */}
                     <tr
                       onClick={() => bat(khoaThang)}
                       className="border-t border-neutral-100 bg-neutral-50/70 cursor-pointer hover:bg-neutral-100/70"
@@ -351,8 +339,7 @@ export default function ForecastHistoryTable({
                         const moN = moNhom(khoaNhom);
                         return (
                           <Fragment key={khoaNhom}>
-                            {/* CẤP 2 — nhóm bệnh: hiện đúng bản Toàn quốc, không
-                                cộng các tỉnh vào đây. */}
+                            {/* Cấp 2: nhóm bệnh */}
                             <tr
                               onClick={() => bat(khoaNhom)}
                               className="border-t border-neutral-100 cursor-pointer hover:bg-neutral-50"
@@ -394,7 +381,7 @@ export default function ForecastHistoryTable({
                               <td />
                             </tr>
 
-                            {/* Bản Toàn quốc cũ hơn (ghi nhận lại, chưa xoá bản trước) */}
+                            {/* Bản Toàn quốc cũ */}
                             {moN &&
                               nhomNode.toanQuocCu.map((r) => (
                                 <DongChiTiet
@@ -410,8 +397,7 @@ export default function ForecastHistoryTable({
                                 />
                               ))}
 
-                            {/* CẤP 3 — theo tỉnh: chỉ tham khảo dịch tễ, không
-                                cộng vào số chính thức ở trên. */}
+                            {/* Cấp 3: theo tỉnh */}
                             {moN && nhomNode.tinh.length > 0 && (
                               <tr className="border-t border-neutral-100">
                                 <td
@@ -532,7 +518,7 @@ export default function ForecastHistoryTable({
   );
 }
 
-/** Một dòng chi tiết có thể xoá — dùng cho cả "theo tỉnh" lẫn bản Toàn quốc cũ. */
+/** Dòng chi tiết xoá được, dùng cho "theo tỉnh" lẫn bản Toàn quốc cũ. */
 function DongChiTiet({
   r,
   nhan,
@@ -541,7 +527,7 @@ function DongChiTiet({
   onXoa,
 }: {
   r: ForecastHistoryItem;
-  /** Nhãn thay cho r.region — dùng khi dòng này là bản Toàn quốc cũ. */
+  /** Nhãn thay r.region khi dòng là bản Toàn quốc cũ. */
   nhan?: string;
   duocXoa: boolean;
   dangXoa: boolean;

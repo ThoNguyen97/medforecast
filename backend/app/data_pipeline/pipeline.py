@@ -1,10 +1,7 @@
 """Orchestrator: nguồn → làm sạch/validate → DIM/FACT → MART.
 
-- Nạp tăng dần theo watermark last_period trong sync_state, lùi
-  PIPELINE_LOOKBACK_MONTHS tháng để bắt dữ liệu được mã hóa muộn.
-- Idempotent: fact ghi theo kiểu xóa-rồi-chèn từng period, mart xây lại từ fact.
-- Cổng kiểm tra chất lượng loại và đếm dòng lỗi.
-- Đánh cờ COVID (2020–2021); cờ tháng trọn vẹn được tính lại mỗi lần chạy.
+Nạp tăng dần theo watermark trong sync_state, lùi PIPELINE_LOOKBACK_MONTHS tháng.
+Idempotent: fact ghi xóa-rồi-chèn từng period, mart xây lại từ fact.
 """
 from __future__ import annotations
 
@@ -27,13 +24,13 @@ TOAN_QUOC = "TOAN_QUOC"
 
 
 def _current_period() -> str:
-    """Tháng hiện tại dạng 'YYYY-MM', mốc phân định tháng đã trọn vẹn."""
+    """Tháng hiện tại 'YYYY-MM', mốc phân định tháng trọn vẹn."""
     now = datetime.now()
     return f"{now.year:04d}-{now.month:02d}"
 
 
 def _parse_period(month_str: str):
-    """'MM/YYYY' -> (year, month, 'YYYY-MM', date(yyyy,mm,1)) hoặc None nếu lỗi."""
+    """'MM/YYYY' -> (year, month, 'YYYY-MM', date) hoặc None nếu lỗi."""
     try:
         mm, yyyy = str(month_str).split("/")
         y, mo = int(yyyy), int(mm)
@@ -49,7 +46,7 @@ class DataPipeline:
                  target_only: bool = False):
         self.connector = connector
         self.hier = hierarchy
-        self.target_only = target_only  # chỉ giữ 3 nhóm đích hay toàn bộ
+        self.target_only = target_only
 
     # ── tiện ích watermark ──
     def _get_watermark(self, db) -> Optional[str]:
@@ -69,7 +66,6 @@ class DataPipeline:
             since = self._get_watermark(db) if incremental else None
             raw = self.connector.fetch_case_supply(since_period=since)
             inv = self.connector.fetch_inventory()
-            # Số ca theo nhóm do nguồn tính sẵn (nếu có), dùng trong _build_marts.
             grp = self.connector.fetch_case_group(since_period=since)
 
             clean, rejected, max_period = self._transform_cases(raw)
@@ -113,11 +109,10 @@ class DataPipeline:
         if raw.empty:
             return raw.assign(period=[]), 0, None
         df = raw.copy()
-        df["icd_code"] = df["disease_code"].map(normalize_icd)      # 'j01' -> 'J01'
+        df["icd_code"] = df["disease_code"].map(normalize_icd)
         df["region"] = df["region"].astype(str).str.strip()
         parsed = df["month"].map(_parse_period)
 
-        # Cổng kiểm tra chất lượng
         valid_mask = (
             parsed.notna()
             & df["icd_code"].str.match(r"^[A-Z]\d{2}$").fillna(False)
@@ -132,15 +127,13 @@ class DataPipeline:
         df["month_num"] = parsed.map(lambda p: p[1])
         df["period"] = parsed.map(lambda p: p[2])
         df["recorded_date"] = parsed.map(lambda p: p[3])
-        # Nhóm ICD: ưu tiên cột nguồn cấp (TM_ICD.PHANNHOM), chỉ tra TM_ICD.xlsx
-        # cho dòng nguồn không cấp.
+        # Nhóm ICD ưu tiên cột nguồn cấp, chỉ tra TM_ICD.xlsx cho dòng thiếu.
         tu_nguon = (df["disease_group"].astype(str).str.strip()
                     if "disease_group" in df.columns
                     else pd.Series("", index=df.index))
         tu_nguon = tu_nguon.replace({"": None, "nan": None, "None": None, "NaT": None})
         df["block_code"] = tu_nguon.fillna(df["icd_code"].map(self.hier.block_of))
 
-        # Mã không map được nhóm thì loại.
         unknown = df["block_code"].isna()
         rejected += int(unknown.sum())
         df = df[~unknown].copy()
@@ -157,11 +150,7 @@ class DataPipeline:
 
     # ── làm mới cờ tháng-trọn-vẹn ──
     def _refresh_completeness(self, db):
-        """Tính lại `is_complete` cho toàn bộ fact theo tháng hiện tại.
-
-        Cờ không được đóng băng lúc nạp: bản ghi tháng đang chạy có thể không được
-        ghi lại, khi đó cờ kẹt ở False và tầng dự báo (lọc is_complete=1) loại tháng đó mãi.
-        """
+        """Tính lại `is_complete` toàn bộ fact theo tháng hiện tại, tránh cờ kẹt False khi tháng không được ghi lại."""
         cur = _current_period()
         db.execute(update(m.FactDiseaseCase)
                    .where(m.FactDiseaseCase.period < cur)
@@ -173,8 +162,7 @@ class DataPipeline:
 
     # ── DIM ──
     def _upsert_dims(self, db, clean: pd.DataFrame, inv: pd.DataFrame):
-        # dim_icd: từ mã xuất hiện + danh mục phân cấp; tên bệnh lấy từ cột
-        # disease_name (TENICD của HIS).
+        # dim_icd: tên bệnh lấy từ disease_name của nguồn.
         ten_theo_ma: dict = {}
         nhom_theo_ma: dict = {}
         if not clean.empty:
@@ -190,7 +178,6 @@ class DataPipeline:
 
         codes = set(clean["icd_code"]) if not clean.empty else set()
         existing_icd = {r.icd_code: r for r in db.query(m.DimIcd).all()}
-        # Bổ sung tên cho mã đã có trong dim_icd nhưng icd_name rỗng.
         for code, row in existing_icd.items():
             if not row.icd_name and ten_theo_ma.get(code):
                 row.icd_name = ten_theo_ma[code]
@@ -208,7 +195,7 @@ class DataPipeline:
         existing_reg = set(db.execute(select(m.DimRegion.region)).scalars().all())
         for reg in regions - existing_reg:
             db.add(m.DimRegion(region=reg))
-        # dim_supply từ tồn kho + từ ca
+        # dim_supply
         existing_sup = set(db.execute(select(m.DimSupply.supply_code)).scalars().all())
         sup_seen = set(existing_sup)
         if inv is not None and not inv.empty:
@@ -224,17 +211,16 @@ class DataPipeline:
                     ))
         db.flush()
 
-    # ── FACT (upsert idempotent theo period) ──
+    # ── FACT ──
     def _upsert_facts(self, db, clean: pd.DataFrame):
         if clean.empty:
             return
         periods = sorted(clean["period"].unique())
 
-        # fact_disease_case: số ca lặp theo nhiều dòng vật tư → lấy 1 giá trị/(period,icd,region)
+        # Số ca lặp trên nhiều dòng vật tư nên lấy max theo (period, icd, region).
         cases = (clean.groupby(["period", "year", "month_num", "recorded_date",
                                 "icd_code", "block_code", "region", "is_covid", "is_complete"],
                                dropna=False)["cases"].max().reset_index())
-        # Xóa các period sắp ghi rồi chèn lại (idempotent).
         db.execute(delete(m.FactDiseaseCase).where(m.FactDiseaseCase.period.in_(periods)))
         db.bulk_save_objects([
             m.FactDiseaseCase(
@@ -247,7 +233,7 @@ class DataPipeline:
 
         db.flush()
 
-    # ── Số ca mức nhóm: dùng số nguồn cấp thay cho phép cộng dồn ──
+    # ── Số ca mức nhóm ──
     @staticmethod
     def _ap_so_ca_nhom(full: pd.DataFrame,
                        case_group: Optional[pd.DataFrame]) -> pd.DataFrame:
@@ -304,12 +290,10 @@ class DataPipeline:
         nat["region"] = TOAN_QUOC
         full = pd.concat([by_region, nat], ignore_index=True)
 
-        # Thay số ca nhóm bằng số đếm DISTINCT do nguồn cấp: cộng số ca các mã con
-        # đếm hai lần lượt khám mang hai mã cùng nhóm (J01 + J06 thuộc J00-J06).
-        # Nguồn không cấp thì giữ phép cộng dồn và ghi cảnh báo.
+        # Số nguồn cấp đếm DISTINCT lượt khám; cộng dồn mã con sẽ đếm trùng lượt mang hai mã cùng nhóm.
         full = self._ap_so_ca_nhom(full, case_group)
 
-        # Tên nhóm: ưu tiên tên nguồn cấp, sau đó bảng tra ICD, cuối cùng là mã nhóm.
+        # Tên nhóm: nguồn cấp → bảng tra ICD → mã nhóm.
         ten_nhom = {}
         if case_group is not None and not case_group.empty \
                 and "disease_group_name" in case_group.columns:
@@ -330,12 +314,12 @@ class DataPipeline:
                 block_code=r.block_code, block_name=nhan_nhom(r.block_code),
                 region=r.region, cases=int(r.cases),
                 is_covid=bool(r.is_covid),
-                # Suy ra từ period thay vì cờ đã lưu, vì cờ lưu có thể lỗi thời.
+                # Suy từ period vì cờ đã lưu có thể lỗi thời.
                 is_complete=(str(r.period) < cur),
             ) for r in full.itertuples(index=False)
         ])
 
-        # mart_icd_share_in_block: tỷ trọng từng mã trong nhóm (toàn lịch sử, TOAN_QUOC)
+        # mart_icd_share_in_block: toàn lịch sử, TOAN_QUOC
         cr = db.execute(select(
             m.FactDiseaseCase.block_code, m.FactDiseaseCase.icd_code, m.FactDiseaseCase.cases,
         )).all()
@@ -352,15 +336,11 @@ class DataPipeline:
         ])
         db.flush()
 
-    # ── thời tiết → mart_monthly_weather (từ environmental_data) ──
+    # ── mart_monthly_weather ──
     def _build_weather_mart(self, db, primary_location: str = "TP. Hồ Chí Minh"):
-        """Tổng hợp thời tiết theo tháng từ bảng environmental_data (nếu có).
-
-        Kiểm tra bảng bằng inspector thay vì try/except + rollback: rollback sẽ huỷ
-        cả dim/fact vừa ghi trong cùng transaction mà pipeline vẫn báo "ok".
-        """
-        # Dùng connection của session: trên SQLite, mở kết nối thứ hai giữa transaction
-        # đang ghi gây "database is locked".
+        """Tổng hợp thời tiết theo tháng từ environmental_data nếu có."""
+        # Kiểm tra bằng inspector trên connection của session: try/except + rollback sẽ huỷ
+        # dim/fact vừa ghi, còn mở kết nối thứ hai trên SQLite gây "database is locked".
         if not sa_inspect(db.connection()).has_table("environmental_data"):
             logger.info("Chưa có bảng environmental_data — bỏ qua mart thời tiết.")
             return
@@ -391,7 +371,7 @@ class DataPipeline:
         ])
         db.flush()
 
-    # ── tồn kho → mart_inventory ──
+    # ── mart_inventory ──
     def _load_inventory(self, db, inv: pd.DataFrame):
         if inv is None or inv.empty:
             return
@@ -409,7 +389,6 @@ class DataPipeline:
                 group_name=str(r.get("group_name") or "")[:255], category=str(r.get("category") or "")[:80],
                 stock_quantity=qty, snapshot_date=today,
             ))
-        # bulk_save_objects vì danh mục vật tư có thể tới vài chục nghìn dòng.
         db.bulk_save_objects(marts)
         db.flush()
 

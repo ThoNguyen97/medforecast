@@ -30,7 +30,7 @@ global.ResizeObserver = class ResizeObserver {
   disconnect() {}
 };
 
-// Tắt console.error trong test để lọc cảnh báo React
+// Tắt console.error để lọc cảnh báo React
 const originalConsoleError = console.error;
 beforeAll(() => {
   console.error = (...args: unknown[]) => {

@@ -1,20 +1,7 @@
-"""Huấn luyện từ bộ dữ liệu đóng gói, sinh kết quả backtest và artifact mô hình.
+"""Huấn luyện từ dataset đóng gói (không đụng DB): walk-forward backtest rồi khớp lần cuối,
+ghi model_v1.json (đọc được) và model_v1.pkl (thành viên đã khớp, cho predict.py).
 
-    python -m app.forecasting.train --data dataset/v1 --out models/v1
-
-Không đụng DB. Đọc dataset/v1/*.csv (xem dataset.py), với mỗi khối ICD:
-
-  1. Walk-forward mở rộng cửa sổ, 1 bước (cùng giao thức run_eval) → RelMAE / MPE /
-     độ phủ ở mức nhóm và 4 hướng phân cấp mức mã; mỗi bước huấn luyện lại.
-  2. Huấn luyện lần cuối trên toàn bộ kỳ đã chốt, kết hợp bằng trọng số và
-     hệ số lệch vừa học → dự báo kỳ kế tiếp + khoảng 90 %.
-  3. Ghi artifact:
-        model_v1.json   cấu hình, thành viên, trọng số, hệ số lệch, dự báo,
-                        chỉ số backtest, sha256 của dataset — đọc được bằng mắt
-        model_v1.pkl    các thành viên đã khớp + combiner, để predict.py dự báo
-                        mà không cần khớp lại (joblib)
-
-Với dataset xuất từ cùng DB, kết quả phải trùng với run_eval (backend/ketqua_backtest/).
+Chạy: python -m app.forecasting.train --data dataset/v1 --out models/v1
 """
 from __future__ import annotations
 
@@ -47,7 +34,7 @@ def train(data_dir: str, out_dir: str, cfg=PRODUCTION_CONFIG, quiet: bool = Fals
     d = ds.load(data_dir, complete_only=True, from_period=cfg.from_period)
     out = Path(out_dir); out.mkdir(parents=True, exist_ok=True)
     manifest = d["manifest"]
-    fitted = {}                       # thành viên đã khớp, để pickle
+    fitted = {}
     record = {
         "model": "MedForecast ensemble — top-down động",
         "version": "1",
@@ -70,11 +57,11 @@ def train(data_dir: str, out_dir: str, cfg=PRODUCTION_CONFIG, quiet: bool = Fals
         rows_nhom.append({"nhom": b, **{k: g.get(k) for k in CHI_SO},
                           "do_phu_pct": g.get("coverage_pct"), "do_phu_n": g.get("coverage_n")})
 
-        # Huấn luyện lần cuối + dự báo kỳ kế tiếp
+        # Khớp lần cuối và dự báo kỳ kế tiếp.
         gw = join_weather(group, d["weather"]) if cfg.use_weather else group
         target, tm = _next_month(str(group["period"].iloc[-1]))
         gf = forecast_group_next(gw, tm, cfg)
-        ens = make_ensemble(gw, cfg).fit(gw)          # thành viên đã khớp, để pickle
+        ens = make_ensemble(gw, cfg).fit(gw)
         fitted[b] = {"ensemble": ens, "combiner_state": gf["combiner"],
                      "weights": gf["weights"], "bias_factor": gf["bias_factor"],
                      "rel_resid": list(map(float, np.asarray(gf["walk_forward"]["actual"]) /
@@ -121,7 +108,7 @@ def train(data_dir: str, out_dir: str, cfg=PRODUCTION_CONFIG, quiet: bool = Fals
 
 
 def main(argv=None):
-    # Như run_eval: tắt ConvergenceWarning của SARIMAX, lỗi đã được đếm vào members_failed.
+    # Lỗi hội tụ SARIMAX đã đếm vào members_failed.
     from .run_eval import _tat_canh_bao
     _tat_canh_bao()
     warnings.simplefilter("ignore")

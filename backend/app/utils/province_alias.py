@@ -1,12 +1,9 @@
 """Chuẩn hoá tên tỉnh/thành, đồng bộ với normalizeProvinceName ở frontend.
-
-Dữ liệu HIS dùng tên đầy đủ "Thành phố Hồ Chí Minh", còn UI/danh mục dùng
-"TP. Hồ Chí Minh"; module cung cấp mọi biến thể để truy vấn khớp bất kể tên đã lưu.
+HIS dùng "Thành phố Hồ Chí Minh", UI dùng "TP. Hồ Chí Minh"; truy vấn khớp mọi biến thể.
 """
 from typing import List, Set, Tuple
 
-# (tên chuẩn, tập biến thể). Mọi thao tác ghi location xuống CSDL phải dùng tên
-# chuẩn, nếu không cùng một tỉnh sẽ tách thành hai dòng.
+# (tên chuẩn, tập biến thể); ghi location xuống CSDL phải dùng tên chuẩn
 _ALIAS_GROUPS: List[Tuple[str, Set[str]]] = [
     (
         "TP. Hồ Chí Minh",
@@ -23,10 +20,7 @@ _ALIAS_GROUPS: List[Tuple[str, Set[str]]] = [
 
 
 def province_aliases(name: str) -> List[str]:
-    """Danh sách mọi biến thể tên của tỉnh (gồm chính nó).
-
-    Dùng cho query: ``filter(Model.location.in_(province_aliases(p)))``.
-    """
+    """Mọi biến thể tên của tỉnh (gồm chính nó), dùng cho filter(location.in_(...))."""
     if not name:
         return []
     key = name.strip()
@@ -37,11 +31,7 @@ def province_aliases(name: str) -> List[str]:
 
 
 def ten_chuan(name: str) -> str:
-    """Tên chuẩn của tỉnh/thành, dùng khi ghi location xuống CSDL.
-
-    "Thành phố Hồ Chí Minh" → "TP. Hồ Chí Minh". Tên không thuộc nhóm biến thể
-    nào thì giữ nguyên (chỉ cắt khoảng trắng thừa).
-    """
+    """Tên chuẩn của tỉnh/thành khi ghi CSDL; tên lạ giữ nguyên sau khi strip."""
     if not name:
         return name
     key = name.strip()

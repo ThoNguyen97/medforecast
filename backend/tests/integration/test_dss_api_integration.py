@@ -1,9 +1,6 @@
 # -*- coding: utf-8 -*-
-"""Hợp đồng API của DSS trên CSDL rỗng (chưa đồng bộ HIS).
-
-Mọi endpoint trả 200 kèm trạng thái "chưa có dữ liệu" rõ ràng, không trả 500;
-PUT /dss/params phải kiểm khoảng và ràng buộc Đỏ < Vàng; các khoá có endpoint
-chuyên biệt không được ghi qua PUT /config/{key}.
+"""Hợp đồng API DSS trên CSDL rỗng: trả 200 kèm trạng thái chưa có dữ liệu, không 500;
+PUT /dss/params kiểm khoảng và ràng buộc Đỏ < Vàng.
 """
 import json
 
@@ -99,8 +96,7 @@ def test_report_dashboard_summary_db_rong(client, admin_headers, dss_db):
 
 
 def test_report_ton_kho_thuoc_theo_doi(client, admin_headers, dss_db):
-    """Báo cáo "Tồn kho" dùng cùng chuỗi DOI với trang Quản lý thuốc; CSDL rỗng vẫn
-    xuất được Excel và PDF (summary dùng ngưỡng mặc định 18/36)."""
+    """Báo cáo Tồn kho xuất được Excel và PDF trên CSDL rỗng (ngưỡng mặc định 18/36)."""
     for fmt, ct in (("excel", "application/vnd.openxmlformats"), ("pdf", "application/pdf")):
         r = client.post("/api/v1/reports/export", headers=admin_headers,
                         json={"report_type": "inventory", "format": fmt})
@@ -109,7 +105,7 @@ def test_report_ton_kho_thuoc_theo_doi(client, admin_headers, dss_db):
 
 
 def test_alerts_v2_limit_toan_danh_muc(client, admin_headers, dss_db):
-    """Trang Quản lý thuốc lấy toàn danh mục DOI trong một lần gọi (limit tối đa 2000)."""
+    """Danh mục DOI lấy được trong một lần gọi với limit 2000."""
     assert client.get("/api/v1/dashboard/v2/alerts?focus=false&limit=2000",
                       headers=admin_headers).status_code == 200
     assert client.get("/api/v1/dashboard/v2/alerts?focus=false&limit=2001",

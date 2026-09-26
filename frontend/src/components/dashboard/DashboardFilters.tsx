@@ -7,10 +7,7 @@ export interface DashboardFilterState {
   level: AlertLevel | null;
 }
 
-/**
- * Hàng bộ lọc. "Kỳ" là nhãn chỉ đọc: mọi KPI neo vào kỳ đã chốt gần nhất,
- * đổi kỳ là đổi mốc của cả hệ thống — không phải việc của một combobox.
- */
+/** Hàng bộ lọc. "Kỳ" chỉ đọc: mọi KPI neo vào kỳ đã chốt gần nhất. */
 export default function DashboardFilters({
   value,
   onChange,

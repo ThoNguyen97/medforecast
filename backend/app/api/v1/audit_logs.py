@@ -1,12 +1,4 @@
-"""API nhật ký kiểm toán (audit_logs) và nhật ký hệ thống; mọi endpoint chỉ dành cho Administrator.
-
-Routes
-------
-GET  /api/v1/audit-logs              – Nhật ký kiểm toán, phân trang
-GET  /api/v1/system-logs             – Nhật ký hệ thống, phân trang
-GET  /api/v1/system-logs/errors      – Chỉ các dòng mức ERROR
-POST /api/v1/system-logs/cleanup     – Chạy dọn nhật ký theo hạn lưu giữ
-"""
+"""API nhật ký kiểm toán (audit_logs) và nhật ký hệ thống; chỉ dành cho Administrator."""
 
 import logging
 from datetime import datetime
@@ -54,8 +46,7 @@ def list_audit_logs(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_admin_user),
 ) -> AuditLogListResponse:
-    """Danh sách thao tác thay đổi dữ liệu (tạo/sửa/xoá) có phân trang, lọc theo
-    khoảng thời gian, người dùng, loại thao tác và bảng. Yêu cầu Administrator."""
+    """Nhật ký thao tác thay đổi dữ liệu, phân trang và lọc theo thời gian/người dùng/thao tác/bảng."""
     logger.info(
         "Audit logs requested by admin=%s page=%d page_size=%d "
         "start=%s end=%s user_id=%s action=%s table=%s",
@@ -107,8 +98,7 @@ def list_error_logs(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_admin_user),
 ) -> SystemLogListResponse:
-    """Nhật ký hệ thống mức ERROR, tương đương `GET /system-logs?log_level=ERROR`;
-    lọc theo khoảng thời gian và module. Yêu cầu Administrator."""
+    """Nhật ký hệ thống mức ERROR, lọc theo thời gian và module."""
     logger.info(
         "Error logs requested by admin=%s page=%d page_size=%d "
         "start=%s end=%s module=%s",
@@ -158,8 +148,7 @@ def list_system_logs(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_admin_user),
 ) -> SystemLogListResponse:
-    """Nhật ký hệ thống có phân trang, lọc theo khoảng thời gian, mức
-    (ERROR / WARNING / INFO) và module. Yêu cầu Administrator."""
+    """Nhật ký hệ thống phân trang, lọc theo thời gian, mức và module."""
     logger.info(
         "System logs requested by admin=%s page=%d page_size=%d "
         "start=%s end=%s level=%s module=%s",
@@ -199,8 +188,7 @@ def trigger_log_cleanup(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_admin_user),
 ) -> dict:
-    """Xoá nhật ký kiểm toán và nhật ký hệ thống cũ hơn `retention_days` ngày
-    (mặc định 90). Chạy nền nên phản hồi trả ngay; yêu cầu Administrator."""
+    """Xoá nhật ký cũ hơn `retention_days` ngày; chạy nền, phản hồi trả ngay."""
     logger.info(
         "Log cleanup triggered by admin=%s retention_days=%d",
         current_user.username,

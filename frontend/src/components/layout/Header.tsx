@@ -27,7 +27,7 @@ export default function Header() {
 
   return (
     <header className="flex items-center justify-between h-16 px-6 bg-white border-b border-neutral-200 shrink-0">
-      {/* Trái: nút mở menu + tiêu đề trang */}
+      {/* Bên trái */}
       <div className="flex items-center gap-4">
         <button
           onClick={toggleSidebar}
@@ -41,7 +41,7 @@ export default function Header() {
         </h1>
       </div>
 
-      {/* Phải: thông báo + người dùng */}
+      {/* Bên phải */}
       <div className="flex items-center gap-3">
         {/* Chuông thông báo */}
         <button
@@ -63,11 +63,9 @@ export default function Header() {
             onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-neutral-100 transition-colors"
           >
-            {/* Avatar */}
             <div className="flex items-center justify-center w-8 h-8 bg-primary-600 rounded-full text-white text-sm font-semibold">
               {userInitials}
             </div>
-            {/* Thông tin người dùng */}
             <div className="hidden sm:block text-left">
               <p className="text-sm font-medium text-neutral-900 leading-tight">
                 {user?.full_name || 'Người dùng'}
@@ -88,7 +86,6 @@ export default function Header() {
           {/* Menu thả xuống */}
           {isUserMenuOpen && (
             <>
-              {/* Lớp nền đóng menu */}
               <div
                 className="fixed inset-0 z-10"
                 onClick={() => setIsUserMenuOpen(false)}

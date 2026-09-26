@@ -1,10 +1,5 @@
-/**
- * Hợp đồng dữ liệu /api/v1/dashboard/v2/alerts · /api/v1/dss/params · /api/v1/dss/norms
- * (một công thức, một bộ tham số). Nguồn sự thật:
- *   backend/app/services/dss_dashboard.py (alerts_payload)
- *   backend/app/api/v1/dss_config.py
- *   backend/app/services/dss_demand.py (norms_payload)
- */
+/** Hợp đồng dữ liệu /dashboard/v2/alerts, /dss/params, /dss/norms
+ *  (backend: dss_dashboard.py, dss_config.py, dss_demand.py). */
 import type { AlertLevel, AlertRow, BlockCode, CareBucket, Period, Thresholds } from './dashboardV2';
 
 // ─── /dashboard/v2/alerts ────────────────────────────────────────────────────
@@ -26,7 +21,7 @@ export interface AlertsCounts {
   total: number;
   measured: number;
   zero_stock: number;
-  /** số mã DOI dùng mẫu số dự báo (D_i/horizon) / lùi về tiêu hao 12 kỳ */
+  /** số mã DOI dùng mẫu số dự báo / lùi về tiêu hao 12 kỳ */
   fefo_codes?: number;
   stock_source?: string | null; // 'fact_inventory_lot@YYYY-MM-DD' | 'inventory' | 'khong_co'
   ly_do_xam?: Record<string, number>;
@@ -134,7 +129,7 @@ export interface NormRow {
   nhom: string | null;
   tieu_hao_tong: number;
   norm_gop: number;
-  /** Σ_ro p̂ · Norm — lượng cần cho một ca dự báo của nhóm */
+  /** Σ_ro p̂ · Norm: lượng cần cho một ca dự báo */
   norm_hieu_dung: number;
   theo_ro: Partial<Record<CareBucket, NormRoCell>>;
 }

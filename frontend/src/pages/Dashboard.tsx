@@ -24,8 +24,7 @@ import {
 
 const ALERT_LIMIT = 8;
 
-/** Bốn mức DOI → dải màu thẻ KPI. Xám dùng dải trung tính: chưa đo được
- *  không có nghĩa là an toàn nên không tô xanh. */
+/** Bốn mức DOI → dải màu thẻ KPI; xám trung tính vì chưa đo được không phải an toàn. */
 const RISK_TONE: Record<AlertLevel, KpiTone> = {
   red: 'red',
   amber: 'amber',
@@ -33,14 +32,8 @@ const RISK_TONE: Record<AlertLevel, KpiTone> = {
   grey: 'neutral',
 };
 
-/**
- * Tổng quan.
- *
- * Một payload (/dashboard/v2) dựng toàn bộ trang; dự báo kỳ tới lấy từ bản đã ghi
- * nhận ở trang Phân tích & Dự báo. Mọi KPI neo vào kỳ đã chốt gần nhất;
- * kỳ đang mở chỉ hiện với nhãn "chưa chốt". Cột thiếu hụt là
- * Δ_need = max(0, nhu cầu dự báo − tồn hữu dụng), không phải lượng mua.
- */
+/** Tổng quan: một payload /dashboard/v2 dựng cả trang, KPI neo vào kỳ đã chốt gần nhất;
+ *  thiếu hụt Δ_need = max(0, nhu cầu dự báo − tồn hữu dụng), không phải lượng mua. */
 export default function Dashboard() {
   const { setPageTitle } = useUIStore();
   const [filters, setFilters] = useState<DashboardFilterState>({ block: 'all', focus: true, level: null });
@@ -249,30 +242,29 @@ function buildKpis(
 ): KpiProps[] {
   const n = (v: number | null | undefined) => (v == null ? '—' : v.toLocaleString('vi-VN'));
 
-  // 1 · Số ca kỳ đã chốt (theo khối nếu đang lọc)
+  // Số ca kỳ đã chốt
   const blockRow = filters.block === 'all' ? null : data?.cases.by_block.find((b) => b.block_code === filters.block);
   const cases = blockRow ? blockRow.cases_last_closed : data?.cases.last_closed.cases;
   const trend = blockRow ? blockRow.trend_pct : data?.cases.last_closed.trend_pct;
   const openCases = filters.block === 'all' ? data?.cases.open.cases : data?.trend.by_block[filters.block]?.slice(-1)[0]?.cases;
 
-  // 2 · Dự báo kỳ tới
+  // Dự báo kỳ tới
   const fcBlock = filters.block === 'all' ? null : fc?.blocks.find((b) => b.block === filters.block);
   const fcPoint = fc?.ready ? (fcBlock ? fcBlock.point : fc.total.point) : null;
   const fcLo = fcBlock ? fcBlock.lower : fc?.total.lower;
   const fcHi = fcBlock ? fcBlock.upper : fc?.total.upper;
   const fcRecordedAt = fc?.computed_at ?? null;
 
-  // 3 · Nguy cơ thiếu hụt
+  // Nguy cơ thiếu hụt
   const c = data?.risk.counts;
 
-  // 4 · Mức cảnh báo vận hành — lấy nguyên trạng thái backend đã ánh xạ từ bộ
-  //     đếm DOI (Đỏ ≤ red_days · Vàng ≤ amber_days), không suy diễn lại ở FE.
+  // Mức cảnh báo vận hành lấy nguyên từ backend, không suy diễn lại ở FE
   const risk = data?.risk.overall;
   const riskTone: KpiTone = risk ? RISK_TONE[risk.level] : 'neutral';
 
-  // 5 · Chất lượng dự báo
+  // Chất lượng dự báo
   const q = data?.quality;
-  // Mọi số ở đây có thể null (backend trả null khi thiếu backtest) → không nối "%" vào undefined.
+  // Số có thể null khi thiếu backtest → không nối "%" vào undefined
   const cov = q?.by_block?.length
     ? q.by_block.map((b) => (b.coverage_pct == null ? '—' : Math.round(b.coverage_pct))).join('/') + '%'
     : '—';
@@ -333,7 +325,7 @@ function buildKpis(
       value: n(c?.red),
       unit: 'mã Đỏ',
       tone: c && c.red > 0 ? 'red' : 'green',
-      // Mở thẳng danh sách Đỏ thay vì bắt người dùng lọc lại bằng tay.
+      // Mở thẳng danh sách Đỏ
       to: `${ROUTES.ALERTS}?level=red`,
       loading: !data,
       context: c ? (
@@ -351,7 +343,7 @@ function buildKpis(
     },
     {
       label: 'Mức cảnh báo vận hành',
-      // Trạng thái là chữ, không phải số: hạ cỡ chữ để nhãn dài không tràn thẻ.
+      // Hạ cỡ chữ để nhãn dài không tràn thẻ
       value: risk ? (
         <span className="text-[22px] leading-tight font-extrabold">
           {risk.label || OPERATIONAL_LEVEL_LABELS[risk.level]}

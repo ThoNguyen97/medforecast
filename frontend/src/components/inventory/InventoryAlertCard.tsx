@@ -7,13 +7,8 @@ interface Props {
   amberDays: number | null;
 }
 
-/**
- * Thẻ tóm tắt trang Danh mục & tồn kho — cùng số với trang Cảnh báo (toàn danh mục).
- *
- * Bốn ô nhãn, mỗi ô nói rõ ngưỡng và ý nghĩa vận hành của màu đó, để người
- * đọc không phải đoán "Xám" là gì. Xám không phải an toàn: là mã có tiêu hao
- * nhưng không có dòng tồn kho nên không tính được DOI.
- */
+/** Thẻ tóm tắt trang Danh mục & tồn kho, cùng số với trang Cảnh báo.
+ *  Xám = có tiêu hao nhưng không có dòng tồn kho, không tính được DOI. */
 export default function InventoryAlertCard({
   counts,
   redDays,
@@ -71,9 +66,7 @@ export default function InventoryAlertCard({
 
   return (
     <div className="bg-white rounded-2xl border border-neutral-200 p-5">
-      {/* Bốn ô nhãn — mỗi ô: tên · số · ngưỡng · chú thích. Không có số tổng
-          riêng: Đỏ + Vàng đã nằm ở hai ô đầu, số "cần chú ý" thuộc về Tổng quan
-          và Cảnh báo thiếu hụt. */}
+      {/* Bốn ô nhãn */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-2.5">
           {O.map((o) => (
             <div

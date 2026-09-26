@@ -1,11 +1,6 @@
-"""Dự báo từ artifact đã huấn luyện, không cần DB và không khớp lại mô hình.
+"""Dự báo kỳ kế tiếp từ artifact đã huấn luyện, không cần DB và không khớp lại mô hình.
 
-    python -m app.forecasting.predict --model models/v1/model_v1.pkl
-    python -m app.forecasting.predict --model models/v1/model_v1.pkl --block J09-J18 --json
-
-Đọc `model_v1.pkl` (thành viên đã khớp, trọng số, hệ số lệch, phần dư tương đối),
-trả dự báo kỳ kế tiếp của từng khối kèm khoảng 90 % và chia xuống mã theo tỷ trọng
-cố định (top-down). Có dữ liệu tháng mới thì huấn luyện lại bằng train.py.
+Chạy: python -m app.forecasting.predict --model models/v1/model_v1.pkl [--block J09-J18] [--json]
 """
 from __future__ import annotations
 

@@ -200,4 +200,4 @@ class UserService:
         )
         
         self.db.add(audit_log)
-        # Không commit tại đây; bản ghi chỉ được lưu ở lần commit kế tiếp của session.
+        # Không commit; bản ghi lưu ở lần commit kế tiếp của session.

@@ -1,20 +1,9 @@
-/**
- * Master data: 63 tỉnh/thành phố trực thuộc trung ương + đầy đủ quận/huyện/thị xã/thành
- * phố trực thuộc tỉnh của Việt Nam (tính tới 2024).
- *
- * Dùng cho dropdown cascade ở Module Bệnh / Thời tiết.
- */
+/** Master data 63 tỉnh/thành và quận/huyện Việt Nam (tới 2024) cho dropdown cascade. */
 
-// 5 thành phố trực thuộc trung ương — luôn xếp lên đầu dropdown
+// 5 thành phố trực thuộc trung ương, xếp đầu dropdown
 const MAJOR_CITIES = ['TP. Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng', 'Hải Phòng', 'Cần Thơ'];
 
-/**
- * Chuẩn hoá tên tỉnh/thành về dạng dùng trong master VN_REGIONS.
- *
- * Dữ liệu nguồn dùng tên đầy đủ ("Thành phố Hồ Chí Minh", "Thành phố Hà Nội"...),
- * master dùng dạng ngắn ("TP. Hồ Chí Minh", "Hà Nội"); quy về một khoá chung để
- * dropdown và cascade quận/huyện khớp nhau.
- */
+/** Chuẩn hoá tên tỉnh/thành về dạng ngắn của VN_REGIONS ("Thành phố Hồ Chí Minh" → "TP. Hồ Chí Minh"). */
 const PROVINCE_ALIASES: Record<string, string> = {
   'Thành phố Hồ Chí Minh': 'TP. Hồ Chí Minh',
   'Thành Phố Hồ Chí Minh': 'TP. Hồ Chí Minh',
@@ -34,7 +23,7 @@ export function normalizeProvinceName(name: string): string {
   return PROVINCE_ALIASES[trimmed] ?? trimmed;
 }
 
-// Map tỉnh/thành → list đơn vị hành chính cấp huyện
+// Tỉnh/thành → đơn vị cấp huyện
 const VN_REGIONS: Record<string, string[]> = {
   // ── 5 thành phố trực thuộc trung ương ──────────────────────────────
   'TP. Hồ Chí Minh': [
@@ -440,17 +429,13 @@ const VN_REGIONS: Record<string, string[]> = {
   ],
 };
 
-/**
- * Trả về danh sách quận/huyện cho 1 tỉnh/thành.
- * Ưu tiên master data (theo thứ tự tự nhiên), bổ sung quận/huyện có trong DB
- * nhưng master chưa liệt kê.
- */
+/** Quận/huyện của một tỉnh: master trước, bổ sung giá trị có trong DB. */
 export function getDistrictsForRegion(
   region: string,
   dbCascade?: Record<string, string[]>,
 ): string[] {
   const canonical = normalizeProvinceName(region);
-  // Master có thể dùng key chuẩn; cascade DB có thể dùng tên gốc — gộp cả 2.
+  // Master dùng key chuẩn, cascade DB có thể dùng tên gốc: gộp cả 2
   const master = VN_REGIONS[canonical] ?? VN_REGIONS[region] ?? [];
   const fromDb = [
     ...(dbCascade?.[region] ?? []),
@@ -463,10 +448,7 @@ export function getDistrictsForRegion(
   return [...master, ...extras];
 }
 
-/**
- * Danh sách 63 tỉnh/thành — đã sắp xếp 5 TP trực thuộc trung ương lên đầu, sau đó các
- * tỉnh còn lại theo thứ tự alphabet tiếng Việt.
- */
+/** 63 tỉnh/thành: 5 TP trực thuộc trung ương trước, còn lại theo alphabet. */
 export const VN_PROVINCES: string[] = (() => {
   const all = Object.keys(VN_REGIONS);
   const others = all
@@ -475,5 +457,5 @@ export const VN_PROVINCES: string[] = (() => {
   return [...MAJOR_CITIES, ...others];
 })();
 
-/** Set lookup nhanh để filter values nào là tỉnh thật. */
+/** Set để lọc giá trị là tỉnh thật. */
 export const VN_PROVINCES_SET: Set<string> = new Set(VN_PROVINCES);

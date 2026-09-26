@@ -17,13 +17,11 @@ interface Props {
   targetMonth: number;
 }
 
-// Chiến lược màu: năm hiện tại và năm liền trước (cặp cần so sánh trực tiếp)
-// dùng xanh dương/cam, nét dày. Mỗi năm cũ hơn có một màu riêng, lấy theo thứ
-// tự categorical an toàn cho người mù màu (slot 3-8), thứ tự cố định. Rê chuột /
-// bấm chú thích để cô lập một năm khi các đường chồng lên nhau.
-const COLOR_TARGET = '#2a78d6'; // năm hiện tại — slot 1 (xanh dương)
-const COLOR_PREV = '#eb6834'; // năm liền trước — slot 2 (cam)
-// Slot 3-8: ngọc lam, vàng, hồng cánh sen, lục, tím, đỏ — mỗi năm cũ 1 màu.
+// Năm hiện tại/liền trước dùng xanh dương/cam nét dày; mỗi năm cũ một màu
+// categorical an toàn cho người mù màu, thứ tự cố định.
+const COLOR_TARGET = '#2a78d6'; // năm hiện tại
+const COLOR_PREV = '#eb6834'; // năm liền trước
+// Slot 3-8, mỗi năm cũ một màu.
 const HISTORY_PALETTE = [
   '#1baf7a', // ngọc lam
   '#eda100', // vàng
@@ -33,17 +31,11 @@ const HISTORY_PALETTE = [
   '#e34948', // đỏ
 ];
 
-/** Nấc "đẹp" để làm trần trục Y — đủ dày để mọi quy mô số ca đều có một trần
- *  tròn trịa, không nhảy vọt lãng phí chỗ (140 → 160, 190 → 220, 250 → 300). */
+/** Nấc tròn để làm trần trục Y (140 → 160, 190 → 220, 250 → 300). */
 const NAC_TRAN = [1, 1.1, 1.2, 1.25, 1.4, 1.5, 1.6, 1.8, 2, 2.2, 2.5, 3, 3.5, 4, 5, 6, 8, 10];
 
-/**
- * Trần trục Y: giá trị lớn nhất đang vẽ + 10% khoảng thở, làm tròn lên nấc đẹp.
- *
- * Tính từ mọi đường đang vẽ, kể cả điểm dự báo nét đứt của tháng tới, nên biểu
- * đồ tự giãn theo dữ liệu (dự báo 250 ca → trần 300). Mặc định của recharts lấy
- * đúng dataMax làm trần khiến đỉnh cao nhất chạm mép trên và bị cắt.
- */
+/** Trần trục Y = max đang vẽ (kể cả điểm dự báo) + 10 %, làm tròn lên nấc;
+ *  dataMax mặc định của recharts làm đỉnh chạm mép trên. */
 function tranTrucY(dataMax: number): number {
   const dinh = Math.max(dataMax || 0, 0);
   if (dinh <= 0) return 10;
@@ -70,8 +62,7 @@ export default function ForecastVsActualChart({
   targetYear,
   targetMonth,
 }: Props) {
-  // Năm đang được "cô lập" để xem riêng — hoverYear là preview khi rê chuột,
-  // lockedYear giữ nguyên sau khi bấm (để dùng được cả trên di động/màn cảm ứng).
+  // Cô lập một năm: hoverYear khi rê chuột, lockedYear sau khi bấm (dùng được trên cảm ứng).
   const [hoverYear, setHoverYear] = useState<number | null>(null);
   const [lockedYear, setLockedYear] = useState<number | null>(null);
   const activeYear = lockedYear ?? hoverYear;
@@ -80,16 +71,14 @@ export default function ForecastVsActualChart({
   const prevYear = targetYear - 1;
   const hasPrevYear = sortedYears.includes(prevYear);
   const historyYears = sortedYears.filter((y) => y !== targetYear && y !== prevYear);
-  // Vẽ năm cũ trước (nằm dưới), năm liền trước rồi năm hiện tại vẽ sau cùng
-  // (nằm trên) — để 2 đường quan trọng nhất không bao giờ bị đường khác che.
+  // Vẽ năm cũ trước, năm hiện tại sau cùng để hai đường chính không bị che.
   const renderOrder = [
     ...historyYears,
     ...(hasPrevYear ? [prevYear] : []),
     ...(sortedYears.includes(targetYear) ? [targetYear] : []),
   ];
 
-  // Mỗi năm 1 màu cố định trong lần render này — năm cũ lấy lần lượt từ
-  // HISTORY_PALETTE theo thứ tự tăng dần (2021 → màu đầu tiên, 2022 → màu kế...).
+  // Mỗi năm một màu cố định; năm cũ lấy lần lượt từ HISTORY_PALETTE theo thứ tự tăng dần.
   const yearColor: Record<number, string> = {};
   historyYears.forEach((y, idx) => {
     yearColor[y] = HISTORY_PALETTE[idx % HISTORY_PALETTE.length];
@@ -99,9 +88,8 @@ export default function ForecastVsActualChart({
 
   const targetMonthKey = `T${targetMonth}`;
 
-  // Backend trả hai trường riêng <year>_actual và <year>_forecast (dùng cho tooltip);
-  // <year>_actual_line vẽ đường thực tế, <year>_forecast_line vẽ đoạn nét đứt từ
-  // tháng liền trước (lấy actual) sang tháng dự báo (lấy forecast).
+  // <year>_actual/_forecast cho tooltip; <year>_actual_line và <year>_forecast_line
+  // để vẽ đường liền và đoạn nét đứt sang tháng dự báo.
   const targetKey = String(targetYear);
   const enriched = data.map((row, idx) => {
     const monthIdx = idx + 1; // T1 = idx 0
@@ -113,18 +101,15 @@ export default function ForecastVsActualChart({
 
     return {
       ...row,
-      // Giữ nguyên actual và forecast cho tooltip
       [`${targetKey}_actual`]: actualValue,
       [`${targetKey}_forecast`]: forecastValue,
-      // Trường riêng để vẽ đường
       [`${targetKey}_actual_line`]: isForecastMonth ? null : actualValue,
       [`${targetKey}_forecast_line`]:
         isLastActual ? actualValue : (isForecastMonth ? forecastValue : null),
     };
   });
 
-  // Độ dày/độ mờ của 1 đường, tuỳ theo vai trò (target/prev/history) và việc
-  // có năm nào đang được cô lập (activeYear) hay không. Màu lấy từ yearColor.
+  // Độ dày/độ mờ theo vai trò (target/prev/history) và năm đang cô lập.
   const lineStyleOf = (year: number) => {
     const role = roleOfYear(year, targetYear, prevYear);
     const isDimmed = activeYear !== null && activeYear !== year;
@@ -209,7 +194,7 @@ export default function ForecastVsActualChart({
               const isTarget = y === targetYear;
               const style = lineStyleOf(y);
               if (isTarget) {
-                // Năm hiện tại: chia 2 line — actual nét liền, forecast nét đứt
+                // Năm hiện tại: actual nét liền, forecast nét đứt
                 return [
                   <Line
                     key={`${y}-actual`}
@@ -319,19 +304,17 @@ function Legend({
 function CustomTooltip({ active, payload, label, targetYear, prevYear }: any) {
   if (!active || !payload || !payload.length) return null;
 
-  // Lọc ra các năm duy nhất từ payload
   const years = new Set<string>();
   payload.forEach((entry: any) => {
     const dataKey = entry.dataKey;
-    // Lấy năm từ dataKey (bỏ hậu tố _actual, _forecast, _line)
+    // Năm từ dataKey, bỏ hậu tố _actual/_forecast/_line
     const year = dataKey.replace(/_actual_line|_forecast_line|_actual|_forecast/g, '');
     if (year && !isNaN(Number(year))) {
       years.add(year);
     }
   });
 
-  // Sắp xếp: năm hiện tại lên đầu, kế đến năm liền trước, rồi các năm còn lại
-  // giảm dần — vì đó là thứ tự người xem quan tâm khi so sánh.
+  // Năm hiện tại lên đầu, rồi năm liền trước, rồi giảm dần.
   const sortedYearList = Array.from(years).sort((a, b) => {
     const rank = (y: string) => {
       if (Number(y) === targetYear) return 0;
@@ -352,7 +335,6 @@ function CustomTooltip({ active, payload, label, targetYear, prevYear }: any) {
         const color = payload.find((p: any) => p.dataKey.includes(year))?.color;
 
         if (isTargetYear) {
-          // Năm target: hiển thị cả actual và forecast
           const dataPoint = payload[0]?.payload;
           if (!dataPoint) return null;
 
@@ -380,7 +362,6 @@ function CustomTooltip({ active, payload, label, targetYear, prevYear }: any) {
             </div>
           );
         } else {
-          // Các năm khác: hiển thị số ca thực tế
           const dataPoint = payload[0]?.payload;
           const value = dataPoint?.[year];
 
