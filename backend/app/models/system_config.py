@@ -6,7 +6,7 @@ from app.database import Base
 
 
 class SystemConfig(Base):
-    """Kho cấu hình hệ thống dạng khoá–giá trị."""
+    """Kho cấu hình hệ thống dạng khoá-giá trị."""
     
     __tablename__ = "system_config"
     

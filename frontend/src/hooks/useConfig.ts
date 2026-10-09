@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { configService } from '../services/configService';
 import type { ConfigUpdateRequest } from '../types/config';
 
-// ─── Query Keys ──────────────────────────────────────────────────────────────
+// Query Keys
 
 const CONFIG_KEYS = {
   all: ['config'] as const,
@@ -10,7 +10,7 @@ const CONFIG_KEYS = {
   auditLogs: (params?: object) => ['audit-logs', params] as const,
 };
 
-// ─── Queries ─────────────────────────────────────────────────────────────────
+// Queries
 
 export function useConfigs() {
   return useQuery({
@@ -42,7 +42,7 @@ export function useAuditLogs(params?: {
   });
 }
 
-// ─── Mutations ────────────────────────────────────────────────────────────────
+// Mutations
 
 export function useUpdateConfig() {
   const queryClient = useQueryClient();

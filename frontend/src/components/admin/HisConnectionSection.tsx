@@ -29,7 +29,7 @@ const RONG: HisConnectionInput = {
   password: '',
   driver: 'ODBC Driver 18 for SQL Server',
   trust_cert: true,
-  sql_profile: 'sta',
+  sql_profile: 'dw',
   lookback_months: 3,
 };
 
@@ -92,23 +92,23 @@ export default function HisConnectionSection() {
       <div className="bg-white rounded-2xl border border-neutral-200 p-5 space-y-4">
         <div className="flex items-center gap-2">
           <Database className="w-5 h-5 text-primary-600" />
-          <h3 className="font-semibold text-neutral-800">Nguồn dữ liệu — CSDL nghiên cứu MEDFORECAST_DW</h3>
+          <h3 className="font-semibold text-neutral-800">Nguồn dữ liệu: CSDL trung gian MEDFORECAST_DW</h3>
           {cfg?.da_luu_trong_db ? (
             <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
               đang dùng cấu hình lưu trong hệ thống
             </span>
           ) : (
             <span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
-              chưa lưu — đang chạy theo file .env của backend
+              chưa lưu: đang chạy theo file .env của backend
             </span>
           )}
         </div>
 
         <div className="border rounded-xl p-3 border-primary-500 bg-primary-50/50 ring-1 ring-primary-500 max-w-xl">
-          <div className="font-medium text-sm text-neutral-800">SQL Server — CSDL nghiên cứu MEDFORECAST_DW</div>
+          <div className="font-medium text-sm text-neutral-800">SQL Server: CSDL trung gian MEDFORECAST_DW</div>
           <div className="text-xs text-neutral-500 mt-0.5">
-            CSDL trên máy chủ STA của bệnh viện (12 bảng MF_*, đã khử định danh, do các thủ tục
-            usp_MedForecast_* trên HIS PROD tổng hợp). Ứng dụng chỉ đọc 7 view vw_MedForecast_*
+            Cơ sở dữ liệu trung gian của bệnh viện (12 bảng MF_*, đã khử định danh, được đồng bộ tự động
+            hằng đêm bằng các thủ tục usp_MedForecast_*). Ứng dụng chỉ đọc 7 view vw_MedForecast_*
             tại đây, không kết nối trực tiếp tới HIS.
           </div>
         </div>
@@ -120,7 +120,7 @@ export default function HisConnectionSection() {
           <h3 className="font-semibold text-neutral-800">Thông số kết nối</h3>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Truong label="Máy chủ SQL Server" required ghiChu="Tên máy hoặc địa chỉ IP máy chủ STA">
+            <Truong label="Máy chủ SQL Server" required ghiChu="Tên máy hoặc địa chỉ IP máy chủ MEDFORECAST_DW">
               <input className={o} value={form.host} placeholder="localhost"
                      onChange={(e) => doi('host', e.target.value)} />
             </Truong>
@@ -211,7 +211,7 @@ export default function HisConnectionSection() {
 
           {saved && (
             <span className="inline-flex items-center gap-1 text-sm text-emerald-600">
-              <CheckCircle2 className="w-4 h-4" /> Đã lưu — lần đồng bộ sau sẽ dùng cấu hình này
+              <CheckCircle2 className="w-4 h-4" /> Đã lưu: lần đồng bộ sau sẽ dùng cấu hình này
             </span>
           )}
           {saveMut.isError && (
@@ -233,8 +233,8 @@ export default function HisConnectionSection() {
           >
             <div className="font-medium text-sm">
               {testResult.ok
-                ? 'Kết nối tốt — đọc được đủ 7 view vw_MedForecast_*'
-                : 'Chưa kết nối được — xem từng bước bên dưới'}
+                ? 'Kết nối tốt: đọc được đủ 7 view vw_MedForecast_*'
+                : 'Chưa kết nối được: xem từng bước bên dưới'}
             </div>
             <ul className="space-y-1.5">
               {testResult.steps.map((s, i) => (
@@ -254,7 +254,7 @@ export default function HisConnectionSection() {
 
         <p className="text-xs text-neutral-500">
           Kiểm tra chạy với cấu hình đang nhập trên form (chưa lưu). Mật khẩu chỉ gửi
-          một chiều lên máy chủ và được mã hoá trước khi lưu — hệ thống không bao giờ
+          một chiều lên máy chủ và được mã hoá trước khi lưu, hệ thống không bao giờ
           hiển thị lại mật khẩu đã đặt.
         </p>
       </div>

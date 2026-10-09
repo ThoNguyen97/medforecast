@@ -21,7 +21,7 @@ TOAN_QUOC = "TOAN_QUOC"
 TINH_MAC_DINH = "TP. Hồ Chí Minh"   # tên chuẩn
 
 
-# ── 1. .env ──────────────────────────────────────────────────────────────────
+# 1. .env
 
 def tao_env(backend: Path) -> str:
     env = backend / ".env"
@@ -29,14 +29,14 @@ def tao_env(backend: Path) -> str:
         return f"đã có {env.name}, giữ nguyên"
     mau = backend / ".env.example"
     if not mau.exists():
-        return f"CHƯA có {env.name} và không thấy .env.example — dùng cấu hình mặc định"
+        return f"CHƯA có {env.name} và không thấy .env.example, dùng cấu hình mặc định"
     noi_dung = mau.read_text(encoding="utf-8").replace(
         "SECRET_KEY=doi-khoa-nay-truoc-khi-trien-khai", f"SECRET_KEY={secrets.token_urlsafe(48)}")
     env.write_text(noi_dung, encoding="utf-8")
     return f"đã tạo {env.name} từ .env.example (SECRET_KEY sinh ngẫu nhiên)"
 
 
-# ── 2. bảng ──────────────────────────────────────────────────────────────────
+# 2. bảng
 
 def tao_bang() -> str:
     from app.database import Base, engine
@@ -57,14 +57,14 @@ def tao_bang() -> str:
             "AND name NOT LIKE 'sqlite_%'")).scalar() or 0
     ghi_chu = ""
     if n_view < len(VIEWS):
-        ghi_chu = (" — %d view chờ dữ liệu vật tư, tự tạo sau lần đồng bộ HIS đầu tiên"
+        ghi_chu = (", %d view chờ dữ liệu thuốc, tự tạo sau lần đồng bộ HIS đầu tiên"
                    % (len(VIEWS) - n_view))
     return (f"{n_bang} bảng ({n_app} nghiệp vụ + {len(PBase.metadata.tables)} tầng dữ "
             f"liệu + 6 tự quản) + {n_view}/{len(VIEWS)} view{ghi_chu} "
             f"trong {get_db_url()}")
 
 
-# ── 3. tài khoản ─────────────────────────────────────────────────────────────
+# 3. tài khoản
 
 def tao_admin(username: str, password: str, email: str) -> str:
     from app.database import SessionLocal
@@ -79,12 +79,12 @@ def tao_admin(username: str, password: str, email: str) -> str:
                     full_name="System Administrator", role="Administrator",
                     is_active=True))
         db.commit()
-        return f"đã tạo '{username}' / '{password}' — ĐỔI MẬT KHẨU sau khi đăng nhập"
+        return f"đã tạo '{username}' / '{password}', ĐỔI MẬT KHẨU sau khi đăng nhập"
     finally:
         db.close()
 
 
-# ── 4. dữ liệu ───────────────────────────────────────────────────────────────
+# 4. dữ liệu
 
 def _doc_csv(p: Path) -> list[dict]:
     with open(p, encoding="utf-8-sig", newline="") as f:
@@ -199,7 +199,7 @@ def nap_du_lieu(data_dir: Path) -> list[str]:
         db.close()
 
 
-# ── chạy ─────────────────────────────────────────────────────────────────────
+# chạy
 
 def _dem_du_lieu_cu() -> str:
     """Mô tả dữ liệu đang có; chuỗi rỗng nếu CSDL trống."""
@@ -234,7 +234,7 @@ def main(argv=None) -> int:
     ap.add_argument("--email", default="admin@example.com")
     args = ap.parse_args(argv)
 
-    print("MedForecast — khởi tạo hệ thống trên máy mới\n" + "─" * 60)
+    print("MedForecast: khởi tạo hệ thống trên máy mới\n" + "-" * 60)
     print("1) Cấu hình   :", tao_env(BACKEND_DIR))
 
     # settings chỉ đọc .env một lần nên nạp trước khi import app.config
@@ -254,27 +254,27 @@ def main(argv=None) -> int:
         # Không ghi đè số liệu thật đã đồng bộ HIS trừ khi --ghi-de-du-lieu
         dang_co = _dem_du_lieu_cu()
         if dang_co and not args.ghi_de_du_lieu:
-            print(f"4) Dữ liệu    : DB đã có dữ liệu ({dang_co}) — KHÔNG nạp dataset "
+            print(f"4) Dữ liệu    : DB đã có dữ liệu ({dang_co}): KHÔNG nạp dataset "
                   f"để tránh xoá số liệu thật.")
             print("                Máy đã chạy trước đó mà thiếu bảng: "
                   "python -m scripts.nang_cap_db --ap-dung rồi đồng bộ lại từ HIS.")
             print("                Thật sự muốn thay bằng bản công bố: thêm --ghi-de-du-lieu.")
         elif not (d / "nhom_thang.csv").exists():
-            print(f"4) Dữ liệu    : KHÔNG thấy {d}/nhom_thang.csv — bỏ qua. "
+            print(f"4) Dữ liệu    : KHÔNG thấy {d}/nhom_thang.csv: bỏ qua. "
                   f"Dùng --data để chỉ đúng thư mục dataset.")
         else:
             for dong in nap_du_lieu(d):
                 print("4) Dữ liệu    :", dong)
 
-    print("─" * 60)
+    print("-" * 60)
     print("Xong. Khởi động:  uvicorn app.main:app --reload")
-    print("Đăng nhập:", args.username, "/", args.password, "— đổi mật khẩu ngay.")
+    print("Đăng nhập:", args.username, "/", args.password, "(đổi mật khẩu ngay).")
     print()
-    print("CHẠY ĐƯỢC NGAY : Dữ liệu bệnh · Phân tích & Dự báo · Dashboard (số ca,")
+    print("CHẠY ĐƯỢC NGAY : Dữ liệu bệnh, Phân tích & Dự báo, Dashboard (số ca,")
     print("                 xu hướng, dự báo kỳ tới, chất lượng mô hình).")
-    print("CẦN HIS        : Tồn kho, DOI, Cảnh báo thiếu hụt — cấu hình tại Quản trị →")
+    print("CẦN HIS        : Tồn kho, DOI, Cảnh báo thiếu hụt, cấu hình tại Quản trị >")
     print("                 Nguồn dữ liệu (CSDL DW), rồi bấm «Nạp dữ liệu DW» ở trang Dữ liệu bệnh.")
-    print("                 Bộ dữ liệu công bố không chứa dữ liệu vật tư.")
+    print("                 Bộ dữ liệu công bố không chứa dữ liệu thuốc.")
     return 0
 
 

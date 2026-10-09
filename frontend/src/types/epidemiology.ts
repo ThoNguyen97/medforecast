@@ -35,7 +35,7 @@ export interface DiseaseCaseCreate {
   note?: string;
 }
 
-// Mã ICD → tên bệnh tiếng Việt
+// Mã ICD sang tên bệnh tiếng Việt
 export const DISEASE_TYPE_LABELS: Record<string, string> = {
   J20: 'Viêm phế quản cấp',
   J06: 'Nhiễm trùng đường hô hấp trên cấp',

@@ -10,11 +10,11 @@ from app.main import app
 from app.database import Base, get_db
 from app.models.user import User
 from app.models.system_config import SystemConfig
-from app.models.medical_supply import MedicalSupply
+from app.models.drug import Drug
 from app.core.security import hash_password, create_access_token
 
 
-# ── CSDL test ──
+# CSDL test
 
 @pytest.fixture(scope="function")
 def db_session():
@@ -106,7 +106,7 @@ def sample_config(db_session, admin_user):
 
 @pytest.fixture
 def sample_supply(db_session):
-    supply = MedicalSupply(
+    supply = Drug(
         name="Surgical Mask",
         category="PPE",
         unit="box",
@@ -117,7 +117,7 @@ def sample_supply(db_session):
     return supply
 
 
-# ── Danh sách cấu hình ──
+# Danh sách cấu hình
 
 class TestListConfigs:
     def test_list_configs_requires_auth(self, client):
@@ -140,7 +140,7 @@ class TestListConfigs:
         assert resp.status_code == 200
 
 
-# ── Đọc cấu hình theo khoá ──
+# Đọc cấu hình theo khoá
 
 class TestGetConfigByKey:
     def test_get_config_by_key_success(self, client, admin_headers, sample_config):
@@ -159,7 +159,7 @@ class TestGetConfigByKey:
         assert resp.status_code == 401
 
 
-# ── Cập nhật cấu hình theo khoá ──
+# Cập nhật cấu hình theo khoá
 
 class TestUpdateConfigByKey:
     def test_update_config_success_as_admin(self, client, admin_headers, sample_config):

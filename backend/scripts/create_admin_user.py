@@ -30,7 +30,7 @@ def create_admin() -> None:
         )
         db.add(admin)
         db.commit()
-        print("Đã tạo tài khoản admin / admin123 — đổi mật khẩu sau lần đăng nhập đầu.")
+        print("Đã tạo tài khoản admin / admin123: đổi mật khẩu sau lần đăng nhập đầu.")
     except Exception:
         db.rollback()
         raise

@@ -35,7 +35,7 @@ def so_ca_thuc_te(
         return None
     ky = f"{thang.year:04d}-{thang.month:02d}"
 
-    # Toàn quốc + mã là một khối → số chính thức từ mart (kỳ đã chốt).
+    # Toàn quốc + mã là một khối: lấy số chính thức từ mart (kỳ đã chốt).
     if not location and icd_code in NHOM_ICD:
         try:
             r = db.execute(text(
@@ -45,7 +45,7 @@ def so_ca_thuc_te(
             if r is not None:
                 return int(r[0] or 0)
         except Exception:                                     # noqa: BLE001
-            db.rollback()                                     # mart chưa có → rơi xuống disease_cases
+            db.rollback()                                     # mart chưa có thì dùng disease_cases
 
     q = db.query(
         func.count(DiseaseCase.id),

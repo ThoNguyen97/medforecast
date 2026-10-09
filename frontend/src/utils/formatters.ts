@@ -85,7 +85,7 @@ export function loiMayChu(e: unknown, macDinh = 'Có lỗi xảy ra'): string {
   return err?.message || macDinh;
 }
 
-/** Chuỗi thời gian máy chủ → Date đúng múi giờ: SQLite ghi UTC không kèm offset,
+/** Chuỗi thời gian máy chủ sang Date đúng múi giờ: SQLite ghi UTC không kèm offset,
  *  ECMAScript hiểu là giờ địa phương nên gắn 'Z' khi thiếu offset. */
 function parseThoiGianMayChu(iso: string | null | undefined): Date | null {
   if (!iso) return null;
@@ -96,10 +96,10 @@ function parseThoiGianMayChu(iso: string | null | undefined): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-/** ISO máy chủ → "dd/mm/yyyy hh:mm" giờ địa phương; `khiTrong` nếu rỗng. */
+/** ISO máy chủ sang "dd/mm/yyyy hh:mm" giờ địa phương; `khiTrong` nếu rỗng. */
 export function formatThoiGianMayChu(
   iso: string | null | undefined,
-  khiTrong = '—',
+  khiTrong = '-',
 ): string {
   const d = parseThoiGianMayChu(iso);
   if (!d) return khiTrong;

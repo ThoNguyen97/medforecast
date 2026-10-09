@@ -1,7 +1,7 @@
-﻿/* prod/03_usp_MedForecast_DayTieuHaoToanVien.sql
-   Chạy trên: HIS PROD, trong ngữ cảnh CSDL HIS. Điều kiện: prod/01, sta/03.
-   Mục đích: gom tiêu hao tháng × vật tư toàn viện, tách phần thuộc lượt có chẩn đoán hô hấp,
-   đẩy xuống STA MF_TieuHao_Tong (mẫu số DOI và D_baseline); nạp lại cả cửa sổ @SoThang mỗi lần.
+﻿/* his_nguon/03_usp_MedForecast_DayTieuHaoToanVien.sql
+   Chạy trên: máy chủ CSDL HIS, trong ngữ cảnh CSDL HIS. Điều kiện: his_nguon/01, medforecast_dw/03.
+   Mục đích: gom tiêu hao tháng × thuốc toàn viện, tách phần thuộc lượt có chẩn đoán hô hấp,
+   đẩy sang bảng MF_TieuHao_Tong của MEDFORECAST_DW (mẫu số DOI và D_baseline); nạp lại cả cửa sổ @SoThang mỗi lần.
    @GomVTYT giữ 1 để còn số liệu đối chứng; view SQLite lọc is_vtyt = 0, không đổi DOI của thuốc. */
 CREATE OR ALTER PROCEDURE dbo.usp_MedForecast_DayTieuHaoToanVien
     @BENHVIEN_ID   VARCHAR(8)    = NULL,   -- khi DB chứa nhiều bệnh viện
@@ -24,7 +24,7 @@ BEGIN
         PRINT CONCAT(N'Tiêu hao toàn viện từ ', CONVERT(varchar(10), @Tu, 120),
                      N' đến ', CONVERT(varchar(10), @Den, 120));
 
-        /* 1) Danh mục vật tư */
+        /* 1) Danh mục thuốc */
         IF OBJECT_ID('tempdb..#Meta') IS NOT NULL DROP TABLE #Meta;
         SELECT  D.DUOC_ID,
                 D.MADUOC        AS SupplyCode,
@@ -174,17 +174,17 @@ BEGIN
 
         /* Bất biến: phần hô hấp không vượt tổng, vượt là JOIN #KbHH nhân bản dòng toa */
         IF EXISTS (SELECT 1 FROM #KQ WHERE so_luong_hohap > so_luong_toan_vien + 0.001)
-            THROW 50021, N'Có dòng mà lượng hô hấp lớn hơn lượng toàn viện — JOIN đang nhân bản. Không đẩy.', 1;
+            THROW 50021, N'Có dòng mà lượng hô hấp lớn hơn lượng toàn viện, JOIN đang nhân bản. Không đẩy.', 1;
 
         /* Tỷ trọng hô hấp chung kỳ vọng quanh 7,80%; ngoài (0, 40] thường do bộ lọc ICD sai */
         IF @TyTrongChung IS NULL OR @TyTrongChung <= 0 OR @TyTrongChung > 40
             PRINT CONCAT(N'CẢNH BÁO: tỷ trọng hô hấp chung = ', @TyTrongChung,
-                         N'% — lệch xa mức tham chiếu 7,80%. Kiểm tra bộ lọc ICD trước khi tin kết quả.');
+                         N'%: lệch xa mức tham chiếu 7,80%. Kiểm tra bộ lọc ICD trước khi tin kết quả.');
 
-        /* 6) Đẩy xuống STA hoặc chỉ xem */
+        /* 6) Đẩy sang CSDL trung gian hoặc chỉ xem */
         IF @ChiXem = 1
         BEGIN
-            PRINT N'CHẾ ĐỘ CHỈ XEM — không đẩy.';
+            PRINT N'CHẾ ĐỘ CHỈ XEM: không đẩy.';
 
             SELECT TOP 50 supply_code, supply_name, supply_unit,
                    SUM(so_luong_toan_vien)                                   AS TongToanVien,
@@ -195,32 +195,32 @@ BEGIN
             FROM   #KQ GROUP BY supply_code, supply_name, supply_unit
             ORDER BY SUM(so_luong_toan_vien) DESC;
 
-            SELECT CASE WHEN TyTrong >= 75 THEN N'1 · ≥75%'
-                        WHEN TyTrong >= 50 THEN N'2 · 50-75%'
-                        WHEN TyTrong >= 25 THEN N'3 · 25-50%'
-                        WHEN TyTrong >= 10 THEN N'4 · 10-25%'
-                        ELSE                    N'5 · <10%' END AS NhomTyTrong,
+            SELECT CASE WHEN TyTrong >= 75 THEN N'1 - ≥75%'
+                        WHEN TyTrong >= 50 THEN N'2 - 50-75%'
+                        WHEN TyTrong >= 25 THEN N'3 - 25-50%'
+                        WHEN TyTrong >= 10 THEN N'4 - 10-25%'
+                        ELSE                    N'5 - <10%' END AS NhomTyTrong,
                    COUNT(*) AS SoMa
             FROM ( SELECT supply_code,
                           100.0*SUM(so_luong_hohap)/NULLIF(SUM(so_luong_toan_vien),0) AS TyTrong
                    FROM #KQ GROUP BY supply_code ) z
-            GROUP BY CASE WHEN TyTrong >= 75 THEN N'1 · ≥75%'
-                          WHEN TyTrong >= 50 THEN N'2 · 50-75%'
-                          WHEN TyTrong >= 25 THEN N'3 · 25-50%'
-                          WHEN TyTrong >= 10 THEN N'4 · 10-25%'
-                          ELSE                    N'5 · <10%' END
+            GROUP BY CASE WHEN TyTrong >= 75 THEN N'1 - ≥75%'
+                          WHEN TyTrong >= 50 THEN N'2 - 50-75%'
+                          WHEN TyTrong >= 25 THEN N'3 - 25-50%'
+                          WHEN TyTrong >= 10 THEN N'4 - 10-25%'
+                          ELSE                    N'5 - <10%' END
             ORDER BY NhomTyTrong;
             RETURN;
         END
 
         IF @nDong = 0
-            THROW 50022, N'Không gom được dòng nào — DỪNG, không đụng vào STA.', 1;
+            THROW 50022, N'Không gom được dòng nào: DỪNG, không đụng vào CSDL trung gian.', 1;
 
-        DELETE FROM [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_TieuHao_Tong]
+        DELETE FROM [MEDFORECAST_DW_LINK].[MEDFORECAST_DW].[dbo].[MF_TieuHao_Tong]
         WHERE  Period >= @Tu;
 
-        /* d_baseline_thang, ty_trong_hohap là cột tính sẵn bên STA */
-        INSERT INTO [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_TieuHao_Tong]
+        /* d_baseline_thang, ty_trong_hohap là cột tính sẵn bên CSDL trung gian */
+        INSERT INTO [MEDFORECAST_DW_LINK].[MEDFORECAST_DW].[dbo].[MF_TieuHao_Tong]
               (Period, [month], supply_code, supply_name, supply_unit, is_vtyt,
                so_luong_toan_vien, so_luong_hohap, so_dong_toa, so_luot, NgayCapNhat)
         SELECT Period, [month], supply_code, supply_name, supply_unit, is_vtyt,
@@ -228,16 +228,16 @@ BEGIN
         FROM   #KQ;
 
         DECLARE @nSau INT = (
-            SELECT COUNT(*) FROM [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_TieuHao_Tong]
+            SELECT COUNT(*) FROM [MEDFORECAST_DW_LINK].[MEDFORECAST_DW].[dbo].[MF_TieuHao_Tong]
             WHERE Period >= @Tu);
         IF @nSau <> @nDong
-            THROW 50023, N'Số dòng bên STA không khớp số dòng đã gom.', 1;
+            THROW 50023, N'Số dòng bên CSDL trung gian không khớp số dòng đã gom.', 1;
 
-        UPDATE [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_Watermark]
+        UPDATE [MEDFORECAST_DW_LINK].[MEDFORECAST_DW].[dbo].[MF_Watermark]
         SET    MocDaDay = (SELECT MAX(Period) FROM #KQ), LanChayCuoi = SYSDATETIME()
         WHERE  TenLuong = 'TieuHaoTong';
 
-        INSERT INTO [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_SyncLog]
+        INSERT INTO [MEDFORECAST_DW_LINK].[MEDFORECAST_DW].[dbo].[MF_SyncLog]
               (BatDau, KetThuc, TuNgay, SoDongCaBenh, TrangThai, ThongDiep)
         VALUES (@BatDau, SYSDATETIME(), @Tu, @nDong, 'ok',
                 CONCAT(N'TieuHaoToanVien: ', @nDong, N' dòng, ', @nMa, N' mã, ',
@@ -248,14 +248,14 @@ BEGIN
     END TRY
     BEGIN CATCH
         BEGIN TRY
-            INSERT INTO [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_SyncLog]
+            INSERT INTO [MEDFORECAST_DW_LINK].[MEDFORECAST_DW].[dbo].[MF_SyncLog]
                   (BatDau, KetThuc, TuNgay, TrangThai, ThongDiep)
             VALUES (@BatDau, SYSDATETIME(), @Tu, 'failed',
-                    CONCAT(N'TieuHaoToanVien — lỗi ', ERROR_NUMBER(), N' dòng ',
+                    CONCAT(N'TieuHaoToanVien: lỗi ', ERROR_NUMBER(), N' dòng ',
                            ERROR_LINE(), N': ', ERROR_MESSAGE()));
         END TRY
         BEGIN CATCH
-            PRINT N'Không ghi được nhật ký xuống STA — kiểm tra linked server.';
+            PRINT N'Không ghi được nhật ký sang CSDL trung gian, kiểm tra linked server.';
         END CATCH;
         THROW;
     END CATCH

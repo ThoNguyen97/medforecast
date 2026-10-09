@@ -42,16 +42,16 @@ def care_cfg(db: Session) -> Dict[str, Any]:
         try:
             out.update(json.loads(r))
         except Exception:                                 # noqa: BLE001
-            logger.warning("dss.care_level không phải JSON hợp lệ — dùng mặc định.")
+            logger.warning("dss.care_level không phải JSON hợp lệ, dùng mặc định.")
     return out
 
 
-# ── p̂(g,ro): tỷ trọng rổ chăm sóc, co ngót rổ mẫu nhỏ ──
+# p̂(g,ro): tỷ trọng rổ chăm sóc, co ngót rổ mẫu nhỏ
 
 def care_level_shares(db: Session) -> Dict[str, Dict[str, float]]:
     """p̂(g,ro) từ `v_care_level_share`, trả {block_code: {ro: tỷ trọng}} tổng bằng 1.
     Rổ mẫu nhỏ co ngót chỉ trong khối nội trú, giữ nguyên p̂(NGT):
-    q̂ = λ·q_đo + (1−λ)/số_rổ_nội_trú với λ = n/(n+K₀), rồi p̂(ro) = q̂·(1−p̂(NGT)).
+    q̂ = λ×q_đo + (1−λ)/số_rổ_nội_trú với λ = n/(n+K₀), rồi p̂(ro) = q̂×(1−p̂(NGT)).
     """
     if not _has(db, "v_care_level_share"):
         return {}
@@ -62,7 +62,7 @@ def care_level_shares(db: Session) -> Dict[str, Dict[str, float]]:
         "SELECT block_code, ro, cases, share_pct, mau_qua_nho, so_ky, tu_ky, den_ky "
         "FROM v_care_level_share")).fetchall()
     if not rows:
-        logger.warning("v_care_level_share rỗng — fact_cases_by_care_level chưa "
+        logger.warning("v_care_level_share rỗng: fact_cases_by_care_level chưa "
                        "được nạp. Bấm «Nạp dữ liệu DW» ở trang Dữ liệu bệnh.")
         return {}
 
@@ -101,7 +101,7 @@ def care_level_shares(db: Session) -> Dict[str, Dict[str, float]]:
     return out
 
 
-# ── Định mức thực nghiệm Norm(i, g, ro) ──
+# Định mức thực nghiệm Norm(i, g, ro)
 
 def _cua_so_ky(db: Session, cfg: Dict[str, Any]) -> List[str]:
     """`window_periods` kỳ đã chốt gần nhất kể từ `min_period`, loại tháng hiện tại."""
@@ -145,7 +145,7 @@ def empirical_norms(db: Session) -> Dict[str, Any]:
     out["cases"] = cases
 
     # tử số: tiêu hao theo (nhóm × rổ × mã)
-    usage: Dict[str, Dict[str, Dict[str, float]]] = {}       # g → ro → code → q
+    usage: Dict[str, Dict[str, Dict[str, float]]] = {}       # g, ro, code, q
     for r in db.execute(text(
             f"SELECT block_code, ro, supply_code, SUM(quantity) AS q "
             f"FROM fact_usage_by_care_level WHERE period IN ({ph}) "
@@ -200,18 +200,18 @@ def chan_doan_dinh_muc(db: Session) -> Dict[str, Any]:
     }
     if not emp["norms"]:
         ket["canh_bao"].append(
-            "Chưa có định mức thực nghiệm — fact_usage_by_care_level / "
+            "Chưa có định mức thực nghiệm, fact_usage_by_care_level / "
             "fact_cases_by_care_level rỗng. Đồng bộ HIS rồi chạy lại; tới lúc đó mọi mã ra nhãn Xám.")
         return ket
     thieu = [g for g in BLOCKS if g not in emp["norms"]]
     if thieu:
-        ket["canh_bao"].append(f"Định mức thực nghiệm thiếu nhóm {thieu} — nhóm này không góp vào nhu cầu.")
+        ket["canh_bao"].append(f"Định mức thực nghiệm thiếu nhóm {thieu}, nhóm này không góp vào nhu cầu.")
     for g, lst in emp["ro_mau_nho"].items():
-        ket["canh_bao"].append(f"{g}: rổ {lst} dưới ngưỡng mẫu — dùng định mức gộp toàn nhóm cho rổ đó.")
+        ket["canh_bao"].append(f"{g}: rổ {lst} dưới ngưỡng mẫu, dùng định mức gộp toàn nhóm cho rổ đó.")
     return ket
 
 
-# ── Nhu cầu nền ──
+# Nhu cầu nền
 
 def baseline_demand(db: Session) -> Dict[str, float]:
     """Nhu cầu nền 30 ngày (không do hô hấp) từ tiêu hao trung bình 12 kỳ; thiếu nền thì DOI tiến tới vô cực."""
@@ -228,7 +228,7 @@ def baseline_demand(db: Session) -> Dict[str, float]:
     return out
 
 
-# ── Quy đổi ──
+# Quy đổi
 
 def demand_by_supply(db: Session,
                      forecast_by_block: Dict[str, float],
@@ -295,10 +295,10 @@ def demand_by_supply(db: Session,
                                      if tong > 0 else None)
 
     if thieu_p:
-        logger.warning("Không có p̂(g,ro) cho %s — nhóm này không góp vào nhu cầu.",
+        logger.warning("Không có p̂(g,ro) cho %s, nhóm này không góp vào nhu cầu.",
                        ", ".join(sorted(set(thieu_p))))
     if thieu_norm:
-        logger.warning("Không có định mức thực nghiệm cho %s — nhóm này không góp vào nhu cầu.",
+        logger.warning("Không có định mức thực nghiệm cho %s, nhóm này không góp vào nhu cầu.",
                        ", ".join(sorted(set(thieu_norm))))
 
     return {
@@ -317,7 +317,7 @@ def demand_by_supply(db: Session,
     }
 
 
-# ── Bảng tra định mức cho màn Quản trị ──
+# Bảng tra định mức cho màn Quản trị
 
 def norms_payload(db: Session, block: str, q: Optional[str] = None,
                   limit: int = 50, offset: int = 0) -> Dict[str, Any]:
@@ -366,7 +366,7 @@ def norms_payload(db: Session, block: str, q: Optional[str] = None,
             "nhom": m.group_name if m else None,
             "tieu_hao_tong": round(tong, 1),
             "norm_gop": round(float(emp["gop"].get(block, {}).get(code, 0.0)), 4),
-            # Σ_ro p̂ · Norm: lượng cần cho một ca dự báo của nhóm
+            # Σ_ro p̂ × Norm: lượng cần cho một ca dự báo của nhóm
             "norm_hieu_dung": round(sum(
                 float(shares.get(ro, 0.0)) * float(norms.get(ro, {}).get(code, 0.0))
                 for ro in ro_list), 4),
@@ -390,6 +390,6 @@ def norms_payload(db: Session, block: str, q: Optional[str] = None,
         "limit": limit,
         "rows": rows[offset:offset + limit],
         "cong_thuc": ("Norm(i,g,ro) = Σ tiêu hao(i,g,ro) / Σ ca(g,ro) trên cửa sổ; "
-                      "rổ < min_cases_per_bucket ca → dùng định mức gộp nhóm. "
-                      "Nhu cầu 30 ngày D_i = Σ_ro Ŷ_g·p̂(g,ro)·Norm(i,g,ro) + nền."),
+                      "rổ < min_cases_per_bucket ca thì dùng định mức gộp nhóm. "
+                      "Nhu cầu 30 ngày D_i = Σ_ro Ŷ_g×p̂(g,ro)×Norm(i,g,ro) + nền."),
     }

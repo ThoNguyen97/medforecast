@@ -1,12 +1,12 @@
-/* sta/04_quyen_doc_trang_thai.sql
-   Chạy trên: STA, CSDL MEDFORECAST_DW, tài khoản có quyền GRANT.
+/* medforecast_dw/04_quyen_doc_trang_thai.sql
+   Chạy trên: CSDL trung gian MEDFORECAST_DW, tài khoản có quyền GRANT.
    Mục đích: cấp SELECT MF_Watermark, MF_SyncLog cho medforecast_app (thẻ "Trạng thái dữ liệu").
-   Điều kiện: đã tạo user medforecast_app (sta/01 mục 8). Idempotent. */
+   Điều kiện: đã tạo user medforecast_app (medforecast_dw/01 mục 8). Idempotent. */
 USE MEDFORECAST_DW;
 GO
 IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'medforecast_app')
 BEGIN
-    RAISERROR(N'Chưa có user medforecast_app trong MEDFORECAST_DW — chạy mục 8 của sta/01_tao_database_va_bang.sql trước.', 16, 1);
+    RAISERROR(N'Chưa có user medforecast_app trong MEDFORECAST_DW, chạy mục 8 của medforecast_dw/01_tao_database_va_bang.sql trước.', 16, 1);
     RETURN;
 END
 GRANT SELECT ON dbo.MF_Watermark TO medforecast_app;

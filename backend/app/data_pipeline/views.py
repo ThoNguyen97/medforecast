@@ -2,7 +2,7 @@
 """Đối tượng CSDL ngoài `Base.metadata`: 6 bảng tự quản, 2 dòng cấu hình DSS, 4 view; `dam_bao_luoc_do()` dựng lúc khởi động.
 
 Các view chỉ lấy kỳ đã chốt (tháng dở dang kéo thấp d_daily, thổi phồng DOI) và chỉ thuốc
-(is_vtyt = 0, vì VTYT không có tồn kho lẫn định mức).
+(lọc is_vtyt = 0 theo phạm vi dự trù thuốc).
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 # Kỳ đã chốt = kỳ nhỏ hơn tháng hiện tại.
 _KY_DA_CHOT = "period < strftime('%Y-%m', 'now', 'localtime')"
 
-# ── v_supply_active: thuốc có xuất trong 3 kỳ chốt gần nhất ──
+# v_supply_active: thuốc có xuất trong 3 kỳ chốt gần nhất
 V_SUPPLY_ACTIVE = f"""
 CREATE VIEW v_supply_active AS
 SELECT DISTINCT u.supply_code
@@ -28,7 +28,7 @@ WHERE  u.so_luong_toan_vien > 0
           ORDER BY period DESC LIMIT 3))
 """
 
-# ── v_supply_focus: thuốc còn hoạt động, tỷ trọng hô hấp ≥ 25% trên 12 kỳ chốt ──
+# v_supply_focus: thuốc còn hoạt động, tỷ trọng hô hấp ≥ 25% trên 12 kỳ chốt
 V_SUPPLY_FOCUS = f"""
 CREATE VIEW v_supply_focus AS
 WITH cua_so AS (
@@ -51,7 +51,7 @@ HAVING SUM(so_luong_toan_vien) > 0
    AND supply_code IN (SELECT supply_code FROM v_supply_active)
 """
 
-# ── v_supply_daily_demand: d = tiêu hao toàn viện trung bình tháng / 30 trên 12 kỳ chốt ──
+# v_supply_daily_demand: d = tiêu hao toàn viện trung bình tháng / 30 trên 12 kỳ chốt
 # Chia cho số kỳ của cửa sổ chứ không COUNT(*), nếu không mã xuất thưa bị thổi phồng d_daily và sinh Đỏ giả.
 V_SUPPLY_DAILY_DEMAND = f"""
 CREATE VIEW v_supply_daily_demand AS
@@ -73,7 +73,7 @@ GROUP BY supply_code
 HAVING  SUM(so_luong_toan_vien) > 0
 """
 
-# ── v_care_level_share: tỷ trọng phân cấp chăm sóc theo khối ──
+# v_care_level_share: tỷ trọng phân cấp chăm sóc theo khối
 # system_config bọc COALESCE vì thiếu dòng 'dss.care_level' thì `LIMIT NULL` gây "datatype mismatch".
 V_CARE_LEVEL_SHARE = f"""
 CREATE VIEW v_care_level_share AS
@@ -105,19 +105,19 @@ WHERE   f.period >= c.p_min AND f.period <= c.p_max
 GROUP BY f.block_code, f.ro
 """
 
-# ── Cấu hình DSS mặc định, khớp THRESHOLDS_DEFAULT và CARE_LEVEL_DEFAULT ──
+# Cấu hình DSS mặc định, khớp THRESHOLDS_DEFAULT và CARE_LEVEL_DEFAULT
 CAU_HINH_MAC_DINH = {
     "dss.care_level": (
         '{"window_periods": 12, "min_period": "2025-04", '
         '"min_cases_per_bucket": 30, "shrink_k0": 6}',
-        "Tầng 2 — cửa sổ tính p̂(g,ro) và định mức thực nghiệm. "
-        "Sửa ở Quản trị → Tham số DSS.",
+        "Tầng 2: cửa sổ tính p̂(g,ro) và định mức thực nghiệm. "
+        "Sửa ở Quản trị > Tham số DSS.",
     ),
     "dss.thresholds": (
         '{"doi_red_days": 18, "doi_amber_days": 36, "horizon_days": 30, '
         '"fefo_window_days": 30}',
-        "Tầng 3 — ngưỡng DOI và chân trời nhu cầu. "
-        "Sửa ở Quản trị → Tham số DSS.",
+        "Tầng 3: ngưỡng DOI và chân trời nhu cầu. "
+        "Sửa ở Quản trị > Tham số DSS.",
     ),
 }
 
@@ -196,7 +196,7 @@ def tao_bang_tu_quan(db=None) -> dict:
 
 
 def dam_bao_luoc_do(engine=None, db=None) -> dict:
-    """Dựng mọi đối tượng ngoài ORM theo thứ tự bảng → cấu hình → view (view phụ thuộc hai nhóm trước)."""
+    """Dựng mọi đối tượng ngoài ORM theo thứ tự bảng, cấu hình, view (view phụ thuộc hai nhóm trước)."""
     out = dict(tao_bang_tu_quan(db))
     out.update(dam_bao_cau_hinh(engine))
     out.update(tao_views(engine))

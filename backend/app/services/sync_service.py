@@ -1,4 +1,4 @@
-"""Đồng bộ dữ liệu từ MEDFORECAST_DW (STA) vào SQLite của ứng dụng: fact/mart, bốn luồng DSS,
+"""Đồng bộ dữ liệu từ MEDFORECAST_DW vào SQLite của ứng dụng: fact/mart, bốn luồng DSS,
 bảng nghiệp vụ; và trạng thái lần đồng bộ gần nhất.
 """
 from __future__ import annotations
@@ -22,7 +22,7 @@ def lam_sach(v, mac_dinh: str = "") -> str:
     return mac_dinh if t.lower() in ("", "nan", "none", "nat", "null") else t
 
 
-# Thuộc tính danh mục đồng bộ mart → medical_supplies: (cột đích, cột nguồn).
+# Thuộc tính danh mục đồng bộ mart sang medical_supplies: (cột đích, cột nguồn).
 # `category` phải có, nếu không mã đã tồn tại giữ mãi nhãn cũ.
 COT_DONG_BO = (
     ("drug_code", "drug_code"),
@@ -33,8 +33,8 @@ COT_DONG_BO = (
 )
 
 
-def cap_nhat_thuoc_tinh_vat_tu(supply, dong_mart) -> list:
-    """Chép thuộc tính danh mục từ dòng mart sang MedicalSupply đã có; trả danh sách cột đã đổi.
+def cap_nhat_thuoc_tinh_thuoc(supply, dong_mart) -> list:
+    """Chép thuộc tính danh mục từ dòng mart sang Drug đã có; trả danh sách cột đã đổi.
     Giá trị rỗng bên nguồn không ghi đè giá trị đang có.
     """
     da_doi = []
@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 
 
 def _ban_ghi_json(df) -> list:
-    """DataFrame → list[dict] tuần tự hoá JSON được: numpy scalar về kiểu Python, NaN về None."""
+    """DataFrame sang list[dict] tuần tự hoá JSON được: numpy scalar về kiểu Python, NaN về None."""
     if df is None or getattr(df, "empty", True):
         return []
     out = []
@@ -92,7 +92,7 @@ def _build_pipeline(db: Optional[Session] = None) -> DataPipeline:
         except RuntimeError:
             raise                    # cấu hình có nhưng thiếu trường
         except Exception as exc:     # bảng chưa tạo: dùng .env
-            logger.warning("Không đọc được cấu hình kết nối trong DB (%s) — "
+            logger.warning("Không đọc được cấu hình kết nối trong DB (%s): "
                            "dùng biến môi trường.", exc)
     if connector is not None:
         logger.info("Đồng bộ theo cấu hình kết nối lưu trong DB.")
@@ -101,7 +101,7 @@ def _build_pipeline(db: Optional[Session] = None) -> DataPipeline:
     conn = os.environ.get("PIPELINE_SQLSERVER_CONN", "").strip()
     if not conn:
         raise RuntimeError(
-            "Chưa cấu hình CSDL nghiên cứu MEDFORECAST_DW: vào Quản trị → "
+            "Chưa cấu hình CSDL trung gian MEDFORECAST_DW: vào Quản trị > "
             "Nguồn dữ liệu (CSDL DW), bấm Kiểm tra kết nối rồi Lưu; hoặc đặt "
             "PIPELINE_SQLSERVER_CONN trong backend/.env.")
     # Chuỗi ODBC thuần được bọc qua odbc_connect.
@@ -128,7 +128,7 @@ class SyncService:
             result["dss_ok"] = dss["ok"]
             result["dss_failed"] = dss["failed"]
             if dss["failed"]:
-                logger.warning("Đồng bộ DSS: %d/%d luồng lỗi — %s", dss["failed"],
+                logger.warning("Đồng bộ DSS: %d/%d luồng lỗi: %s", dss["failed"],
                                len(dss["flows"]),
                                "; ".join(f"{f['flow']}: {f.get('message','')[:80]}"
                                          for f in dss["flows"] if f["status"] == "failed"))
@@ -144,7 +144,7 @@ class SyncService:
             logger.exception("Làm mới bảng nghiệp vụ thất bại")
             result["legacy_refresh_error"] = str(exc)[:300]
 
-        result["sta"] = self.trang_thai_sta(pipeline.connector)
+        result["dw"] = self.trang_thai_dw(pipeline.connector)
 
         try:
             from app.services import dss_dashboard
@@ -161,10 +161,10 @@ class SyncService:
             logger.warning("Tạo view sau đồng bộ lỗi: %s", exc)
         return result
 
-    # ── Mốc chốt dữ liệu nguồn ──
+    # Mốc chốt dữ liệu nguồn
     @staticmethod
-    def trang_thai_sta(connector) -> dict:
-        """Đọc MF_Watermark và MF_SyncLog trên MEDFORECAST_DW để phát hiện job PROD lỗi.
+    def trang_thai_dw(connector) -> dict:
+        """Đọc MF_Watermark và MF_SyncLog trên MEDFORECAST_DW để phát hiện job đồng bộ hằng đêm lỗi.
         Trả {"available", "watermarks", "last_pushes", "warning"}; connector không phải SQL Server thì available=False.
         """
         out = {"available": False, "watermarks": [], "last_pushes": [], "warning": None}
@@ -197,7 +197,7 @@ class SyncService:
             out["warning"] = ("Lần cập nhật kho trung gian gần nhất KHÔNG thành công: "
                               + str(out["last_pushes"][0].get("ThongDiep", ""))[:200])
         elif failed:
-            out["warning"] = f"{len(failed)}/{len(out['last_pushes'])} lần cập nhật gần đây thất bại — xem nhật ký."
+            out["warning"] = f"{len(failed)}/{len(out['last_pushes'])} lần cập nhật gần đây thất bại, xem nhật ký."
         elif loi:
             out["warning"] = ("Không đọc được MF_Watermark/MF_SyncLog trong MEDFORECAST_DW ("
                               + "; ".join(loi) + ").")
@@ -213,7 +213,7 @@ class SyncService:
         from app.data_pipeline.db import SessionLocal as PipeSession
         from app.models.disease_case import DiseaseCase
         from app.models.inventory import Inventory
-        from app.models.medical_supply import MedicalSupply
+        from app.models.drug import Drug
 
         pdb = PipeSession()
         try:
@@ -254,13 +254,13 @@ class SyncService:
 
         _sach = lam_sach
 
-        co_san = {s.supply_code: s for s in self.db.query(MedicalSupply).all()}
+        co_san = {s.supply_code: s for s in self.db.query(Drug).all()}
         inv_theo_id = {i.supply_id: i for i in self.db.query(Inventory).all()}
         them_vt = sua_vt = 0
         for t in ton_kho:
             s = co_san.get(t.supply_code)
             if s is None:
-                s = MedicalSupply(
+                s = Drug(
                     supply_code=t.supply_code,
                     drug_code=_sach(t.drug_code),
                     ten_hoat_chat=_sach(t.name, t.supply_code),
@@ -274,7 +274,7 @@ class SyncService:
                 co_san[t.supply_code] = s
                 them_vt += 1
             else:
-                if cap_nhat_thuoc_tinh_vat_tu(s, t):
+                if cap_nhat_thuoc_tinh_thuoc(s, t):
                     sua_vt += 1
 
             inv = inv_theo_id.get(s.id)
@@ -341,7 +341,7 @@ class SyncService:
             out["source"] = {"kind": "unknown", "database": None}
 
         try:
-            out["sta"] = self.trang_thai_sta(_build_pipeline(self.db).connector)
+            out["dw"] = self.trang_thai_dw(_build_pipeline(self.db).connector)
         except Exception as exc:                          # noqa: BLE001
-            out["sta"] = {"available": False, "warning": str(exc)[:160]}
+            out["dw"] = {"available": False, "warning": str(exc)[:160]}
         return out

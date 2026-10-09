@@ -14,7 +14,7 @@ NHOM_ICD: dict[str, str] = {
 }
 
 def ma_thuoc_nhom(nhom: str) -> List[str]:
-    """'J09-J18' → ['J09', 'J10', ..., 'J18']."""
+    """'J09-J18' thành ['J09', 'J10', ..., 'J18']."""
     try:
         dau, cuoi = nhom.split("-")
         chu = dau[0]
@@ -24,7 +24,7 @@ def ma_thuoc_nhom(nhom: str) -> List[str]:
 
 
 def nhom_cua_ma(icd_code: str) -> Optional[str]:
-    """'J13' → 'J09-J18'. None nếu không thuộc nhóm nào."""
+    """'J13' thành 'J09-J18'. None nếu không thuộc nhóm nào."""
     ma = (icd_code or "").strip().upper()[:3]
     for nhom in NHOM_ICD:
         if ma in ma_thuoc_nhom(nhom):

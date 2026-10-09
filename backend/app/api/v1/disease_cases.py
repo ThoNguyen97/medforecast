@@ -80,9 +80,9 @@ def list_disease_cases(
     )
 
 
-# ── Xuất Excel ──
+# Xuất Excel
 def _khoang_thang(start_month: Optional[str], end_month: Optional[str]):
-    """'YYYY-MM' → (đầu tháng đầu, cuối tháng cuối); đảo nếu nhập ngược, (None, None) khi không lọc."""
+    """'YYYY-MM' thành (đầu tháng đầu, cuối tháng cuối); đảo nếu nhập ngược, (None, None) khi không lọc."""
     from datetime import timedelta
 
     def _parse(s: Optional[str]) -> Optional[datetime]:
@@ -126,7 +126,7 @@ def export_disease_cases_excel(
         from openpyxl.utils import get_column_letter
     except ImportError:
         raise HTTPException(
-            status_code=500, detail="openpyxl chưa được cài — không thể xuất Excel",
+            status_code=500, detail="openpyxl chưa được cài: không thể xuất Excel",
         )
 
     q = db.query(DiseaseCase)
@@ -159,7 +159,7 @@ def export_disease_cases_excel(
 
     wb = openpyxl.Workbook()
 
-    # ── Sheet 1: Chi tiết ──
+    # Sheet 1: Chi tiết
     ws = wb.active
     ws.title = "Chi tiết"
     _ghi_header(
@@ -180,7 +180,7 @@ def export_disease_cases_excel(
         tong_ca += so_ca
 
         ws.append([
-            i, thang, nhom, NHOM_ICD.get(nhom, nhom or "—"), r.icd_code,
+            i, thang, nhom, NHOM_ICD.get(nhom, nhom or "-"), r.icd_code,
             r.disease_name, tinh, so_ca, r.data_source or "", r.note or "",
         ])
         k = (ky, nhom, tinh)
@@ -195,7 +195,7 @@ def export_disease_cases_excel(
         ws.cell(row=r_idx, column=2).alignment = center
         ws.cell(row=r_idx, column=8).number_format = "#,##0"
 
-    # ── Sheet 2: Tổng hợp ──
+    # Sheet 2: Tổng hợp
     ws2 = wb.create_sheet("Tổng hợp")
     _ghi_header(
         ws2,
@@ -206,7 +206,7 @@ def export_disease_cases_excel(
         tong_hop.items(), key=lambda kv: (kv[0][0], kv[0][1], kv[0][2]), reverse=False
     ):
         thang = f"{ky[5:7]}/{ky[0:4]}" if len(ky) == 7 else ky
-        ws2.append([thang, nhom, NHOM_ICD.get(nhom, nhom or "—"), tinh, so_ca])
+        ws2.append([thang, nhom, NHOM_ICD.get(nhom, nhom or "-"), tinh, so_ca])
     r2 = ws2.max_row + 1
     ws2.cell(row=r2, column=4, value="TỔNG").font = bold
     ws2.cell(row=r2, column=5, value=tong_ca).font = bold
@@ -214,7 +214,7 @@ def export_disease_cases_excel(
         ws2.cell(row=r_idx, column=1).alignment = center
         ws2.cell(row=r_idx, column=5).number_format = "#,##0"
 
-    # ── Sheet 3: Bộ lọc đã áp dụng ──
+    # Sheet 3: Bộ lọc đã áp dụng
     ws3 = wb.create_sheet("Bộ lọc")
     ws3.column_dimensions["A"].width = 22
     ws3.column_dimensions["B"].width = 40
@@ -223,8 +223,8 @@ def export_disease_cases_excel(
         ("Người xuất", getattr(current_user, "username", "") or ""),
         ("Nhóm bệnh", NHOM_ICD.get(disease_group or "", disease_group) or "Tất cả"),
         ("Tỉnh/Thành", ten_chuan(location) if location else "Tất cả"),
-        ("Từ tháng", f"{start_month[5:7]}/{start_month[0:4]}" if start_month else "—"),
-        ("Đến tháng", f"{end_month[5:7]}/{end_month[0:4]}" if end_month else "—"),
+        ("Từ tháng", f"{start_month[5:7]}/{start_month[0:4]}" if start_month else "-"),
+        ("Đến tháng", f"{end_month[5:7]}/{end_month[0:4]}" if end_month else "-"),
         ("Số bản ghi", len(rows)),
         ("Tổng số ca", tong_ca),
     ):
@@ -347,7 +347,7 @@ def get_disease_case_trends(
     }
 
 
-# Tên bệnh tiếng Việt (hoặc mã ICD) → mã ICD, dùng cho import CSV; chỉ nhận 4 mã.
+# Tên bệnh tiếng Việt (hoặc mã ICD) sang mã ICD, dùng cho import CSV; chỉ nhận 4 mã.
 NHOM_BENH_MAPPING = {
     "Viêm phế quản cấp": "J20",
     "Nhiễm trùng đường hô hấp trên cấp": "J06",
@@ -360,7 +360,7 @@ NHOM_BENH_MAPPING = {
     "J01": "J01",
 }
 
-# Mã ICD → tên bệnh chuẩn.
+# Mã ICD sang tên bệnh chuẩn.
 ICD_TO_NAME = {
     "J20": "Viêm phế quản cấp",
     "J06": "Nhiễm trùng đường hô hấp trên cấp",
@@ -809,9 +809,9 @@ def get_case_supply_usage(
     current_user: User = Depends(get_current_user),
 ) -> Any:
     """Nhu cầu thuốc ước tính cho một bản ghi số ca.
-    Số lượng = case_count × norm_hieu_dung(i, g) (định mức thực nghiệm dss_demand); nhóm chưa có định mức → rỗng."""
+    Số lượng = case_count × norm_hieu_dung(i, g) (định mức thực nghiệm dss_demand); nhóm chưa có định mức thì rỗng."""
     from app.models.disease_case import DiseaseCase
-    from app.models.medical_supply import MedicalSupply
+    from app.models.drug import Drug
     from app.utils.icd_groups import nhom_cua_ma
     from app.services import dss_demand
     from sqlalchemy import extract
@@ -835,11 +835,11 @@ def get_case_supply_usage(
             emp_rows = []
 
         supply_codes = [r["supply_code"] for r in emp_rows if float(r.get("norm_hieu_dung") or 0) > 0]
-        supply_by_code: dict[str, MedicalSupply] = {}
+        supply_by_code: dict[str, Drug] = {}
         if supply_codes:
             for s in (
-                db.query(MedicalSupply)
-                .filter(MedicalSupply.supply_code.in_(supply_codes))
+                db.query(Drug)
+                .filter(Drug.supply_code.in_(supply_codes))
                 .all()
             ):
                 supply_by_code[s.supply_code] = s

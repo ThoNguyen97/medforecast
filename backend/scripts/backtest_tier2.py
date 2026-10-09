@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Backtest ngoài mẫu Tầng 2 (số lượt → nhu cầu thuốc) theo walk-forward, cùng
+"""Backtest ngoài mẫu Tầng 2 (số lượt sang nhu cầu thuốc) theo walk-forward, cùng
 công thức dss_demand.py; kịch bản A dùng số lượt thực, B dùng ŷ Tầng 1; ghi CSV ra --out.
 Chạy: cd backend && python scripts/backtest_tier2.py --db data/medforecast.db --out ketqua_backtest
   --skip-b      bỏ kịch bản B (không chạy Tầng 1)
@@ -27,7 +27,7 @@ def q(con, sql, p=()):
     return pd.read_sql_query(sql, con, params=p)
 
 
-# ── Tầng 2 ──
+# Tầng 2
 def shares(cases_g: dict) -> dict:
     """p̂(g,ro) có co ngót trong khối nội trú (care_level_shares)."""
     tong = sum(cases_g.values())
@@ -104,7 +104,7 @@ def demand(norms, sh, y_by_block) -> dict:
     return out
 
 
-# ── Chỉ số ──
+# Chỉ số
 def pooled(rows):
     a = np.array([r[0] for r in rows], float); p = np.array([r[1] for r in rows], float)
     sa = a.sum()
@@ -139,7 +139,7 @@ def main():
     resp_act = usage.groupby(["period", "supply_code"])["quantity"].sum()
     tot_act = tot.set_index(["period", "supply_code"])["so_luong_toan_vien"]
 
-    # ── ŷ Tầng 1 ──
+    # ŷ Tầng 1
     yhat = {}
     if args.yhat_csv:
         for r in pd.read_csv(args.yhat_csv).itertuples():
@@ -163,7 +163,7 @@ def main():
             print(f"  Tầng 1 {g}: {len(r.periods)} bước", file=sys.stderr)
         pd.DataFrame(rows_y).to_csv(out / "tang2_yhat.csv", index=False, encoding="utf-8-sig")
 
-    # ── Vòng walk-forward ──
+    # Vòng walk-forward
     buoc, per_code, tv_rows = [], defaultdict(list), []
     for bien_the, min_p in (("sanxuat", "2025-04"), ("toanbo", None)):
         for t in all_periods:
@@ -227,7 +227,7 @@ def main():
     df_b = pd.DataFrame(buoc)
     df_b.round(3).to_csv(out / "tang2_buoc.csv", index=False, encoding="utf-8-sig")
 
-    # ── Tóm tắt ──
+    # Tóm tắt
     tomtat = []
     def _sum(df, tag, cols):
         for kb, s in df.groupby("kich_ban"):
@@ -257,7 +257,7 @@ def main():
                                tot_naive_WAPE_tb_buoc=s.tot_focus_naive_WAPE.mean()))
     pd.DataFrame(tomtat).round(3).to_csv(out / "tang2_tomtat.csv", index=False, encoding="utf-8-sig")
 
-    # ── Theo mã ──
+    # Theo mã
     rows_c = []
     for (kb, c), lst in per_code.items():
         lst = [r for r in lst if r[0] >= "2025-10"]
@@ -277,7 +277,7 @@ def main():
     df_c = pd.DataFrame(rows_c).sort_values(["kich_ban", "tong_thuc"], ascending=[True, False])
     df_c.round(3).to_csv(out / "tang2_ma.csv", index=False, encoding="utf-8-sig")
 
-    # ── Ổn định định mức ──
+    # Ổn định định mức
     win = [p for p in all_periods if p >= "2025-04"][-WINDOW:]
     h1, h2 = win[:6], win[6:]
     n1, s1 = norms_on(cases, usage, h1); n2, s2 = norms_on(cases, usage, h2)
@@ -298,7 +298,7 @@ def main():
     df_s = pd.DataFrame(rows_s)
     df_s["ty_so"] = np.where((df_s.norm_nua1 > 0) & (df_s.norm_nua2 > 0), df_s.norm_nua2 / df_s.norm_nua1, np.nan)
     df_s.sort_values("tieu_hao_12ky", ascending=False).round(5).to_csv(out / "tang2_ondinh.csv", index=False, encoding="utf-8-sig")
-    # ── Chẩn đoán ──
+    # Chẩn đoán
     uq = usage.groupby("period")["quantity"].sum()
     cq = cases.groupby("period")["cases"].sum()
     ngt = cases[cases.ro == NGT].groupby("period")["cases"].sum()

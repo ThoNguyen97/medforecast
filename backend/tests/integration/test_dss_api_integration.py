@@ -54,15 +54,15 @@ def test_dss_params_get_put(client, admin_headers, dss_db):
     assert d["thresholds"]["gia_tri"]["doi_red_days"] == 18
     assert d["care_level"]["gia_tri"]["min_period"] == "2025-04"
 
-    # Đỏ ≥ Vàng → 422
+    # Đỏ ≥ Vàng thì 422
     r = client.put("/api/v1/dss/params", headers=admin_headers,
                    json={"thresholds": {"doi_red_days": 40}})
     assert r.status_code == 422
-    # Khoá lạ → 422
+    # Khoá lạ thì 422
     r = client.put("/api/v1/dss/params", headers=admin_headers,
                    json={"care_level": {"abc": 1}})
     assert r.status_code == 422
-    # Hợp lệ → lưu, đọc lại thấy
+    # Hợp lệ thì lưu, đọc lại thấy
     r = client.put("/api/v1/dss/params", headers=admin_headers,
                    json={"thresholds": {"doi_red_days": 14, "doi_amber_days": 28},
                          "care_level": {"min_period": "2025-06"}})

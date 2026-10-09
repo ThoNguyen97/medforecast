@@ -92,7 +92,7 @@ def du_bao_nhom(db: Session, disease: str, region: Optional[str],
             ky_moi_nhat, disease, region or "toàn quốc",
         )
     if len(hist) < SO_THANG_TOI_THIEU:
-        logger.info("Chuỗi %s/%s chỉ có %d tháng trước %s — không dùng ensemble.",
+        logger.info("Chuỗi %s/%s chỉ có %d tháng trước %s, không dùng ensemble.",
                     disease, region or "toàn quốc", len(hist), moc)
         return None
 

@@ -11,7 +11,7 @@ Base = declarative_base()
 
 
 def get_db_url() -> str:
-    """URL DB tầng dữ liệu: PIPELINE_DB_URL → DATABASE_URL → app.config → SQLite mặc định.
+    """URL DB tầng dữ liệu: PIPELINE_DB_URL, DATABASE_URL, app.config, SQLite mặc định.
 
     Bậc app.config giữ mart/fact cùng file DB với app khi không có `.env`, nếu không Dashboard không thấy dữ liệu.
     """

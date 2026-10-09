@@ -32,7 +32,7 @@ export default function DashboardFilters({
       <div>
         <span className={labelCls}>Kỳ</span>
         <div className="h-9 flex items-center gap-2 text-sm">
-          <span className="font-semibold text-neutral-900">{lastClosed ?? '—'}</span>
+          <span className="font-semibold text-neutral-900">{lastClosed ?? '-'}</span>
           <span className="text-neutral-400">đã chốt</span>
           {openPeriod && (
             <span className="ml-auto text-[11px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-100">
@@ -54,7 +54,7 @@ export default function DashboardFilters({
           <option value="all">Tất cả (3 khối hô hấp)</option>
           {(Object.keys(BLOCK_LABELS) as BlockCode[]).map((b) => (
             <option key={b} value={b}>
-              {b} · {BLOCK_LABELS[b]}
+              {b}: {BLOCK_LABELS[b]}
             </option>
           ))}
         </select>
@@ -69,8 +69,8 @@ export default function DashboardFilters({
           value={value.focus ? 'focus' : 'all'}
           onChange={(e) => onChange({ ...value, focus: e.target.value === 'focus' })}
         >
-          <option value="focus">Trọng tâm hô hấp · {focusCount.toLocaleString('vi-VN')} mã có mẫu số</option>
-          <option value="all">Toàn danh mục · {allCount.toLocaleString('vi-VN')} mã có mẫu số</option>
+          <option value="focus">Trọng tâm hô hấp, {focusCount.toLocaleString('vi-VN')} mã có mẫu số</option>
+          <option value="all">Toàn danh mục, {allCount.toLocaleString('vi-VN')} mã có mẫu số</option>
         </select>
       </div>
       <div>

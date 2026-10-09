@@ -13,7 +13,6 @@ import {
   type ForecastHistoryItem,
 } from '../../services/forecastAnalysisService';
 import { useAuthStore } from '../../store/authStore';
-import { formatThoiGianMayChu } from '../../utils/formatters';
 
 interface Props {
   rows: ForecastHistoryItem[];
@@ -116,7 +115,7 @@ export default function ForecastHistoryTable({
     [rows, filterMonth, filterDisease],
   );
 
-  /** Cây 3 cấp: tháng → nhóm bệnh → (Toàn quốc chính thức + chi tiết tỉnh).
+  /** Cây 3 cấp: tháng, nhóm bệnh, (Toàn quốc chính thức + chi tiết tỉnh).
    *  Số chính thức lấy từ bản Toàn quốc mới nhất (top-down Tầng 1), không cộng các tỉnh. */
   const cay = useMemo(() => {
     type Xo = { toanQuoc: ForecastHistoryItem[]; tinh: ForecastHistoryItem[] };
@@ -262,7 +261,6 @@ export default function ForecastHistoryTable({
                 Tháng / Nhóm bệnh / Tỉnh, thành phố
               </th>
               <th className="text-right px-5 py-3 font-medium whitespace-nowrap">Số ca dự báo</th>
-              <th className="text-left px-5 py-3 font-medium whitespace-nowrap">Ghi nhận lúc</th>
               <th className="text-left px-5 py-3 font-medium whitespace-nowrap">Người ghi nhận</th>
               <th className="text-right px-5 py-3 font-medium w-20">Thao tác</th>
             </tr>
@@ -270,7 +268,7 @@ export default function ForecastHistoryTable({
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={5} className="py-8">
+                <td colSpan={4} className="py-8">
                   <div className="flex items-center justify-center gap-2 text-neutral-500 text-sm">
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Đang tải lịch sử...
@@ -279,13 +277,13 @@ export default function ForecastHistoryTable({
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={5} className="py-10 text-center text-sm text-neutral-400">
+                <td colSpan={4} className="py-10 text-center text-sm text-neutral-400">
                   Chưa có lịch sử dự báo
                 </td>
               </tr>
             ) : cay.length === 0 ? (
               <tr>
-                <td colSpan={5} className="py-10 text-center text-sm text-neutral-400">
+                <td colSpan={4} className="py-10 text-center text-sm text-neutral-400">
                   Không tìm thấy kết quả phù hợp với bộ lọc
                 </td>
               </tr>
@@ -310,13 +308,13 @@ export default function ForecastHistoryTable({
                           Tháng {thangNode.thang}
                           {!mo && (
                             <span className="text-[11px] font-normal text-neutral-400">
-                              · {thangNode.nhoms.length} nhóm bệnh
+                             , {thangNode.nhoms.length} nhóm bệnh
                             </span>
                           )}
                           {thangNode.soNhomThieuToanQuoc > 0 && (
                             <span
                               className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-50 text-amber-700"
-                              title="Số nhóm bệnh chưa có bản Toàn quốc — thiếu trong tổng bên cạnh"
+                              title="Số nhóm bệnh chưa có bản Toàn quốc, thiếu trong tổng bên cạnh"
                             >
                               thiếu {thangNode.soNhomThieuToanQuoc} nhóm Toàn quốc
                             </span>
@@ -324,11 +322,8 @@ export default function ForecastHistoryTable({
                         </span>
                       </td>
                       <OTong tong={thangNode.tong} dam />
-                      <td className="px-5 py-3 text-xs text-neutral-500 whitespace-nowrap">
-                        {formatThoiGianMayChu(thangNode.tong.ghiNhanLuc)}
-                      </td>
                       <td className="px-5 py-3 text-xs text-neutral-600 whitespace-nowrap">
-                        {thangNode.tong.nguoiGhiNhan || '—'}
+                        {thangNode.tong.nguoiGhiNhan || '-'}
                       </td>
                       <td />
                     </tr>
@@ -359,22 +354,18 @@ export default function ForecastHistoryTable({
                                   <td className="px-5 py-2.5 text-right tabular-nums font-medium text-neutral-800">
                                     {nhomNode.chinhThuc.predicted_cases.toLocaleString('vi-VN')}
                                   </td>
-                                  <td className="px-5 py-2.5 text-xs text-neutral-500 whitespace-nowrap">
-                                    {formatThoiGianMayChu(nhomNode.chinhThuc.created_at)}
-                                  </td>
                                   <td className="px-5 py-2.5 text-xs text-neutral-600 whitespace-nowrap">
-                                    {nhomNode.chinhThuc.created_by || '—'}
+                                    {nhomNode.chinhThuc.created_by || '-'}
                                   </td>
                                 </>
                               ) : (
                                 <>
                                   <td
                                     className="px-5 py-2.5 text-right text-xs font-medium text-amber-700"
-                                    title="Chưa bấm Ghi nhận dự báo ở mục Toàn quốc cho nhóm bệnh này — số này KHÔNG có trong Tổng quan/Cảnh báo."
+                                    title="Chưa bấm Ghi nhận dự báo ở mục Toàn quốc cho nhóm bệnh này, số này KHÔNG có trong Tổng quan/Cảnh báo."
                                   >
                                     Chưa ghi nhận Toàn quốc
                                   </td>
-                                  <td />
                                   <td />
                                 </>
                               )}
@@ -401,10 +392,10 @@ export default function ForecastHistoryTable({
                             {moN && nhomNode.tinh.length > 0 && (
                               <tr className="border-t border-neutral-100">
                                 <td
-                                  colSpan={5}
+                                  colSpan={4}
                                   className="px-5 py-1.5 pl-[4.5rem] text-[11px] text-neutral-400 italic"
                                 >
-                                  Theo tỉnh — tham khảo dịch tễ, không cộng vào Toàn quốc
+                                  Theo tỉnh: tham khảo dịch tễ, không cộng vào Toàn quốc
                                   (tổng các tỉnh: {nhomNode.tongTinh.duBao.toLocaleString('vi-VN')})
                                 </td>
                               </tr>
@@ -463,8 +454,8 @@ export default function ForecastHistoryTable({
               ) : (
                 <>
                   <p>
-                    {xacNhanXoa.row.disease_label} · {xacNhanXoa.row.region} · tháng{' '}
-                    {xacNhanXoa.row.month} —{' '}
+                    {xacNhanXoa.row.disease_label}, {xacNhanXoa.row.region}, tháng{' '}
+                    {xacNhanXoa.row.month}:{' '}
                     <span className="font-semibold">
                       {xacNhanXoa.row.predicted_cases.toLocaleString('vi-VN')}
                     </span>{' '}
@@ -541,11 +532,8 @@ function DongChiTiet({
       <td className="px-5 py-2.5 text-right tabular-nums text-neutral-700">
         {r.predicted_cases.toLocaleString('vi-VN')}
       </td>
-      <td className="px-5 py-2.5 text-xs text-neutral-500 whitespace-nowrap">
-        {formatThoiGianMayChu(r.created_at)}
-      </td>
       <td className="px-5 py-2.5 text-neutral-600 whitespace-nowrap">
-        {r.created_by || '—'}
+        {r.created_by || '-'}
       </td>
       <td className="px-5 py-2.5 text-right">
         <button

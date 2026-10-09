@@ -22,7 +22,7 @@ class AuditLogService:
     def __init__(self, db: Session) -> None:
         self.db = db
 
-    # ── Audit Logs ────────────────────────────────────────────────────────────
+    # Audit Logs
 
     def get_audit_logs(
         self,
@@ -82,7 +82,7 @@ class AuditLogService:
             "created_at": log.created_at,
         }
 
-    # ── System Logs ───────────────────────────────────────────────────────────
+    # System Logs
 
     def get_system_logs(
         self,
@@ -137,7 +137,7 @@ class AuditLogService:
             page_size=page_size,
         )
 
-    # ── Retention Cleanup ─────────────────────────────────────────────────────
+    # Retention Cleanup
 
     def delete_old_logs(self, retention_days: int = LOG_RETENTION_DAYS) -> dict:
         """Xoá audit log và system log cũ hơn retention_days ngày; trả số dòng đã xoá."""

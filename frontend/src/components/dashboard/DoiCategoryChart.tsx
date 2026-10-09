@@ -122,9 +122,9 @@ function DoiTooltip({ active, payload }: { active?: boolean; payload?: Array<{ p
         <span className="text-right tabular-nums">
           {d.n_measured} / {d.n} mã
         </span>
-        <span>Đỏ · Vàng · Xanh · Xám</span>
+        <span>Đỏ, Vàng, Xanh, Xám</span>
         <span className="text-right tabular-nums">
-          {d.red} · {d.amber} · {d.green} · {d.grey}
+          {d.red}, {d.amber}, {d.green}, {d.grey}
         </span>
       </div>
     </div>

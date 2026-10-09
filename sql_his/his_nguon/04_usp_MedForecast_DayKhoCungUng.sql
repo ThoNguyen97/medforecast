@@ -1,6 +1,6 @@
-/* prod/04_usp_MedForecast_DayKhoCungUng.sql
-   Chạy trên: HIS PROD, trong ngữ cảnh CSDL HIS. Điều kiện: prod/01, sta/02; triển khai xong mới chạy sta/05.
-   Mục đích: chụp tồn kho theo lô kèm hạn dùng, đẩy xuống STA MF_TonKho_Lo cho T3 (FEFO + DOI).
+/* his_nguon/04_usp_MedForecast_DayKhoCungUng.sql
+   Chạy trên: máy chủ CSDL HIS, trong ngữ cảnh CSDL HIS. Điều kiện: his_nguon/01, medforecast_dw/02.
+   Mục đích: chụp tồn kho theo lô kèm hạn dùng, đẩy sang bảng MF_TonKho_Lo của MEDFORECAST_DW cho T3 (FEFO + DOI).
    Chạy: EXEC dbo.usp_MedForecast_DayKhoCungUng [@ChiXem = 1]; */
 CREATE OR ALTER PROCEDURE dbo.usp_MedForecast_DayKhoCungUng
     @BENHVIEN_ID  VARCHAR(8) = NULL,   -- khi DB chứa nhiều bệnh viện
@@ -15,7 +15,7 @@ BEGIN
     DECLARE @nLo INT = 0, @nLoKhongHan INT = 0, @nHetHan INT = 0;
 
     BEGIN TRY
-        /* 1) Danh mục vật tư, cùng bộ lọc với DayDuLieu */
+        /* 1) Danh mục thuốc, cùng bộ lọc với DayDuLieu */
         IF OBJECT_ID('tempdb..#Meta') IS NOT NULL DROP TABLE #Meta;
         SELECT  D.DUOC_ID,
                 D.MADUOC AS SupplyCode
@@ -67,42 +67,42 @@ BEGIN
             WHERE (@BENHVIEN_ID IS NULL OR tk.BENHVIEN_ID = @BENHVIEN_ID)
               AND  CAST(tk.SOLUONG AS FLOAT) > 0);
         IF ABS(@TongLo - @TongTK) > 0.5
-            THROW 50012, N'Tổng tồn theo lô khác tổng tồn thô — JOIN sang TT_DUOC_CHUNGTU_SOLONHAP nhân bản/rơi dòng. Không đẩy.', 1;
+            THROW 50012, N'Tổng tồn theo lô khác tổng tồn thô, JOIN sang TT_DUOC_CHUNGTU_SOLONHAP nhân bản/rơi dòng. Không đẩy.', 1;
 
         /* 3) Chỉ xem */
         IF @ChiXem = 1
         BEGIN
-            PRINT N'CHẾ ĐỘ CHỈ XEM — không đẩy.';
+            PRINT N'CHẾ ĐỘ CHỈ XEM: không đẩy.';
             SELECT TOP 200 * FROM #Lo ORDER BY expiry_date, supply_code;
 
-            SELECT CASE WHEN expiry_date IS NULL                     THEN N'0 · không có hạn dùng'
-                        WHEN expiry_date <  @Hom                     THEN N'1 · đã quá hạn'
-                        WHEN expiry_date <  DATEADD(DAY, 30, @Hom)   THEN N'2 · dưới 30 ngày (cửa sổ FEFO)'
-                        WHEN expiry_date <  DATEADD(MONTH, 6, @Hom)  THEN N'3 · 1-6 tháng'
-                        WHEN expiry_date <  DATEADD(MONTH, 12, @Hom) THEN N'4 · 6-12 tháng'
-                        ELSE                                              N'5 · trên 12 tháng' END AS Khoang,
+            SELECT CASE WHEN expiry_date IS NULL                     THEN N'0 - không có hạn dùng'
+                        WHEN expiry_date <  @Hom                     THEN N'1 - đã quá hạn'
+                        WHEN expiry_date <  DATEADD(DAY, 30, @Hom)   THEN N'2 - dưới 30 ngày (cửa sổ FEFO)'
+                        WHEN expiry_date <  DATEADD(MONTH, 6, @Hom)  THEN N'3 - 1-6 tháng'
+                        WHEN expiry_date <  DATEADD(MONTH, 12, @Hom) THEN N'4 - 6-12 tháng'
+                        ELSE                                              N'5 - trên 12 tháng' END AS Khoang,
                    COUNT(*)                                     AS SoLo,
                    COUNT(DISTINCT supply_code)                  AS SoVatTu,
                    CAST(SUM(quantity) AS DECIMAL(18,1))         AS TongSoLuong
             FROM   #Lo
-            GROUP BY CASE WHEN expiry_date IS NULL                     THEN N'0 · không có hạn dùng'
-                          WHEN expiry_date <  @Hom                     THEN N'1 · đã quá hạn'
-                          WHEN expiry_date <  DATEADD(DAY, 30, @Hom)   THEN N'2 · dưới 30 ngày (cửa sổ FEFO)'
-                          WHEN expiry_date <  DATEADD(MONTH, 6, @Hom)  THEN N'3 · 1-6 tháng'
-                          WHEN expiry_date <  DATEADD(MONTH, 12, @Hom) THEN N'4 · 6-12 tháng'
-                          ELSE                                              N'5 · trên 12 tháng' END
+            GROUP BY CASE WHEN expiry_date IS NULL                     THEN N'0 - không có hạn dùng'
+                          WHEN expiry_date <  @Hom                     THEN N'1 - đã quá hạn'
+                          WHEN expiry_date <  DATEADD(DAY, 30, @Hom)   THEN N'2 - dưới 30 ngày (cửa sổ FEFO)'
+                          WHEN expiry_date <  DATEADD(MONTH, 6, @Hom)  THEN N'3 - 1-6 tháng'
+                          WHEN expiry_date <  DATEADD(MONTH, 12, @Hom) THEN N'4 - 6-12 tháng'
+                          ELSE                                              N'5 - trên 12 tháng' END
             ORDER BY Khoang;
             RETURN;
         END
 
         IF @nLo = 0
-            THROW 50011, N'Không lấy được dòng tồn kho theo lô nào — DỪNG, không đụng vào STA.', 1;
+            THROW 50011, N'Không lấy được dòng tồn kho theo lô nào, DỪNG, không đụng vào CSDL trung gian.', 1;
 
         /* 4) Đẩy: xoá ảnh chụp hôm nay rồi chèn, giữ các ngày trước */
-        DELETE FROM [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_TonKho_Lo]
+        DELETE FROM [MEDFORECAST_DW_LINK].[MEDFORECAST_DW].[dbo].[MF_TonKho_Lo]
         WHERE  NgaySnapshot = @Hom;
 
-        INSERT INTO [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_TonKho_Lo]
+        INSERT INTO [MEDFORECAST_DW_LINK].[MEDFORECAST_DW].[dbo].[MF_TonKho_Lo]
               (NgaySnapshot, supply_code, lot_id, lot_code, expiry_date, co_han_dung,
                quantity, so_kho, don_gia_mua, don_gia_thau, don_gia_von, NgayCapNhat)
         SELECT NgaySnapshot, supply_code, lot_id, lot_code, expiry_date, co_han_dung,
@@ -110,16 +110,16 @@ BEGIN
         FROM   #Lo;
 
         DECLARE @nSau INT = (
-            SELECT COUNT(*) FROM [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_TonKho_Lo]
+            SELECT COUNT(*) FROM [MEDFORECAST_DW_LINK].[MEDFORECAST_DW].[dbo].[MF_TonKho_Lo]
             WHERE NgaySnapshot = @Hom);
         IF @nSau <> @nLo
-            THROW 50013, N'Số dòng bên STA không khớp số dòng đã gom.', 1;
+            THROW 50013, N'Số dòng bên CSDL trung gian không khớp số dòng đã gom.', 1;
 
-        UPDATE [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_Watermark]
+        UPDATE [MEDFORECAST_DW_LINK].[MEDFORECAST_DW].[dbo].[MF_Watermark]
         SET    MocDaDay = @Hom, LanChayCuoi = SYSDATETIME()
         WHERE  TenLuong = 'KhoCungUng';
 
-        INSERT INTO [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_SyncLog]
+        INSERT INTO [MEDFORECAST_DW_LINK].[MEDFORECAST_DW].[dbo].[MF_SyncLog]
               (BatDau, KetThuc, TuNgay, SoDongTonKho, TrangThai, ThongDiep)
         VALUES (@BatDau, SYSDATETIME(), @Hom, @nLo, 'ok',
                 CONCAT(N'KhoCungUng: ', @nLo, N' dòng tồn theo lô (', @nLoKhongHan,
@@ -129,14 +129,14 @@ BEGIN
     END TRY
     BEGIN CATCH
         BEGIN TRY
-            INSERT INTO [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_SyncLog]
+            INSERT INTO [MEDFORECAST_DW_LINK].[MEDFORECAST_DW].[dbo].[MF_SyncLog]
                   (BatDau, KetThuc, TuNgay, TrangThai, ThongDiep)
             VALUES (@BatDau, SYSDATETIME(), @Hom, 'failed',
-                    CONCAT(N'KhoCungUng — lỗi ', ERROR_NUMBER(), N' dòng ', ERROR_LINE(),
+                    CONCAT(N'KhoCungUng: lỗi ', ERROR_NUMBER(), N' dòng ', ERROR_LINE(),
                            N': ', ERROR_MESSAGE()));
         END TRY
         BEGIN CATCH
-            PRINT N'Không ghi được nhật ký xuống STA — kiểm tra linked server.';
+            PRINT N'Không ghi được nhật ký sang CSDL trung gian, kiểm tra linked server.';
         END CATCH;
         THROW;
     END CATCH

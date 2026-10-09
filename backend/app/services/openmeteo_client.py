@@ -41,7 +41,7 @@ class OpenMeteoClient:
     def __init__(self, timeout: int = DEFAULT_TIMEOUT) -> None:
         self.timeout = timeout
 
-    # ── Tiện ích ──
+    # Tiện ích
 
     @staticmethod
     def lookup_coords(province: str) -> Optional[Tuple[float, float]]:
@@ -66,7 +66,7 @@ class OpenMeteoClient:
             )
         return resp.json()
 
-    # ── Dự báo (tối đa 16 ngày) ──
+    # Dự báo (tối đa 16 ngày)
 
     def get_daily_forecast(
         self,
@@ -114,7 +114,7 @@ class OpenMeteoClient:
             })
         return out
 
-    # ── Lịch sử ──
+    # Lịch sử
 
     def get_historical_daily(
         self,
@@ -149,7 +149,7 @@ class OpenMeteoClient:
             for i, t in enumerate(times)
         ]
 
-    # ── Chất lượng không khí ──
+    # Chất lượng không khí
 
     def get_air_quality_daily(
         self,
@@ -215,7 +215,7 @@ class OpenMeteoClient:
             })
         return out
 
-    # ── Ước lượng theo tháng ──
+    # Ước lượng theo tháng
 
     def get_monthly_estimate(
         self,

@@ -22,7 +22,7 @@ router = APIRouter(tags=["audit-logs"])
 logger = logging.getLogger(__name__)
 
 
-# ── Nhật ký kiểm toán ──
+# Nhật ký kiểm toán
 
 @router.get("/audit-logs", response_model=AuditLogListResponse)
 def list_audit_logs(
@@ -78,7 +78,7 @@ def list_audit_logs(
     )
 
 
-# ── Nhật ký hệ thống ──
+# Nhật ký hệ thống
 
 @router.get("/system-logs/errors", response_model=SystemLogListResponse)
 def list_error_logs(
@@ -177,7 +177,7 @@ def list_system_logs(
     )
 
 
-# ── Dọn nhật ký ──
+# Dọn nhật ký
 
 @router.post("/system-logs/cleanup", status_code=200)
 def trigger_log_cleanup(

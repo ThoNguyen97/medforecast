@@ -8,7 +8,7 @@ import { useAuthStore } from '../store/authStore';
 
 const ADMIN_ONLY = (role?: string) => role === 'Administrator';
 
-// ── Danh mục bệnh ────────────────────────────────────────────────────────────
+// Danh mục bệnh
 export function useAdminDiseases() {
   const { user, isAuthenticated } = useAuthStore();
   return useQuery({
@@ -45,7 +45,7 @@ export function useDeleteDisease() {
   });
 }
 
-// ── Nhóm bệnh ──────────────────────────────────────────────────────
+// Nhóm bệnh
 export function useAdminDiseaseGroups() {
   const { user, isAuthenticated } = useAuthStore();
   return useQuery({

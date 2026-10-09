@@ -31,7 +31,7 @@ const HISTORY_PALETTE = [
   '#e34948', // đỏ
 ];
 
-/** Nấc tròn để làm trần trục Y (140 → 160, 190 → 220, 250 → 300). */
+/** Nấc tròn để làm trần trục Y (140 lên 160, 190 lên 220, 250 lên 300). */
 const NAC_TRAN = [1, 1.1, 1.2, 1.25, 1.4, 1.5, 1.6, 1.8, 2, 2.2, 2.5, 3, 3.5, 4, 5, 6, 8, 10];
 
 /** Trần trục Y = max đang vẽ (kể cả điểm dự báo) + 10 %, làm tròn lên nấc;

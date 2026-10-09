@@ -67,7 +67,7 @@ export default function Epidemiology() {
   // Bộ lọc đang nhập
   const [tempDisease, setTempDisease] = useState<string>('all');
 
-  // Mã ICD → nhóm ICD khi bản ghi không có disease_group
+  // Mã ICD sang nhóm ICD khi bản ghi không có disease_group
   const nhomCuaMa = (icd?: string): string | null => {
     const n = parseInt((icd ?? '').replace(/^J/i, ''), 10);
     if (Number.isNaN(n)) return null;
@@ -252,7 +252,7 @@ export default function Epidemiology() {
     setPage(1);
   }, [filtered.length]);
 
-  // ── Thao tác ─────────────────────────────────────────────────────────────
+  // Thao tác
 
   const downloadTemplate = () => {
     window.open(`${api.defaults.baseURL}/disease-cases/template`, '_blank');
@@ -300,7 +300,7 @@ export default function Epidemiology() {
     try {
       const res = await runSync.mutateAsync(false);
       queryClient.invalidateQueries();
-      setSyncMsg(`Đã đồng bộ • ${res.rows_ingested} dòng mới • đến kỳ ${res.max_period ?? '—'}`);
+      setSyncMsg(`Đã đồng bộ, ${res.rows_ingested} dòng mới, đến kỳ ${res.max_period ?? '-'}`);
     } catch (e) {
       setSyncMsg(loiMayChu(e, 'Đồng bộ thất bại, vui lòng thử lại.'));
     }
@@ -428,18 +428,18 @@ export default function Epidemiology() {
     }
   };
 
-  // ── Hàm hỗ trợ ─────────────────────────────────────────────────────────────
+  // Hàm hỗ trợ
 
   const diseaseLabel = (input: CaseRow | string | { icd_code?: string; disease_name?: string; disease_type?: string }) => {
     if (typeof input === 'string') {
       return DISEASE_TYPE_LABELS[input] || input;
     }
-    if (!input || typeof input !== 'object') return '—';
+    if (!input || typeof input !== 'object') return '-';
     if ('disease_name' in input && input.disease_name) return input.disease_name as string;
     if (input.icd_code && DISEASE_TYPE_LABELS[input.icd_code]) return DISEASE_TYPE_LABELS[input.icd_code];
     if (input.icd_code) return input.icd_code;
     if (input.disease_type && DISEASE_TYPE_LABELS[input.disease_type]) return DISEASE_TYPE_LABELS[input.disease_type];
-    return input.disease_type || '—';
+    return input.disease_type || '-';
   };
 
   // Khớp NHOM_ICD của backend (app/utils/icd_groups.py)
@@ -451,7 +451,7 @@ export default function Epidemiology() {
 
   const groupLabel = (row: CaseRow) => {
     const key = (row as any).disease_group ?? nhomCuaMa(row.icd_code);
-    if (!key) return '—';
+    if (!key) return '-';
     return NHOM_ICD_NAME[key] ?? key;
   };
 
@@ -826,7 +826,7 @@ export default function Epidemiology() {
                 >
                   {regionOptions.length === 0 && (
                     <option value="" disabled>
-                      Chưa có khu vực — vui lòng thêm ở trang Quản trị
+                      Chưa có khu vực: vui lòng thêm ở trang Quản trị
                     </option>
                   )}
                   {regionOptions.map((r) => (
@@ -871,7 +871,7 @@ export default function Epidemiology() {
                         }}
                         className="w-full px-3 py-2 border border-neutral-200 rounded-lg text-sm bg-white"
                       >
-                        <option value="">— Không xác định (cấp Tỉnh/Thành) —</option>
+                        <option value="">Không xác định (cấp Tỉnh/Thành)</option>
                         {districtList.map((d) => (
                           <option key={d} value={d}>
                             {d}
@@ -1013,13 +1013,13 @@ export default function Epidemiology() {
                 </div>
                 {importResult.truncated && (
                   <p className="text-xs text-neutral-500 mt-2">
-                    * Chỉ hiển thị 200 dòng lỗi đầu tiên — vui lòng kiểm tra file gốc.
+                    * Chỉ hiển thị 200 dòng lỗi đầu tiên, vui lòng kiểm tra file gốc.
                   </p>
                 )}
               </div>
             ) : (
               <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">
-                ✓ Tất cả các dòng đã được xử lý thành công, không có dòng lỗi.
+                Tất cả các dòng đã được xử lý thành công, không có dòng lỗi.
               </div>
             )}
 

@@ -1,12 +1,12 @@
-"""Model danh mục thuốc/vật tư y tế."""
+"""Model danh mục thuốc."""
 from sqlalchemy import Column, Integer, String, Numeric, Text, DateTime
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.sql import func
 from app.database import Base
 
 
-class MedicalSupply(Base):
-    """Danh mục thuốc/vật tư y tế dùng cho nhóm bệnh hô hấp."""
+class Drug(Base):
+    """Danh mục thuốc dùng cho nhóm bệnh hô hấp."""
     
     __tablename__ = "medical_supplies"
     
@@ -17,11 +17,8 @@ class MedicalSupply(Base):
     unit = Column(String(50), nullable=False)
     group_name = Column(String(100), nullable=False, index=True)
     
-    category = Column(String(100), index=True)  # medicine | medical_supply
+    category = Column(String(100), index=True)  # medicine | iv_fluid | other
     unit_price = Column(Numeric(10, 2))
-    # MOQ và lead time giữ trong CSDL, không đưa ra API/UI (ngoài phạm vi DSS)
-    minimum_order_quantity = Column(Integer)
-    lead_time_days = Column(Integer)
     storage_capacity = Column(Integer)
     description = Column(Text)
     
@@ -35,5 +32,5 @@ class MedicalSupply(Base):
     
     @name.expression
     def name(cls):
-        """Biểu thức SQL cho MedicalSupply.name."""
+        """Biểu thức SQL cho Drug.name."""
         return cls.ten_hoat_chat

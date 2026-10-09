@@ -8,7 +8,7 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from app.config import settings
 
 
-# .../backend/ — neo theo vị trí file, không theo thư mục làm việc.
+# .../backend/, neo theo vị trí file, không theo thư mục làm việc.
 _BACKEND_ROOT = Path(__file__).resolve().parent.parent
 
 

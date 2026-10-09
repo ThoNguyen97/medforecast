@@ -51,7 +51,7 @@ export interface AnalyzeResponse {
     khong_ghi_nhan?: string | null;
   };
   explanation_bullets: string[];
-  /** Backtest nhanh N bước cuối: rmse/r2 không đo → null. */
+  /** Backtest nhanh N bước cuối: rmse/r2 không đo, trả null. */
   accuracy?: {
     mae: number | null;
     rmse: number | null;

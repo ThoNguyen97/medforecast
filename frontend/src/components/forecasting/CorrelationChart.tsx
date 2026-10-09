@@ -208,7 +208,7 @@ function CoefficientsBar({
   ];
 
   const interpret = (r: number | null): string => {
-    if (r === null) return '—';
+    if (r === null) return '-';
     const abs = Math.abs(r);
     if (abs < 0.2) return 'Rất yếu';
     if (abs < 0.4) return 'Yếu';
@@ -242,7 +242,7 @@ function CoefficientsBar({
               <div className="min-w-0">
                 <p className="text-[11px] text-neutral-500 truncate">{it.label}</p>
                 <p className={`text-sm font-semibold tabular-nums ${tone(r)}`}>
-                  {r !== null ? (r > 0 ? '+' : '') + r.toFixed(2) : '—'}
+                  {r !== null ? (r > 0 ? '+' : '') + r.toFixed(2) : '-'}
                   <span className="ml-1 text-[10px] font-normal text-neutral-400">
                     {interpret(r)}
                   </span>

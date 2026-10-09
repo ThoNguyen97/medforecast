@@ -1,8 +1,8 @@
-/* sta/03_bang_tieu_hao_tong.sql
-   Chạy trên: STA, CSDL MEDFORECAST_DW.
-   Mục đích: dựng bảng MF_TieuHao_Tong (tiêu hao tháng × vật tư toàn viện, mẫu số DOI)
+/* medforecast_dw/03_bang_tieu_hao_tong.sql
+   Chạy trên: CSDL trung gian MEDFORECAST_DW.
+   Mục đích: dựng bảng MF_TieuHao_Tong (tiêu hao tháng × thuốc toàn viện, mẫu số DOI)
    và view vw_MedForecast_TieuHaoTong; tồn kho là toàn viện nên mẫu số DOI cũng phải toàn viện.
-   Điều kiện: đã chạy sta/02. */
+   Điều kiện: đã chạy medforecast_dw/02. */
 
 USE MEDFORECAST_DW;
 GO
@@ -11,7 +11,7 @@ GO
 IF OBJECT_ID('dbo.MF_TieuHao_Tong') IS NOT NULL
 BEGIN
     DECLARE @n INT = (SELECT COUNT(*) FROM dbo.MF_TieuHao_Tong);
-    PRINT CONCAT(N'MF_TieuHao_Tong cũ có ', @n, N' dòng — sẽ bị xoá và dựng lại.');
+    PRINT CONCAT(N'MF_TieuHao_Tong cũ có ', @n, N' dòng: sẽ bị xoá và dựng lại.');
     DROP TABLE dbo.MF_TieuHao_Tong;
 END
 GO
@@ -78,5 +78,5 @@ SELECT name AS Bang FROM sys.tables WHERE name = 'MF_TieuHao_Tong';
 SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS
 WHERE TABLE_NAME = 'MF_TieuHao_Tong' ORDER BY ORDINAL_POSITION;
 
-PRINT N'Xong sta/03: MF_TieuHao_Tong có 13 cột, d_baseline_thang và ty_trong_hohap là cột tính sẵn.';
+PRINT N'Xong medforecast_dw/03: MF_TieuHao_Tong có 13 cột, d_baseline_thang và ty_trong_hohap là cột tính sẵn.';
 GO

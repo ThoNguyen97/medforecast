@@ -22,7 +22,7 @@ import ReportFilterPanel, {
 } from '../components/reports/ReportFilterPanel';
 import ReportPreview from '../components/reports/ReportPreview';
 
-/** Module 8 — Báo cáo */
+/** Module 8: Báo cáo */
 export default function Reports() {
   const { setPageTitle } = useUIStore();
   useEffect(() => {
@@ -249,7 +249,7 @@ export default function Reports() {
   );
 }
 
-// ── Khung phân đoạn ─────────────────────────────────────────────────────────
+// Khung phân đoạn
 
 function Section({
   step,
@@ -276,7 +276,7 @@ function Section({
   );
 }
 
-// ── Hàm hỗ trợ ───────────────────────────────────────────────────────────────
+// Hàm hỗ trợ
 
 function buildFiltersLabel(
   kind: ReportKind,
@@ -291,7 +291,7 @@ function buildFiltersLabel(
   
   if ((kind === 'epidemic' || kind === 'forecast') && (f.startMonth || f.endMonth)) {
     if (f.startMonth && f.endMonth) {
-      parts.push(`${formatMonth(f.startMonth)} → ${formatMonth(f.endMonth)}`);
+      parts.push(`${formatMonth(f.startMonth)} đến ${formatMonth(f.endMonth)}`);
     } else if (f.startMonth) {
       parts.push(`Từ ${formatMonth(f.startMonth)}`);
     } else if (f.endMonth) {
@@ -312,7 +312,7 @@ function buildFiltersLabel(
   if (kind === 'inventory' && f.status !== 'all') {
     parts.push(LEVEL_LABELS[f.status as AlertLevel] ?? f.status);
   }
-  return parts.join(' • ') || '—';
+  return parts.join(', ') || '-';
 }
 
 function formatMonth(monthStr: string): string {
@@ -321,7 +321,7 @@ function formatMonth(monthStr: string): string {
   return `${month}/${year}`;
 }
 
-// ── Dựng phần xem trước theo loại ──────────────────────────────────────────
+// Dựng phần xem trước theo loại
 
 interface PreviewBundle {
   metrics: Array<{
@@ -381,7 +381,7 @@ function buildEpidemicPreview(
         rows: sorted.map((c) => ({
           month: `Tháng ${monthLabel(c.recorded_at)}`,
           disease_label: c.disease_name || c.icd_code,
-          region: c.location || '—',
+          region: c.location || '-',
           actual_cases: (c.case_count ?? 0).toLocaleString('vi-VN'),
         })),
       },
@@ -448,11 +448,11 @@ function buildForecastPreview(
           actual_cases:
             r.actual_cases !== null && r.actual_cases !== undefined
               ? r.actual_cases.toLocaleString('vi-VN')
-              : '—',
+              : '-',
           deviation_pct:
             r.deviation_pct !== null && r.deviation_pct !== undefined
               ? `${r.deviation_pct > 0 ? '+' : ''}${r.deviation_pct.toFixed(1)}%`
-              : '—',
+              : '-',
           risk_level: vietnameseRisk(r.risk_level),
         })),
       },
@@ -462,7 +462,7 @@ function buildForecastPreview(
 
 function buildInventoryPreview(rows: AlertRow[], statusFilter?: string, searchQuery?: string): PreviewBundle {
   const fmt = (v: number | null | undefined, digits = 0) =>
-    v == null ? '—' : v.toLocaleString('vi-VN', { maximumFractionDigits: digits });
+    v == null ? '-' : v.toLocaleString('vi-VN', { maximumFractionDigits: digits });
 
   let filtered = rows;
   if (statusFilter && statusFilter !== 'all') {
@@ -506,7 +506,7 @@ function buildInventoryPreview(rows: AlertRow[], statusFilter?: string, searchQu
           code: r.supply_code,
           name: r.ten || r.supply_code,
           category: r.danh_muc || 'Khác',
-          unit: r.don_vi ?? '—',
+          unit: r.don_vi ?? '-',
           stock: fmt(r.s_total),
           usable: fmt(r.s_usable),
           d_daily: fmt(r.d_daily, 2),
@@ -607,7 +607,7 @@ function buildAccuracyPreview(_accuracy: any, history: any[], searchQuery?: stri
           actual_cases:
             r.actual_cases !== null
               ? r.actual_cases.toLocaleString('vi-VN')
-              : '—',
+              : '-',
           deviation: `${r.deviation_pct > 0 ? '+' : ''}${r.deviation_pct.toFixed(1)}%`,
         })),
       },
@@ -622,5 +622,5 @@ function vietnameseRisk(level?: string): string {
     high: 'Cao',
     very_high: 'Rất cao',
   };
-  return map[level ?? ''] ?? '—';
+  return map[level ?? ''] ?? '-';
 }

@@ -40,7 +40,7 @@ interface Props {
 }
 
 const fmt = (v: number | null | undefined, digits = 0) =>
-  v == null ? '—' : v.toLocaleString('vi-VN', { maximumFractionDigits: digits });
+  v == null ? '-' : v.toLocaleString('vi-VN', { maximumFractionDigits: digits });
 
 export default function InventoryTable({
   rows,
@@ -153,7 +153,7 @@ export default function InventoryTable({
                   <td className="px-4 py-3 text-right text-neutral-500 tabular-nums">{fmt(r.dDaily, 2)}</td>
                   <td className="px-4 py-3 text-right tabular-nums">
                     {r.deltaNeed == null ? (
-                      <span className="text-neutral-400">—</span>
+                      <span className="text-neutral-400">-</span>
                     ) : r.deltaNeed > 0 ? (
                       <span className="text-red-700 font-semibold">{fmt(r.deltaNeed)}</span>
                     ) : (

@@ -41,14 +41,14 @@ class SyncConfigIn(BaseModel):
     source: str = Field("sqlserver", pattern="^sqlserver$")
     host: str = "localhost"
     port: int = 1433
-    instance: str = ""            # instance có tên (localhost\\SQLEXPRESS) — đặt thì bỏ qua port
+    instance: str = ""            # instance có tên (localhost\\SQLEXPRESS): đặt thì bỏ qua port
     database: str = "MEDFORECAST_DW"
     auth: str = Field("windows", pattern="^(windows|sql)$")   # Trusted_Connection | UID/PWD
     username: str = ""
     password: Optional[str] = None
     driver: str = "ODBC Driver 18 for SQL Server"
     trust_cert: bool = True
-    sql_profile: str = Field("sta", pattern="^(sta|mssql)$")
+    sql_profile: str = Field("dw", pattern="^(dw|mssql)$")
     lookback_months: int = Field(3, ge=0, le=24)
 
 

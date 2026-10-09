@@ -36,7 +36,7 @@ def train(data_dir: str, out_dir: str, cfg=PRODUCTION_CONFIG, quiet: bool = Fals
     manifest = d["manifest"]
     fitted = {}
     record = {
-        "model": "MedForecast ensemble — top-down động",
+        "model": "MedForecast ensemble: top-down động",
         "version": "1",
         "trained_at": datetime.now().isoformat(timespec="seconds"),
         "dataset": {"dir": str(data_dir), "version": manifest.get("version"),
@@ -123,8 +123,8 @@ def main(argv=None):
     print("RelMAE theo hướng:", s["code_level_by_method"])
     for b, v in s["group_level"].items():
         fc = rec["blocks"][b]["forecast"]
-        print(f"{b}: RelMAE nhóm {v['RelMAE']} · MPE {v['MPE_pct']}% · phủ {v['coverage_pct']}% · "
-              f"dự báo {rec['blocks'][b]['target_period']}: {fc['point']} [{fc['lower']}–{fc['upper']}] · "
+        print(f"{b}: RelMAE nhóm {v['RelMAE']}, MPE {v['MPE_pct']}%, phủ {v['coverage_pct']}%, "
+              f"dự báo {rec['blocks'][b]['target_period']}: {fc['point']} [{fc['lower']}-{fc['upper']}], "
               f"trọng số {rec['blocks'][b]['weights']}")
     print(f">> Đã ghi {args.out}/model_v1.json, model_v1.pkl, backtest_*.csv")
 

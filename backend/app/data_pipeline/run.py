@@ -23,7 +23,7 @@ def main():
     ap.add_argument("--target-only", action="store_true", help="chỉ giữ 3 nhóm hô hấp đích")
     args = ap.parse_args()
 
-    # TM_ICD*.xlsx không bắt buộc: nguồn STA đã kèm cột disease_group.
+    # TM_ICD*.xlsx không bắt buộc: nguồn MEDFORECAST_DW đã kèm cột disease_group.
     hier = IcdHierarchy.from_dir_optional(args.icd_dir)
 
     if args.source == "file":

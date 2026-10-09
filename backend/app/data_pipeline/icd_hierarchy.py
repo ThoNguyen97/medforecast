@@ -1,4 +1,4 @@
-"""Ánh xạ phân cấp ICD mã → nhóm (block) → chương từ TM_ICD.xlsx và TM_ICD_CHUONG.xlsx."""
+"""Ánh xạ phân cấp ICD mã, nhóm (block), chương từ TM_ICD.xlsx và TM_ICD_CHUONG.xlsx."""
 from __future__ import annotations
 
 import logging
@@ -19,7 +19,7 @@ TARGET_BLOCKS = {
 
 
 def normalize_icd(code: str) -> str:
-    """Chuẩn hóa mã ICD về gốc 3 ký tự: ' J20.0 ' → 'J20'."""
+    """Chuẩn hóa mã ICD về gốc 3 ký tự: ' J20.0 ' thành 'J20'."""
     if code is None:
         return ""
     c = str(code).strip().upper().replace(" ", "")
@@ -37,18 +37,18 @@ class IcdHierarchy:
 
     @classmethod
     def from_dir_optional(cls, icd_dir: str | Path) -> "IcdHierarchy":
-        """Đọc TM_ICD*.xlsx nếu có; thiếu hoặc hỏng file thì trả bảng tra rỗng (nguồn STA không cần)."""
+        """Đọc TM_ICD*.xlsx nếu có; thiếu hoặc hỏng file thì trả bảng tra rỗng (nguồn MEDFORECAST_DW không cần)."""
         icd = Path(icd_dir) / "TM_ICD.xlsx"
         chapter = Path(icd_dir) / "TM_ICD_CHUONG.xlsx"
         if not (icd.exists() and chapter.exists()):
             logger.info(
-                "Không thấy %s / %s — bỏ qua bảng tra ICD. Không sao nếu nguồn là "
-                "STA (dữ liệu đã kèm cột disease_group).", icd, chapter)
+                "Không thấy %s / %s: bỏ qua bảng tra ICD. Không sao nếu nguồn là "
+                "CSDL trung gian (dữ liệu đã kèm cột disease_group).", icd, chapter)
             return cls()
         try:
             return cls.from_files(icd, chapter)
         except Exception as exc:
-            logger.warning("Đọc bảng tra ICD thất bại (%s) — dùng bảng rỗng.", exc)
+            logger.warning("Đọc bảng tra ICD thất bại (%s): dùng bảng rỗng.", exc)
             return cls()
 
     @classmethod

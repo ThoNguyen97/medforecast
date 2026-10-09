@@ -1,4 +1,4 @@
-"""GET /api/v1/supply-requirements/summary — tóm tắt thiếu hụt cho trang Báo cáo."""
+"""GET /api/v1/supply-requirements/summary: tóm tắt thiếu hụt cho trang Báo cáo."""
 import logging
 from datetime import date
 from typing import Optional
@@ -18,18 +18,18 @@ router = APIRouter(tags=["supply-requirements"])
 
 @router.get("/summary", response_model=SupplyRequirementSummaryResponse)
 async def get_supply_requirements_summary(
-    disease_type: Optional[str] = Query(None, description="Không còn dùng — engine DSS hợp nhất không tách thuốc theo bệnh; giữ tham số để tương thích API cũ."),
+    disease_type: Optional[str] = Query(None, description="Không còn dùng: engine DSS hợp nhất không tách thuốc theo bệnh; giữ tham số để tương thích API cũ."),
     category: Optional[str] = Query(None, description="Filter by supply category"),
-    start_date: Optional[date] = Query(None, description="Không còn dùng — đây là ảnh chụp hiện tại, không phải tổng theo khoảng ngày."),
-    end_date: Optional[date] = Query(None, description="Không còn dùng — xem start_date."),
+    start_date: Optional[date] = Query(None, description="Không còn dùng: đây là ảnh chụp hiện tại, không phải tổng theo khoảng ngày."),
+    end_date: Optional[date] = Query(None, description="Không còn dùng: xem start_date."),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Một dòng mỗi mã: nhu cầu dự báo, tồn hữu dụng FEFO, thiếu hụt = max(0, nhu cầu − tồn).
-    Dùng cùng chuỗi tang1_tang2 → alert_rows với trang Cảnh báo."""
+    Dùng cùng chuỗi tang1_tang2, alert_rows với trang Cảnh báo."""
 
     try:
-        from app.models.medical_supply import MedicalSupply
+        from app.models.drug import Drug
         from app.services import dss_dashboard, dss_alerts
 
         _, _, nhu_cau, _ = dss_dashboard.tang1_tang2(db)
@@ -40,8 +40,8 @@ async def get_supply_requirements_summary(
 
         supply_ids = {
             r.supply_code: r.id
-            for r in db.query(MedicalSupply.supply_code, MedicalSupply.id)
-            .filter(MedicalSupply.supply_code.in_([r["supply_code"] for r in rows]))
+            for r in db.query(Drug.supply_code, Drug.id)
+            .filter(Drug.supply_code.in_([r["supply_code"] for r in rows]))
             .all()
         } if rows else {}
 

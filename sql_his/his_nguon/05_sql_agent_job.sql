@@ -1,21 +1,21 @@
-/* prod/05_sql_agent_job.sql
-   Chạy trên: HIS PROD, CSDL msdb.
+/* his_nguon/05_sql_agent_job.sql
+   Chạy trên: máy chủ CSDL HIS, CSDL msdb.
    Mục đích: tạo SQL Agent job chạy usp_MedForecast_DayDuLieu hằng ngày 01:00, so le với
    PIPELINE_CRON (02:00) của ứng dụng; chạy thử bằng tay để đo thời lượng trước khi bật lịch.
-   Điều kiện: đã chạy prod/01..04. */
+   Điều kiện: đã chạy his_nguon/01..04. */
 
 USE msdb;
 GO
 
-DECLARE @JobName sysname = N'MedForecast - Day du lieu tu PROD xuong STA';
-DECLARE @HisDb   sysname = N'HISDB';        -- CSDL HIS trên PROD
+DECLARE @JobName sysname = N'MedForecast - Dong bo du lieu HIS sang MEDFORECAST_DW';
+DECLARE @HisDb   sysname = N'HISDB';        -- CSDL HIS nguồn
 
 IF EXISTS (SELECT 1 FROM msdb.dbo.sysjobs WHERE name = @JobName)
     EXEC sp_delete_job @job_name = @JobName;
 
 EXEC sp_add_job
      @job_name    = @JobName,
-     @description = N'Tong hop du lieu kham benh + ton kho tren PROD roi day xuong MEDFORECAST_DW ben STA. Cua so tong hop lai 3 thang.',
+     @description = N'Tong hop du lieu kham benh + ton kho tren CSDL HIS roi day sang MEDFORECAST_DW. Cua so tong hop lai 3 thang.',
      @enabled     = 1;
 
 EXEC sp_add_jobstep
@@ -44,7 +44,7 @@ EXEC sp_add_jobserver @job_name = @JobName;
 GO
 
 /* Chạy thử ngay */
--- EXEC msdb.dbo.sp_start_job @job_name = N'MedForecast - Day du lieu tu PROD xuong STA';
+-- EXEC msdb.dbo.sp_start_job @job_name = N'MedForecast - Dong bo du lieu HIS sang MEDFORECAST_DW';
 
 /* Kết quả các lần chạy gần nhất */
 SELECT TOP 10
@@ -57,5 +57,5 @@ SELECT TOP 10
        h.message
 FROM   msdb.dbo.sysjobhistory h
 JOIN   msdb.dbo.sysjobs j ON j.job_id = h.job_id
-WHERE  j.name = N'MedForecast - Day du lieu tu PROD xuong STA'
+WHERE  j.name = N'MedForecast - Dong bo du lieu HIS sang MEDFORECAST_DW'
 ORDER BY h.run_date DESC, h.run_time DESC;

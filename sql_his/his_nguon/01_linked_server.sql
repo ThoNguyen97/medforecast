@@ -1,11 +1,11 @@
-/* prod/01_linked_server.sql
-   Chạy trên: HIS PROD, cần sysadmin hoặc ALTER ANY LINKED SERVER.
-   Mục đích: tạo linked server MEDFORECAST_STA trỏ tới MEDFORECAST_DW trên STA (chiều PROD → STA).
-   Điều kiện: đã chạy sta/01..04 và tạo login medforecast_push (sta/01 mục 9). */
+/* his_nguon/01_linked_server.sql
+   Chạy trên: máy chủ CSDL HIS, cần sysadmin hoặc ALTER ANY LINKED SERVER.
+   Mục đích: tạo linked server MEDFORECAST_DW_LINK trỏ tới MEDFORECAST_DW (chiều từ CSDL HIS sang CSDL trung gian).
+   Điều kiện: đã chạy medforecast_dw/01..04 và tạo login medforecast_push (medforecast_dw/01 mục 9). */
 
-/* Tham số cần chỉnh; các script prod/ sau dùng lại đúng @LinkedName */
-DECLARE @LinkedName sysname       = N'MEDFORECAST_STA';
-DECLARE @StaHost    nvarchar(200) = N'<<may-chu-sta>>';
+/* Tham số cần chỉnh; các script his_nguon/ sau dùng lại đúng @LinkedName */
+DECLARE @LinkedName sysname       = N'MEDFORECAST_DW_LINK';
+DECLARE @DwHost    nvarchar(200) = N'<<may-chu-dw>>';
 DECLARE @PushUser   sysname       = N'medforecast_push';
 DECLARE @PushPass   nvarchar(200) = N'<<mat-khau>>';
 
@@ -17,7 +17,7 @@ EXEC sp_addlinkedserver
      @server     = @LinkedName,
      @srvproduct = N'',
      @provider   = N'MSOLEDBSQL',        -- SQLNCLI11 đã ngừng hỗ trợ
-     @datasrc    = @StaHost,
+     @datasrc    = @DwHost,
      @catalog    = N'MEDFORECAST_DW';
 
 EXEC sp_addlinkedsrvlogin
@@ -39,14 +39,14 @@ EXEC sp_testlinkedserver @LinkedName;
 GO
 
 /* 4. Thử đọc và ghi một dòng */
-SELECT TOP 5 * FROM [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_Watermark];
+SELECT TOP 5 * FROM [MEDFORECAST_DW_LINK].[MEDFORECAST_DW].[dbo].[MF_Watermark];
 
-INSERT INTO [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_SyncLog]
+INSERT INTO [MEDFORECAST_DW_LINK].[MEDFORECAST_DW].[dbo].[MF_SyncLog]
        (BatDau, KetThuc, TrangThai, ThongDiep)
-VALUES (SYSDATETIME(), SYSDATETIME(), 'ok', N'Kiểm tra linked server từ PROD');
+VALUES (SYSDATETIME(), SYSDATETIME(), 'ok', N'Kiểm tra linked server từ CSDL HIS');
 
-SELECT TOP 3 * FROM [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_SyncLog]
+SELECT TOP 3 * FROM [MEDFORECAST_DW_LINK].[MEDFORECAST_DW].[dbo].[MF_SyncLog]
 ORDER BY Id DESC;
 GO
 
-/* 5. Collation hai máy khác nhau: EXEC sp_serveroption 'MEDFORECAST_STA', 'collation compatible', 'false'; */
+/* 5. Collation hai máy khác nhau: EXEC sp_serveroption 'MEDFORECAST_DW_LINK', 'collation compatible', 'false'; */

@@ -22,9 +22,9 @@ FILES = {"nhom": "nhom_thang.csv", "ma": "ma_thang.csv", "ty_trong": "ty_trong_c
          "dim_icd": "dim_icd.csv"}
 
 
-# ── Xuất ──
+# Xuất
 def _add_lags(df: pd.DataFrame) -> pd.DataFrame:
-    """Thêm cột thời tiết trễ 1–2 tháng, chỉ để tham khảo vì mô hình tự tính lại khi nạp."""
+    """Thêm cột thời tiết trễ 1-2 tháng, chỉ để tham khảo vì mô hình tự tính lại khi nạp."""
     out = df.sort_values("period").reset_index(drop=True).copy()
     for c in WCOLS:
         if c in out:
@@ -95,7 +95,7 @@ def export(db_path: str, out_dir: str | Path, region: str = "TOAN_QUOC",
     nhom = frames["nhom"]
     closed = nhom[nhom["is_complete"] == 1]
     manifest = {
-        "dataset": "MedForecast — bộ huấn luyện dự báo ca bệnh hô hấp theo tháng",
+        "dataset": "MedForecast: bộ huấn luyện dự báo ca bệnh hô hấp theo tháng",
         "version": DATASET_VERSION,
         "exported_at": datetime.now().isoformat(timespec="seconds"),
         "source_db": str(db_path),
@@ -119,10 +119,10 @@ def export(db_path: str, out_dir: str | Path, region: str = "TOAN_QUOC",
     return manifest
 
 
-# ── Nạp lại ──
+# Nạp lại
 def load(data_dir: str | Path, complete_only: bool = True,
          from_period: Optional[str] = None) -> Dict[str, object]:
-    """Đọc dataset/vX → {blocks, group[b], codes[b], shares[b], weather, manifest}; thời tiết trả bảng riêng để `join_weather`."""
+    """Đọc dataset/vX sang {blocks, group[b], codes[b], shares[b], weather, manifest}; thời tiết trả bảng riêng để `join_weather`."""
     d = Path(data_dir)
     nhom = pd.read_csv(d / FILES["nhom"], encoding="utf-8-sig", dtype={"period": str})
     ma = pd.read_csv(d / FILES["ma"], encoding="utf-8-sig", dtype={"period": str})

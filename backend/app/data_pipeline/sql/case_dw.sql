@@ -1,5 +1,5 @@
-/* case_sta.sql — STA, vw_MedForecast_CaBenh: ca bệnh theo (tháng × mã ICD × tỉnh × vật tư).
-   `cases` là COUNT(DISTINCT lượt khám) lặp trên mọi dòng vật tư; `disease_group` là nhóm ICD từ PHANNHOM.
+/* case_dw.sql (view vw_MedForecast_CaBenh): ca bệnh theo (tháng × mã ICD × tỉnh × thuốc).
+   `cases` là COUNT(DISTINCT lượt khám) lặp trên mọi dòng thuốc; `disease_group` là nhóm ICD từ PHANNHOM.
    Lọc trên Period (ngày 01 của tháng) để dùng index; nạp tăng dần theo tham số since_date. */
 SELECT [month],
        disease_code,

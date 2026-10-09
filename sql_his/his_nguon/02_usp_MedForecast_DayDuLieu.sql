@@ -1,5 +1,5 @@
-/* prod/02_usp_MedForecast_DayDuLieu.sql
-   Chạy trên: HIS PROD. Điều kiện: prod/01 và sta/01..02; job prod/05 gọi hằng ngày.
+/* his_nguon/02_usp_MedForecast_DayDuLieu.sql
+   Chạy trên: máy chủ CSDL HIS. Điều kiện: his_nguon/01 và medforecast_dw/01..02; job his_nguon/05 gọi hằng ngày.
    Mục đích: tổng hợp lượt khám thuộc nhóm ICD đích (nội trú + ngoại trú), khử định danh, đẩy xuống
    MEDFORECAST_DW: MF_CaBenh_VatTu, MF_CaBenh_Nhom (T1), MF_CaBenh_PhanCap, MF_TieuHao_PhanCap (T2), MF_TonKho.
    Rổ chăm sóc NGT | NT1 | NT2 | NT3 | NT0, cấp của đợt = MIN(mã phân cấp) trên y lệnh thuốc của đợt. */
@@ -16,7 +16,7 @@ CREATE OR ALTER PROCEDURE dbo.usp_MedForecast_DayDuLieu
     @NhanGopVung         NVARCHAR(120) = N'Tỉnh khác',
     @GiuNhomKhongCoThuoc BIT   = 1,
     @ChiXem              BIT   = 0,              -- 1 = chỉ SELECT, không đẩy
-    @GomVTYT             BIT   = 0,              -- 1 = lấy cả vật tư y tế
+    @GomVTYT             BIT   = 0,              -- 1 = lấy thêm mã ngoài nhóm thuốc (chỉ để đối chứng)
     @DayLuongPhanCap     BIT   = 1               -- 0 = không đẩy hai bảng phân cấp
 AS
 BEGIN
@@ -39,7 +39,7 @@ BEGIN
         /* Cửa sổ cần tổng hợp lại */
         IF @ChiXem = 0
             SELECT @Moc = MocDaDay
-            FROM   [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_Watermark]
+            FROM   [MEDFORECAST_DW_LINK].[MEDFORECAST_DW].[dbo].[MF_Watermark]
             WHERE  TenLuong = 'CaBenh';
 
         SET @TuNgay = CASE
@@ -70,12 +70,12 @@ BEGIN
         FROM   #NhomDich;
 
         IF @nNhomDich = 0
-            THROW 50003, N'@NhomBenhDich rỗng — không biết lấy nhóm bệnh nào.', 1;
+            THROW 50003, N'@NhomBenhDich rỗng: không biết lấy nhóm bệnh nào.', 1;
 
         IF (SELECT COUNT(DISTINCT LEFT(Nhom, 1)) FROM #NhomDich) > 1
             THROW 50004, N'@NhomBenhDich đang trộn nhiều chương ICD (khác chữ cái đầu). Thủ tục chỉ hỗ trợ một chương mỗi lần chạy.', 1;
 
-        /* Chuỗi nhóm chuẩn hoá ',J00-J06,...,' giới hạn mọi DELETE bên STA theo nhóm của lần chạy;
+        /* Chuỗi nhóm chuẩn hoá ',J00-J06,...,' giới hạn mọi DELETE bên CSDL trung gian theo nhóm của lần chạy;
            so bằng LIKE để khỏi đẩy bảng tạm qua linked server */
         SELECT @NhomChuan = N',' + STRING_AGG(Nhom, N',') + N',' FROM #NhomDich;
 
@@ -117,10 +117,10 @@ BEGIN
 
         SELECT @nMaDich = COUNT(*) FROM #Ma3;
         IF @nMaDich = 0
-            THROW 50005, N'Không tìm thấy mã ICD nào thuộc @NhomBenhDich trong TM_ICD — kiểm tra lại cột PHANNHOM.', 1;
+            THROW 50005, N'Không tìm thấy mã ICD nào thuộc @NhomBenhDich trong TM_ICD, kiểm tra lại cột PHANNHOM.', 1;
 
         PRINT CONCAT(N'Phạm vi bệnh: ', @nNhomDich, N' nhóm (', @NhomBenhDich,
-                     N') → ', @nMaDich, N' mã 3 ký tự.');
+                     N') thành ', @nMaDich, N' mã 3 ký tự.');
 
         /* 1) #Enc: lượt khám thuộc nhóm bệnh đích; CapYLenh chỉ có ở y lệnh thuốc, VTYT để NULL */
         IF OBJECT_ID('tempdb..#Enc') IS NOT NULL DROP TABLE #Enc;
@@ -179,10 +179,10 @@ BEGIN
         GROUP BY e.LoaiDieuTri, e.TIEPNHAN_ID;
         CREATE UNIQUE CLUSTERED INDEX IX_CapDot ON #CapDot(LoaiDieuTri, TIEPNHAN_ID);
 
-        /* Mã phân cấp ngoài {1,2,3} bị CHECK bên STA chặn, dồn về NT0 và cảnh báo sớm */
+        /* Mã phân cấp ngoài {1,2,3} bị CHECK bên CSDL trung gian chặn, dồn về NT0 và cảnh báo sớm */
         IF EXISTS (SELECT 1 FROM #CapDot WHERE Ro NOT IN ('NGT','NT1','NT2','NT3','NT0'))
         BEGIN
-            PRINT N'CẢNH BÁO: có mã phân cấp chăm sóc ngoài {1,2,3} — đã dồn vào rổ NT0. Kiểm tra LST_DICTIONARY.';
+            PRINT N'CẢNH BÁO: có mã phân cấp chăm sóc ngoài {1,2,3}, đã dồn vào rổ NT0. Kiểm tra LST_DICTIONARY.';
             UPDATE #CapDot SET Ro = 'NT0'
             WHERE  Ro NOT IN ('NGT','NT1','NT2','NT3','NT0');
         END
@@ -378,7 +378,7 @@ BEGIN
         HAVING SUM(CAST(ISNULL(tt.SOLUONG, 0) AS FLOAT)) > 0;
         CREATE CLUSTERED INDEX IX_Drug ON #Drug(LoaiDieuTri, KHAMBENH_ID);
 
-        /* 7) #KQ: kết quả theo mã bệnh; cases lặp trên mọi dòng vật tư, khử lặp bằng MAX */
+        /* 7) #KQ: kết quả theo mã bệnh; cases lặp trên mọi dòng thuốc, khử lặp bằng MAX */
         IF OBJECT_ID('tempdb..#KQ') IS NOT NULL DROP TABLE #KQ;
         ;WITH DiseaseCases AS (
             SELECT MonthStart, Region, DiseaseCode,
@@ -448,7 +448,7 @@ BEGIN
         IF @TongCa <> @TongCaGoc - @nCaKhongRoTinh
             PRINT CONCAT(N'CẢNH BÁO BẤT BIẾN: số ca đẩy đi (', @TongCa, N') khác số ca gốc (',
                          @TongCaGoc, N') trừ phần đã loại (', @nCaKhongRoTinh,
-                         N'). Có chỗ đang làm mất hoặc nhân đôi ca — kiểm tra trước khi đẩy.');
+                         N'). Có chỗ đang làm mất hoặc nhân đôi ca, kiểm tra trước khi đẩy.');
 
         /* 7b) Số ca theo nhóm ICD: DISTINCT lượt ở mức nhóm, dòng 'TOAN_QUOC' đếm riêng */
         IF OBJECT_ID('tempdb..#KQN') IS NOT NULL DROP TABLE #KQN;
@@ -514,7 +514,7 @@ BEGIN
         SELECT @nDongPhanCap = COUNT(*) FROM #KQP;
         SELECT @nONhoPhanCap = COUNT(*) FROM #KQP WHERE cases < 5;
 
-        /* 7e) #KQT: tử số, tiêu hao theo (tháng × nhóm × rổ × vật tư) */
+        /* 7e) #KQT: tử số, tiêu hao theo (tháng × nhóm × rổ × thuốc) */
         IF OBJECT_ID('tempdb..#KQT') IS NOT NULL DROP TABLE #KQT;
         SELECT
             g.MonthStart AS Period,
@@ -549,14 +549,14 @@ BEGIN
         IF @QtyRo < @QtyNhom - 0.5
             PRINT CONCAT(N'CẢNH BÁO: tổng lượng theo rổ (', @QtyRo,
                          N') NHỎ HƠN tổng lượng theo lượt (', @QtyNhom,
-                         N') — đang mất dữ liệu ở bước gom theo rổ.');
+                         N'): đang mất dữ liệu ở bước gom theo rổ.');
         ELSE
             PRINT CONCAT(N'Tiêu hao: tổng theo rổ = ', @QtyRo,
                          N'; tổng theo lượt = ', @QtyNhom,
                          N' (chênh = phần lượt thuộc nhiều nhóm bệnh, đúng như thiết kế).');
 
 
-        /* 8) Tồn kho: ảnh chụp tổng, không theo lô (lô do prod/04 đẩy) */
+        /* 8) Tồn kho: ảnh chụp tổng, không theo lô (lô do his_nguon/04 đẩy) */
         IF OBJECT_ID('tempdb..#TK') IS NOT NULL DROP TABLE #TK;
         SELECT
             dm.SupplyCode                      AS supply_code,
@@ -577,10 +577,10 @@ BEGIN
 
         SELECT @nTonKho = COUNT(*) FROM #TK;
 
-        /* 9) Đẩy xuống STA, hoặc chỉ trả kết quả nếu @ChiXem = 1 */
+        /* 9) Đẩy sang CSDL trung gian, hoặc chỉ trả kết quả nếu @ChiXem = 1 */
         IF @ChiXem = 1
         BEGIN
-            PRINT CONCAT(N'CHẾ ĐỘ CHỈ XEM — không đẩy. Dòng = ', @nDong,
+            PRINT CONCAT(N'CHẾ ĐỘ CHỈ XEM: không đẩy. Dòng = ', @nDong,
                          N', dòng nhóm = ', @nDongNhom,
                          N', dòng phân cấp = ', @nDongPhanCap,
                          N', dòng tiêu hao rổ = ', @nDongTieuHao,
@@ -632,7 +632,7 @@ BEGIN
             GROUP BY disease_group, ro
             ORDER BY disease_group, ro;
 
-            /* Kết quả 4: định mức thực nghiệm của vật tư tiêu hao lớn nhất */
+            /* Kết quả 4: định mức thực nghiệm của thuốc tiêu hao lớn nhất */
             SELECT TOP 200
                    t.disease_group, t.ro, t.supply_code, t.supply_name, t.supply_unit,
                    SUM(t.so_luong)                                        AS TongLuong,
@@ -651,22 +651,22 @@ BEGIN
             RETURN;
         END
 
-        /* Chốt chặn 1: không cho dữ liệu trùng khoá rời khỏi PROD */
+        /* Chốt chặn 1: không cho dữ liệu trùng khoá rời khỏi CSDL HIS */
         DECLARE @nTrung INT = (
             SELECT COUNT(*) FROM (
                 SELECT 1 AS x FROM #KQ
                 GROUP BY Period, disease_code, region, supply_code
                 HAVING COUNT(*) > 1) t);
         IF @nTrung > 0
-            THROW 50001, N'Kết quả tổng hợp có dòng trùng khoá (Period, disease_code, region, supply_code) — không đẩy xuống STA.', 1;
+            THROW 50001, N'Kết quả tổng hợp có dòng trùng khoá (Period, disease_code, region, supply_code), không đẩy sang CSDL trung gian.', 1;
 
         /* DELETE giới hạn theo nhóm của lần chạy; dòng disease_group NULL được dọn luôn */
-        DELETE FROM [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_CaBenh_VatTu]
+        DELETE FROM [MEDFORECAST_DW_LINK].[MEDFORECAST_DW].[dbo].[MF_CaBenh_VatTu]
         WHERE  Period >= @TuNgay
           AND (disease_group IS NULL
                OR @NhomChuan LIKE N'%,' + disease_group + N',%');
 
-        INSERT INTO [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_CaBenh_VatTu]
+        INSERT INTO [MEDFORECAST_DW_LINK].[MEDFORECAST_DW].[dbo].[MF_CaBenh_VatTu]
               (Period, [month], disease_code, disease_name,
                disease_group, disease_group_name, region, cases,
                supply_code, supply_name, supply_quantity, supply_unit,
@@ -677,41 +677,41 @@ BEGIN
                supply_category, note, SYSDATETIME()
         FROM   #KQ;
 
-        DELETE FROM [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_CaBenh_Nhom]
+        DELETE FROM [MEDFORECAST_DW_LINK].[MEDFORECAST_DW].[dbo].[MF_CaBenh_Nhom]
         WHERE  Period >= @TuNgay
           AND  @NhomChuan LIKE N'%,' + disease_group + N',%';
 
-        INSERT INTO [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_CaBenh_Nhom]
+        INSERT INTO [MEDFORECAST_DW_LINK].[MEDFORECAST_DW].[dbo].[MF_CaBenh_Nhom]
               (Period, [month], disease_group, disease_group_name, region, cases, NgayCapNhat)
         SELECT Period, [month], disease_group, disease_group_name, region, cases, SYSDATETIME()
         FROM   #KQN;
 
-        /* Chốt chặn 2: số dòng bên STA cùng phạm vi phải khớp */
+        /* Chốt chặn 2: số dòng bên CSDL trung gian cùng phạm vi phải khớp */
         DECLARE @nSauKhiDay INT = (
-            SELECT COUNT(*) FROM [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_CaBenh_VatTu]
+            SELECT COUNT(*) FROM [MEDFORECAST_DW_LINK].[MEDFORECAST_DW].[dbo].[MF_CaBenh_VatTu]
             WHERE Period >= @TuNgay
               AND (disease_group IS NULL
                    OR @NhomChuan LIKE N'%,' + disease_group + N',%'));
         IF @nSauKhiDay <> @nDong
-            THROW 50002, N'Số dòng bên STA không khớp số dòng đã gom — nghi có dữ liệu thừa hoặc thiếu.', 1;
+            THROW 50002, N'Số dòng bên CSDL trung gian không khớp số dòng đã gom, nghi có dữ liệu thừa hoặc thiếu.', 1;
 
         /* Hai bảng phân cấp: xoá-rồi-chèn trong cùng phạm vi nhóm */
         IF @DayLuongPhanCap = 1
         BEGIN
-            DELETE FROM [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_CaBenh_PhanCap]
+            DELETE FROM [MEDFORECAST_DW_LINK].[MEDFORECAST_DW].[dbo].[MF_CaBenh_PhanCap]
             WHERE  Period >= @TuNgay
               AND  @NhomChuan LIKE N'%,' + disease_group + N',%';
 
-            INSERT INTO [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_CaBenh_PhanCap]
+            INSERT INTO [MEDFORECAST_DW_LINK].[MEDFORECAST_DW].[dbo].[MF_CaBenh_PhanCap]
                   (Period, [month], disease_group, disease_group_name, ro, cases, NgayCapNhat)
             SELECT Period, [month], disease_group, disease_group_name, ro, cases, SYSDATETIME()
             FROM   #KQP;
 
-            DELETE FROM [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_TieuHao_PhanCap]
+            DELETE FROM [MEDFORECAST_DW_LINK].[MEDFORECAST_DW].[dbo].[MF_TieuHao_PhanCap]
             WHERE  Period >= @TuNgay
               AND  @NhomChuan LIKE N'%,' + disease_group + N',%';
 
-            INSERT INTO [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_TieuHao_PhanCap]
+            INSERT INTO [MEDFORECAST_DW_LINK].[MEDFORECAST_DW].[dbo].[MF_TieuHao_PhanCap]
                   (Period, [month], disease_group, ro, supply_code, supply_name,
                    supply_unit, supply_category, note, is_vtyt,
                    so_luong, so_dong_toa, NgayCapNhat)
@@ -725,39 +725,39 @@ BEGIN
         /* Tồn kho: dừng nếu ảnh chụp rỗng để không xoá sạch MF_TonKho;
            DELETE thay TRUNCATE để không cần quyền ALTER */
         IF @nTonKho = 0
-            THROW 50006, N'Ảnh chụp tồn kho rỗng — DỪNG, không xoá MF_TonKho bên STA. Kiểm tra @BENHVIEN_ID và TM_LOAIDUOC.LOAIVATTU_ID.', 1;
+            THROW 50006, N'Ảnh chụp tồn kho rỗng: DỪNG, không xoá MF_TonKho bên CSDL trung gian. Kiểm tra @BENHVIEN_ID và TM_LOAIDUOC.LOAIVATTU_ID.', 1;
 
-        EXEC (N'DELETE FROM MEDFORECAST_DW.dbo.MF_TonKho;') AT [MEDFORECAST_STA];
+        EXEC (N'DELETE FROM MEDFORECAST_DW.dbo.MF_TonKho;') AT [MEDFORECAST_DW_LINK];
 
-        INSERT INTO [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_TonKho]
+        INSERT INTO [MEDFORECAST_DW_LINK].[MEDFORECAST_DW].[dbo].[MF_TonKho]
               (supply_code, drug_code, ten_hoat_chat, unit, group_name,
                category, stock_quantity, [description], NgayCapNhat)
         SELECT supply_code, drug_code, ten_hoat_chat, unit, group_name,
                category, stock_quantity, [description], SYSDATETIME()
         FROM   #TK;
 
-        DECLARE @nTonKhoSTA INT = (
-            SELECT COUNT(*) FROM [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_TonKho]);
-        IF @nTonKhoSTA <> @nTonKho
-            THROW 50007, N'Số dòng tồn kho bên STA không khớp ảnh chụp vừa tính.', 1;
+        DECLARE @nTonKhoDW INT = (
+            SELECT COUNT(*) FROM [MEDFORECAST_DW_LINK].[MEDFORECAST_DW].[dbo].[MF_TonKho]);
+        IF @nTonKhoDW <> @nTonKho
+            THROW 50007, N'Số dòng tồn kho bên CSDL trung gian không khớp ảnh chụp vừa tính.', 1;
 
         /* 10) Mốc và nhật ký */
         DECLARE @MocMoi DATE = (SELECT MAX(Period) FROM #KQ);
 
-        UPDATE [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_Watermark]
+        UPDATE [MEDFORECAST_DW_LINK].[MEDFORECAST_DW].[dbo].[MF_Watermark]
         SET    MocDaDay    = CASE WHEN @MocMoi > ISNULL(MocDaDay, '19000101')
                                   THEN @MocMoi ELSE MocDaDay END,
                LanChayCuoi = SYSDATETIME()
         WHERE  TenLuong = 'CaBenh';
 
         IF @DayLuongPhanCap = 1
-            UPDATE [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_Watermark]
+            UPDATE [MEDFORECAST_DW_LINK].[MEDFORECAST_DW].[dbo].[MF_Watermark]
             SET    MocDaDay    = CASE WHEN @MocMoi > ISNULL(MocDaDay, '19000101')
                                       THEN @MocMoi ELSE MocDaDay END,
                    LanChayCuoi = SYSDATETIME()
             WHERE  TenLuong = 'PhanCap';
 
-        INSERT INTO [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_SyncLog]
+        INSERT INTO [MEDFORECAST_DW_LINK].[MEDFORECAST_DW].[dbo].[MF_SyncLog]
               (BatDau, KetThuc, TuNgay, SoDongCaBenh, SoDongTonKho, TongSoCa,
                TrangThai, ThongDiep)
         VALUES (@BatDau, SYSDATETIME(), @TuNgay, @nDong, @nTonKho, @TongCa, 'ok',
@@ -785,14 +785,14 @@ BEGIN
     END TRY
     BEGIN CATCH
         BEGIN TRY
-            INSERT INTO [MEDFORECAST_STA].[MEDFORECAST_DW].[dbo].[MF_SyncLog]
+            INSERT INTO [MEDFORECAST_DW_LINK].[MEDFORECAST_DW].[dbo].[MF_SyncLog]
                   (BatDau, KetThuc, TuNgay, TrangThai, ThongDiep)
             VALUES (@BatDau, SYSDATETIME(), @TuNgay, 'failed',
                     CONCAT(N'Lỗi ', ERROR_NUMBER(), N' dòng ', ERROR_LINE(),
                            N': ', ERROR_MESSAGE()));
         END TRY
         BEGIN CATCH
-            PRINT N'Không ghi được nhật ký xuống STA — kiểm tra linked server.';
+            PRINT N'Không ghi được nhật ký sang CSDL trung gian, kiểm tra linked server.';
         END CATCH
         THROW;
     END CATCH

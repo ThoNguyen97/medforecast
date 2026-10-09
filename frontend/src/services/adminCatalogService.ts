@@ -20,7 +20,7 @@ interface RegionItem {
 }
 
 export const adminCatalogService = {
-  // ── Danh mục bệnh ──────────────────────────────────────────────────────────
+  // Danh mục bệnh
   async listDiseases(): Promise<DiseaseItem[]> {
     const res = await api.get<DiseaseItem[]>('/admin/diseases');
     return res.data;
@@ -37,7 +37,7 @@ export const adminCatalogService = {
     await api.delete(`/admin/diseases/${encodeURIComponent(key)}`);
   },
 
-  // ── Nhóm bệnh ────────────────────────────────────────────────────
+  // Nhóm bệnh
   async listDiseaseGroups(): Promise<DiseaseGroupItem[]> {
     const res = await api.get<DiseaseGroupItem[]>('/admin/disease-groups');
     return res.data;
@@ -54,7 +54,7 @@ export const adminCatalogService = {
     await api.delete(`/admin/disease-groups/${encodeURIComponent(key)}`);
   },
 
-  // ── Khu vực ───────────────────────────────────────────────────────────
+  // Khu vực
   async listRegions(): Promise<RegionItem[]> {
     const res = await api.get<RegionItem[]>('/admin/regions');
     return res.data;

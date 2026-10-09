@@ -21,7 +21,7 @@ const NHOM_ICD: Record<string, string> = {
   'J20-J22': 'Nhiễm khuẩn cấp đường hô hấp dưới khác',
 };
 
-/** 'J09-J18' → ['J09', 'J10', ..., 'J18']. */
+/** 'J09-J18' thành ['J09', 'J10', ..., 'J18']. */
 const maThuocNhom = (nhom: string): string[] => {
   const [dau, cuoi] = nhom.split('-');
   if (!dau || !cuoi) return [];
@@ -34,7 +34,7 @@ const maThuocNhom = (nhom: string): string[] => {
   return out;
 };
 
-/** 'J13' → 'J09-J18'; undefined nếu mã ngoài 3 nhóm đề tài. */
+/** 'J13' thành 'J09-J18'; undefined nếu mã ngoài 3 nhóm đề tài. */
 const nhomCuaMa = (icdCode?: string | null): string | undefined => {
   const ma = (icdCode || '').trim().toUpperCase().slice(0, 3);
   if (!ma) return undefined;
@@ -284,7 +284,7 @@ export default function RecentMonthDataTable({ currentMonth, currentYear, diseas
               onChange={(e) => setTempMonth(e.target.value)}
               className="w-full h-9 px-3 rounded-lg border border-neutral-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
             >
-              <option value="latest">Tháng gần nhất ({latestMonth || '—'})</option>
+              <option value="latest">Tháng gần nhất ({latestMonth || '-'})</option>
               <option value="all">Tất cả các tháng</option>
               {uniqueMonths.map((m) => (
                 <option key={m} value={m}>
@@ -409,7 +409,7 @@ export default function RecentMonthDataTable({ currentMonth, currentYear, diseas
                 <td className="px-5 py-3.5 text-neutral-700">{item.disease_name}</td>
                 <td className="px-5 py-3.5 text-neutral-500 text-xs">{item.location}</td>
                 <td className="px-5 py-3.5 text-right text-blue-600 font-semibold tabular-nums">
-                  {item.predicted_cases != null ? item.predicted_cases.toLocaleString('vi-VN') : '—'}
+                  {item.predicted_cases != null ? item.predicted_cases.toLocaleString('vi-VN') : '-'}
                 </td>
                 <td className="px-5 py-3.5 text-right text-neutral-900 font-semibold tabular-nums">
                   {item.total_cases.toLocaleString('vi-VN')}
@@ -433,7 +433,7 @@ export default function RecentMonthDataTable({ currentMonth, currentYear, diseas
                       {item.deviation_pct > 0 ? '+' : ''}{item.deviation_pct.toFixed(1)}%
                     </span>
                   ) : (
-                    <span className="text-neutral-400">—</span>
+                    <span className="text-neutral-400">-</span>
                   )}
                 </td>
               </tr>

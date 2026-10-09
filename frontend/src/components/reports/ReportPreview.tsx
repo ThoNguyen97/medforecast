@@ -160,7 +160,7 @@ function PreviewTable({ section }: { section: PreviewSection }) {
                         c.align === 'right' && 'text-right tabular-nums',
                       )}
                     >
-                      {row[c.key] ?? '—'}
+                      {row[c.key] ?? '-'}
                     </td>
                   ))}
                 </tr>

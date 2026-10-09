@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["forecast-analysis"])
 
 
-# ── Schemas ──
+# Schemas
 
 class AnalyzeRequest(BaseModel):
     disease_type: str = Field(..., description="Loại bệnh (key hoặc tiếng Việt)")
@@ -58,7 +58,7 @@ class AnalyzeRequest(BaseModel):
     )
 
 
-# ── Helpers ──
+# Helpers
 
 def _norm_disease(d: str) -> str:
     """Quy tên bệnh tiếng Việt về mã nhóm ICD hoặc mã ICD; chuỗi khác giữ nguyên."""
@@ -108,7 +108,7 @@ def _risk_label(level: str) -> str:
         "medium": "Trung bình",
         "high": "Cao",
         "very_high": "Rất cao",
-    }.get(level, "—")
+    }.get(level, "-")
 
 
 def _dieu_kien_khu_vuc(region: Optional[str]):
@@ -213,7 +213,7 @@ def _weather_factor(
     history_w: Dict[str, Optional[float]],
 ) -> tuple[float, list[str]]:
     """Hệ số thời tiết (heuristic) và các câu giải thích đi kèm.
-    Mưa lệch ≥10% tác động tỷ lệ 0,15; 26–30°C/75–85% ×1,1; >35°C ×0,9; AQI >100 ×1,05."""
+    Mưa lệch ≥10% tác động tỷ lệ 0,15; 26-30°C/75-85% ×1,1; >35°C ×0,9; AQI >100 ×1,05."""
     factor = 1.0
     bullets: list[str] = []
 
@@ -227,10 +227,10 @@ def _weather_factor(
         factor *= 1 + (rain_d / 100) * 0.15
         sign = "tăng" if rain_d > 0 else "giảm"
         bullets.append(
-            f"Lượng mưa {sign} {abs(rain_d):.0f}% so với cùng kỳ — "
-            + ("theo dữ liệu 2019–2026, số ca tăng vào cuối mùa mưa, đỉnh T10–T11."
+            f"Lượng mưa {sign} {abs(rain_d):.0f}% so với cùng kỳ: "
+            + ("theo dữ liệu 2019-2026, số ca tăng vào cuối mùa mưa, đỉnh T10-T11."
                if rain_d > 0 else
-               "theo dữ liệu 2019–2026, các tháng khô số ca ở vùng đáy (T4–T6).")
+               "theo dữ liệu 2019-2026, các tháng khô số ca ở vùng đáy (T4-T6).")
         )
 
     temp = forecast_w.get("temp")
@@ -239,13 +239,13 @@ def _weather_factor(
         if 26 <= temp <= 30 and 75 <= hum <= 85:
             factor *= 1.1
             bullets.append(
-                f"Độ ẩm {hum:.0f}%, nhiệt độ {temp:.0f}°C — trong khoảng 75–85% / "
-                "26–30°C, số ca hô hấp lịch sử cao hơn mức nền."
+                f"Độ ẩm {hum:.0f}%, nhiệt độ {temp:.0f}°C: trong khoảng 75-85% / "
+                "26-30°C, số ca hô hấp lịch sử cao hơn mức nền."
             )
         elif temp > 35:
             factor *= 0.9
             bullets.append(
-                f"Nhiệt độ {temp:.0f}°C (trên 35°C) — các tháng nóng số ca lịch sử "
+                f"Nhiệt độ {temp:.0f}°C (trên 35°C): các tháng nóng số ca lịch sử "
                 "ở vùng đáy."
             )
 
@@ -253,7 +253,7 @@ def _weather_factor(
     if aqi is not None and aqi > 100:
         factor *= 1.05
         bullets.append(
-            f"AQI {aqi:.0f} (trên 100, mức kém) — nhóm viêm phế quản và viêm phổi "
+            f"AQI {aqi:.0f} (trên 100, mức kém): nhóm viêm phế quản và viêm phổi "
             "tăng theo dữ liệu lịch sử."
         )
 
@@ -323,14 +323,14 @@ def _trend_factor(
     if all(counts[i] > counts[i + 1] for i in range(3)):
         change = (counts[0] - counts[3]) / max(counts[3], 1) * 100
         explanation = (
-            f"Số ca tăng 3 tháng liên tiếp — tháng chốt gần nhất cao hơn "
+            f"Số ca tăng 3 tháng liên tiếp: tháng chốt gần nhất cao hơn "
             f"3 tháng trước đó {change:.0f}%."
         )
 
     return round(factor, 3), explanation
 
 
-# ── Endpoints ──
+# Endpoints
 
 @router.get("/diseases")
 async def list_diseases(
@@ -483,7 +483,7 @@ def analyze_forecast(
 
         model_used = "multivariate_v1"
         ml_accuracy: Dict[str, Any] | None = None
-        ci_interval: Dict[str, Any] | None = None  # khoảng walk-forward; None → ±15% khi lưu
+        ci_interval: Dict[str, Any] | None = None  # khoảng walk-forward; None thì lấy ±15% khi lưu
         co_ensemble = False  # False = phương án cùng kỳ, có thể bằng 0 (không có căn cứ)
 
         def _accuracy_tu_ensemble(a):
@@ -530,7 +530,7 @@ def analyze_forecast(
                             })
                     except ValueError:
                         logger.info(
-                            "Chưa đủ dữ liệu MART khối %s cho kỳ %s-%02d — "
+                            "Chưa đủ dữ liệu MART khối %s cho kỳ %s-%02d, "
                             "dùng phương án cùng kỳ (seasonal baseline) làm dự báo thay thế.",
                             disease, payload.target_year, payload.target_month,
                         )
@@ -554,7 +554,7 @@ def analyze_forecast(
                     if iv.get("lower") is not None:
                         ci_interval = {"lower": iv["lower"], "upper": iv["upper"]}
         except Exception:
-            logger.exception("Ensemble nhóm lỗi — dùng phương án cùng kỳ (seasonal baseline)")
+            logger.exception("Ensemble nhóm lỗi: dùng phương án cùng kỳ (seasonal baseline)")
     else:
         co_ensemble = True  # bản đã ghi nhận, không xét lại căn cứ
         predicted = cached.predicted_cases
@@ -628,7 +628,7 @@ def analyze_forecast(
                 }
             )
 
-    # Xu hướng năm đích đến tháng trước tháng đích (tháng dở dang → None).
+    # Xu hướng năm đích đến tháng trước tháng đích (tháng dở dang là None).
     trend_curr_year: list[dict] = []
     for m in range(1, payload.target_month):
         trend_curr_year.append(
@@ -639,7 +639,7 @@ def analyze_forecast(
             }
         )
 
-    # Tương quan thời tiết – số ca của cùng tháng qua các năm.
+    # Tương quan thời tiết - số ca của cùng tháng qua các năm.
     correlation: list[dict] = []
     for y in years_to_show:
         cases = (
@@ -672,12 +672,12 @@ def analyze_forecast(
         explanation_bullets.append(trend_bullet)
     if not explanation_bullets:
         explanation_bullets.append(
-            "Thời tiết trong ngưỡng bình thường của cùng kỳ — dự báo theo xu hướng cơ sở."
+            "Thời tiết trong ngưỡng bình thường của cùng kỳ: dự báo theo xu hướng cơ sở."
         )
 
     explanation_text = " | ".join(explanation_bullets)[:1000]
 
-    # Không có căn cứ: ensemble không chạy được và phương án cùng kỳ bằng 0 → không ghi nhận.
+    # Không có căn cứ: ensemble không chạy được và phương án cùng kỳ bằng 0 thì không ghi nhận.
     def _khong_co_can_cu(pred: int, base: float, ens: bool) -> bool:
         return (not ens) and int(pred) == 0 and float(base or 0) == 0.0
 
@@ -686,7 +686,7 @@ def analyze_forecast(
         khong_ghi_nhan = (
             f"Không đủ dữ liệu lịch sử để dự báo {disease_name_label} tại "
             f"{region or 'Toàn quốc'} cho kỳ {payload.target_month:02d}/{payload.target_year} "
-            f"(chuỗi quá ngắn và không có ca cùng kỳ 5 năm trước) — không ghi nhận."
+            f"(chuỗi quá ngắn và không có ca cùng kỳ 5 năm trước), không ghi nhận."
         )
         luu_lai = False
 
@@ -864,9 +864,9 @@ _MUI_GIO_VN = timezone(timedelta(hours=7))
 
 
 def _gio_dia_phuong(dt: Optional[datetime]) -> str:
-    """datetime DB (UTC, naive) → "dd/mm/YYYY HH:MM" giờ Việt Nam."""
+    """datetime DB (UTC, naive) sang "dd/mm/YYYY HH:MM" giờ Việt Nam."""
     if dt is None:
-        return "—"
+        return "-"
     aware = dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
     return aware.astimezone(_MUI_GIO_VN).strftime("%d/%m/%Y %H:%M")
 
@@ -1052,7 +1052,7 @@ async def export_forecast_pdf(
     risk_label_map = {"low": "Thấp", "medium": "Trung bình", "high": "Cao", "very_high": "Rất cao"}
     disease_label = fc.disease_name or _disease_label(fc.icd_code)
     region_text = fc.location or "Toàn thành phố"
-    month_label = fc.forecast_date.strftime("%m/%Y") if fc.forecast_date else "—"
+    month_label = fc.forecast_date.strftime("%m/%Y") if fc.forecast_date else "-"
 
     story = [
         Paragraph(f"Báo cáo dự báo dịch bệnh - {month_label}", styles["Title"]),
@@ -1076,7 +1076,7 @@ async def export_forecast_pdf(
             ["Ca nền (TB cùng kỳ)", f"{int(fc.baseline_cases or 0):,}"],
             ["Hệ số thời tiết", f"{float(fc.weather_factor or 1):.3f}"],
             ["Hệ số xu hướng", f"{float(fc.trend_factor or 1):.3f}"],
-            ["Mức cảnh báo dịch tễ", risk_label_map.get(fc.risk_level or "", "—")],
+            ["Mức cảnh báo dịch tễ", risk_label_map.get(fc.risk_level or "", "-")],
             [
                 "Khoảng tin cậy",
                 f"{int(fc.confidence_lower or 0):,} - {int(fc.confidence_upper or 0):,}",

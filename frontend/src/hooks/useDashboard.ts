@@ -4,7 +4,7 @@ import { dashboardService } from '../services/dashboardService';
 import { DASHBOARD_REFRESH_INTERVAL_MS } from '../utils/constants';
 import { useAuthStore } from '../store/authStore';
 
-// ── Tổng quan (/dashboard/v2) ────────────────────────────────────────────────
+// Tổng quan (/dashboard/v2)
 
 /** Payload trang Tổng quan. */
 export function useDashboardV2(params: DashboardV2Params) {

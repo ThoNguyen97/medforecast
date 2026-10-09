@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Kiểm thử lõi DSS ba tầng trên SQLite in-memory: FEFO và nhãn màu, kết hợp
-Bates–Granger, quy đổi định mức, view loại kỳ dở dang, nạp có rollback, đồng bộ danh mục.
+Bates-Granger, quy đổi định mức, view loại kỳ dở dang, nạp có rollback, đồng bộ danh mục.
 """
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ def db():
     engine.dispose()
 
 
-# ── Tầng 3 — FEFO và nhãn ──
+# Tầng 3: FEFO và nhãn
 
 def test_fefo_lo_het_han_khong_huu_dung():
     hom = date(2026, 9, 13)
@@ -88,7 +88,7 @@ def test_classify_bon_mau(doi, muc):
 def test_alert_rows_tren_db_rong_khong_no(db):
     s, _ = db
     out = dss_alerts.alert_rows(s)
-    # chưa có view → báo rõ, không ném ngoại lệ
+    # chưa có view thì báo rõ, không ném ngoại lệ
     assert out["san_sang"] in (True, False)
 
 
@@ -117,12 +117,12 @@ def test_alert_rows_gan_nhan_dung(db):
 
     out = dss_alerts.alert_rows(s, demand={"A": 600.0})
     theo_ma = {r["supply_code"]: r for r in out["rows"]}
-    # A: nhu cầu dự báo 600/30 ngày → mẫu số 20/ngày
+    # A: nhu cầu dự báo 600/30 ngày thì mẫu số 20/ngày
     assert theo_ma["A"]["d_eff"] == pytest.approx(20.0)
     assert theo_ma["A"]["d_daily"] == pytest.approx(10.0)
     assert theo_ma["A"]["doi"] == pytest.approx(5.0) and theo_ma["A"]["muc"] == "red"
     assert theo_ma["A"]["delta_need"] == pytest.approx(500.0)
-    # B không có D_i → Xám
+    # B không có D_i thì Xám
     assert theo_ma["B"]["d_eff"] == pytest.approx(0.0)
     assert theo_ma["B"]["doi"] is None and theo_ma["B"]["muc"] == "grey"
     # còn xuất trong 12 kỳ nên lý do là "chưa có dự báo", khác mã đã ngừng dùng
@@ -146,7 +146,7 @@ def _fixture_mot_ma(s, engine, ton=100.0, han="2030-01-01"):
 
 
 def test_so_ca_du_bao_tang_thi_nhan_doi_mau(db):
-    """Mẫu số DOI là nhu cầu dự báo, không phải d_daily: dự báo thấp → Xanh, cao → Đỏ."""
+    """Mẫu số DOI là nhu cầu dự báo, không phải d_daily: dự báo thấp thì Xanh, cao thì Đỏ."""
     s, engine = db
     _fixture_mot_ma(s, engine, ton=100.0)
     thap = {r["supply_code"]: r for r in dss_alerts.alert_rows(s, demand={"A": 60.0})["rows"]}
@@ -167,7 +167,7 @@ def test_khong_co_du_bao_thi_xam_chu_khong_lui_ve_lich_su(db):
 
 def test_fefo_dung_cung_mau_so_du_bao(db):
     """FEFO và DOI dùng cùng tốc độ tiêu thụ: lô 100 viên còn 10 ngày hạn,
-    dự báo 2/ngày → s_usable 20, DOI 10; dự báo 20/ngày → s_usable 100, DOI 5."""
+    dự báo 2/ngày thì s_usable 20, DOI 10; dự báo 20/ngày thì s_usable 100, DOI 5."""
     s, engine = db
     han = (date.today() + timedelta(days=10)).isoformat()
     _fixture_mot_ma(s, engine, ton=100.0, han=han)
@@ -185,7 +185,7 @@ def test_het_hang_that_khong_dem_ma_con_hang(db):
     assert r["doi"] is not None and 0 < r["doi"] < 0.2 and r["het_hang"] is False
 
 
-# ── Bốn view — loại kỳ dở dang, chỉ thuốc ──
+# Bốn view: loại kỳ dở dang, chỉ thuốc
 
 def test_views_loai_ky_do_va_vtyt(db):
     s, engine = db
@@ -226,7 +226,7 @@ def test_focus_loai_ma_da_ngung_dung(db):
     assert [r[0] for r in s.execute(text("SELECT supply_code FROM v_supply_focus"))] == ["A"]
 
 
-# ── Tầng 2 — định mức và quy đổi ──
+# Tầng 2: định mức và quy đổi
 
 def test_demand_by_supply_cong_thuc(db):
     s, engine = db
@@ -265,10 +265,10 @@ def test_demand_khong_chia_0_khi_ca_bang_0(db):
     assert dm["so_ma"] == 0
 
 
-# ── Đồng bộ danh mục vật tư từ mart ──
+# Đồng bộ danh mục thuốc từ mart
 
 class _Gia:
-    """Đối tượng giả cho một dòng MartInventory / MedicalSupply."""
+    """Đối tượng giả cho một dòng MartInventory / Drug."""
     def __init__(self, **kw):
         self.__dict__.update(kw)
 
@@ -279,7 +279,7 @@ def test_dong_bo_cap_nhat_category():
              group_name="2. GIẢM ĐAU", category="Dịch truyền")
     t = _Gia(drug_code="D1", name="Paracetamol", unit="Viên",
              group_name="2. GIẢM ĐAU", category="Thuốc hạ sốt giảm đau")
-    assert sync_service.cap_nhat_thuoc_tinh_vat_tu(s, t) == ["category"]
+    assert sync_service.cap_nhat_thuoc_tinh_thuoc(s, t) == ["category"]
     assert s.category == "Thuốc hạ sốt giảm đau"
 
 
@@ -288,17 +288,17 @@ def test_dong_bo_khong_ghi_de_bang_gia_tri_rong():
     s = _Gia(drug_code="D1", ten_hoat_chat="Paracetamol", unit="Viên",
              group_name="2. GIẢM ĐAU", category="Thuốc hạ sốt giảm đau")
     t = _Gia(drug_code="nan", name=None, unit="", group_name="NaT", category="none")
-    assert sync_service.cap_nhat_thuoc_tinh_vat_tu(s, t) == []
+    assert sync_service.cap_nhat_thuoc_tinh_thuoc(s, t) == []
     assert s.category == "Thuốc hạ sốt giảm đau" and s.drug_code == "D1"
 
 
 def test_dong_bo_khong_doi_thi_khong_ghi():
     s = _Gia(drug_code="D1", ten_hoat_chat="A", unit="Viên", group_name="G", category="Khác")
     t = _Gia(drug_code="D1", name="A", unit="Viên", group_name="G", category="Khác")
-    assert sync_service.cap_nhat_thuoc_tinh_vat_tu(s, t) == []
+    assert sync_service.cap_nhat_thuoc_tinh_thuoc(s, t) == []
 
 
-# ── Tầng 1 — kết hợp thích ứng ──
+# Tầng 1: kết hợp thích ứng
 
 def test_combiner_trong_so_nghich_dao_mae():
     c = AdaptiveCombiner("inv_mae", window=12, power=1, min_hist=2)
@@ -329,7 +329,7 @@ def test_combiner_khong_lich_su_la_trung_binh_deu():
     assert final == 15.0 and w == {"a": 0.5, "b": 0.5} and b == 1.0
 
 
-# ── Nạp dữ liệu — xoá-rồi-chèn ──
+# Nạp dữ liệu: xoá-rồi-chèn
 
 def test_replace_periods_idempotent_va_giu_ky_khac(db):
     s, _ = db
@@ -354,7 +354,7 @@ def test_load_flow_rollback_khi_insert_vo(db, monkeypatch):
 
     class _Conn:
         def _read(self, sql, params):
-            # cases = None vi phạm NOT NULL → INSERT vỡ sau khi DELETE đã chạy
+            # cases = None vi phạm NOT NULL thì INSERT vỡ sau khi DELETE đã chạy
             return pd.DataFrame([{"period": "2026-08-01", "disease_group": "J00-J06",
                                   "ro": "NGT", "cases": None}])
 
@@ -379,7 +379,7 @@ def test_prepare_don_ro_la_va_gop_trung_khoa():
     assert int(out.loc[out["ro"] == "NGT", "cases"].iloc[0]) == 7
 
 
-# ── Mẫu số d_daily và co ngót tỷ trọng rổ ──
+# Mẫu số d_daily và co ngót tỷ trọng rổ
 
 def test_d_daily_chia_so_ky_cua_so_khong_phai_so_ky_co_dong(db):
     """d_daily chia cho số kỳ của cửa sổ, không phải số kỳ mã có xuất (tránh thổi phồng mã xuất thưa)."""

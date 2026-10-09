@@ -1,4 +1,4 @@
-/* inventory_lot_sta.sql — STA, vw_MedForecast_TonKhoLo_MoiNhat: tồn kho theo lô kèm hạn dùng, nền của FEFO.
+/* inventory_lot_dw.sql (view vw_MedForecast_TonKhoLo_MoiNhat): tồn kho theo lô kèm hạn dùng, nền của FEFO.
    Ảnh chụp tại NgaySnapshot mới nhất, không nạp tăng dần.
    Giữ dòng lot_id = 0 (không tra được lô), bỏ thì sinh cảnh báo thiếu hụt sai.
    Dùng `co_han_dung` để biết mã tính được FEFO, không suy từ `expiry_date IS NULL`. */

@@ -1,5 +1,5 @@
 {
-  "dataset": "MedForecast — bộ huấn luyện dự báo ca bệnh hô hấp theo tháng",
+  "dataset": "MedForecast: bộ huấn luyện dự báo ca bệnh hô hấp theo tháng",
   "version": "1.0",
   "exported_at": "2026-09-11T16:53:56",
   "source_db": "data/medforecast.db",

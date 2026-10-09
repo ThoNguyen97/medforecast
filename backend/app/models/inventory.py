@@ -6,7 +6,7 @@ from app.database import Base
 
 
 class Inventory(Base):
-    """Tồn kho thuốc/vật tư y tế theo lô và hạn dùng."""
+    """Tồn kho thuốc theo lô và hạn dùng."""
     
     __tablename__ = "inventory"
     
@@ -20,5 +20,5 @@ class Inventory(Base):
     last_updated = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     updated_by = Column(Integer, ForeignKey("users.id"))
     
-    supply = relationship("MedicalSupply", backref="inventory_items")
+    supply = relationship("Drug", backref="inventory_items")
     updater = relationship("User")

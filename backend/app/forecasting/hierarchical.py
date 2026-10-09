@@ -27,7 +27,7 @@ def ewma_shares(hist_group: pd.DataFrame, hist_codes: Dict[str, pd.DataFrame],
 
 def reconcile_ols(codes: List[str], base_group: float,
                   base_codes: Dict[str, float]) -> Dict[str, float]:
-    """Hoà giải OLS: bottom = (Sᵀ S)⁻¹ Sᵀ · [base_group, base_codes...], S = [1ᵀ; I].
+    """Hoà giải OLS: bottom = (Sᵀ S)⁻¹ Sᵀ × [base_group, base_codes...], S = [1ᵀ; I].
 
     Cắt âm ở cuối nên tổng mã có thể không bằng dự báo nhóm.
     """

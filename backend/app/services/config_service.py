@@ -18,7 +18,7 @@ class ConfigService:
     def __init__(self, db: Session):
         self.db = db
 
-    # ── SystemConfig helpers ──────────────────────────────────────────────────
+    # SystemConfig helpers
 
     def get_all_configs(self) -> List[SystemConfig]:
         """Mọi dòng system_config, mật khẩu HIS đã che."""

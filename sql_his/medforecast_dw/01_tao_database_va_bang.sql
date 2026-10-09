@@ -1,8 +1,8 @@
-/* sta/01_tao_database_va_bang.sql
-   Chạy trên: STA, cần quyền tạo database.
+/* medforecast_dw/01_tao_database_va_bang.sql
+   Chạy trên: máy chủ CSDL trung gian, cần quyền tạo database.
    Mục đích: tạo CSDL riêng MEDFORECAST_DW (không phụ thuộc CSDL HIS hay bị restore),
    các bảng lõi đã tổng hợp theo tháng (không có dữ liệu định danh bệnh nhân), view và tài khoản.
-   Điều kiện: chạy đầu tiên, sau đó sta/02..05 theo thứ tự. */
+   Điều kiện: chạy đầu tiên, sau đó medforecast_dw/02..04 theo thứ tự. */
 
 USE master;
 GO
@@ -14,16 +14,16 @@ BEGIN
     PRINT N'Đã tạo database MEDFORECAST_DW.';
 END
 ELSE
-    PRINT N'Database MEDFORECAST_DW đã tồn tại — bỏ qua bước tạo.';
+    PRINT N'Database MEDFORECAST_DW đã tồn tại: bỏ qua bước tạo.';
 GO
 
-ALTER DATABASE MEDFORECAST_DW SET RECOVERY SIMPLE;   -- dữ liệu dựng lại được từ PROD
+ALTER DATABASE MEDFORECAST_DW SET RECOVERY SIMPLE;   -- dữ liệu dựng lại được từ CSDL HIS
 GO
 
 USE MEDFORECAST_DW;
 GO
 
-/* Mục 1. MF_CaBenh_VatTu: cases lặp lại trên mọi dòng vật tư của (tháng × ICD × tỉnh), tầng sau lấy max() */
+/* Mục 1. MF_CaBenh_VatTu: cases lặp lại trên mọi dòng thuốc của (tháng × ICD × tỉnh), tầng sau lấy max() */
 IF OBJECT_ID('dbo.MF_CaBenh_VatTu') IS NULL
 CREATE TABLE dbo.MF_CaBenh_VatTu (
     Period           date          NOT NULL,   -- ngày 01 của tháng
@@ -54,7 +54,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'ux_MF_CBVT_Khoa')
         ON dbo.MF_CaBenh_VatTu (Period, disease_code, region, supply_code);
 GO
 
-/* Index lỗi vì dòng trùng: TRUNCATE bảng rồi trên PROD EXEC dbo.usp_MedForecast_DayDuLieu @NapLaiToanBo = 1 */
+/* Index lỗi vì dòng trùng: TRUNCATE bảng rồi trên CSDL HIS chạy EXEC dbo.usp_MedForecast_DayDuLieu @NapLaiToanBo = 1 */
 
 /* Bổ sung cột nhóm ICD cho bảng cũ */
 IF COL_LENGTH('dbo.MF_CaBenh_VatTu', 'disease_group') IS NULL
@@ -68,7 +68,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'ix_MF_CBVT_Nhom')
         ON dbo.MF_CaBenh_VatTu (disease_group, Period);
 GO
 
-/* Mục 2. MF_CaBenh_Nhom: số lượt DISTINCT theo nhóm ICD, PROD tính sẵn vì chỉ PROD còn TIEPNHAN_ID;
+/* Mục 2. MF_CaBenh_Nhom: số lượt DISTINCT theo nhóm ICD, phía HIS tính sẵn vì chỉ phía HIS còn TIEPNHAN_ID;
    dòng region = 'TOAN_QUOC' đếm riêng, không cộng các tỉnh */
 IF OBJECT_ID('dbo.MF_CaBenh_Nhom') IS NULL
 CREATE TABLE dbo.MF_CaBenh_Nhom (
@@ -126,7 +126,7 @@ CREATE TABLE dbo.MF_SyncLog (
 );
 GO
 
-/* Mục 6. MF_MapVatTu: ánh xạ mã vật tư HIS sang mã ứng dụng, view tự đổi */
+/* Mục 6. MF_MapVatTu: ánh xạ mã thuốc HIS sang mã ứng dụng, view tự đổi */
 IF OBJECT_ID('dbo.MF_MapVatTu') IS NULL
 CREATE TABLE dbo.MF_MapVatTu (
     MaHIS   nvarchar(60) NOT NULL PRIMARY KEY,
@@ -190,7 +190,7 @@ GRANT SELECT ON dbo.MF_SyncLog            TO medforecast_app;
 GO
 */
 
-/* Mục 9. Tài khoản medforecast_push cho linked server từ PROD, quyền ghi. Bỏ chú thích và đổi mật khẩu trước khi chạy
+/* Mục 9. Tài khoản medforecast_push cho linked server từ CSDL HIS, quyền ghi. Bỏ chú thích và đổi mật khẩu trước khi chạy
 USE master;
 CREATE LOGIN medforecast_push WITH PASSWORD = N'<<dat-mat-khau-manh>>';
 GO
@@ -202,4 +202,4 @@ GRANT ALTER ON SCHEMA::dbo TO medforecast_push;   -- cần cho TRUNCATE TABLE
 GO
 */
 
-PRINT N'Xong sta/01. Kiểm tra bằng: SELECT * FROM MEDFORECAST_DW.sys.tables;';
+PRINT N'Xong medforecast_dw/01. Kiểm tra bằng: SELECT * FROM MEDFORECAST_DW.sys.tables;';

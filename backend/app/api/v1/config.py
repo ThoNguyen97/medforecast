@@ -1,4 +1,4 @@
-"""API cấu hình hệ thống (system_config, khoá → giá trị).
+"""API cấu hình hệ thống (system_config, khoá sang giá trị).
 Ghi chỉ dành cho Administrator, có audit. Ngưỡng DSS sửa qua /dss/params.
 """
 

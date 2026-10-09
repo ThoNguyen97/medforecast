@@ -24,7 +24,7 @@ import {
 
 const ALERT_LIMIT = 8;
 
-/** Bốn mức DOI → dải màu thẻ KPI; xám trung tính vì chưa đo được không phải an toàn. */
+/** Bốn mức DOI sang dải màu thẻ KPI; xám trung tính vì chưa đo được không phải an toàn. */
 const RISK_TONE: Record<AlertLevel, KpiTone> = {
   red: 'red',
   amber: 'amber',
@@ -95,7 +95,7 @@ export default function Dashboard() {
         month: '2-digit',
         year: 'numeric',
       })
-    : '—';
+    : '-';
 
   const kpi = useMemo(() => buildKpis(data, data?.forecast, !data, filters), [data, filters]);
 
@@ -168,7 +168,7 @@ export default function Dashboard() {
           subtitle={
             filters.block === 'all'
               ? 'Tổng ba khối hô hấp, 12 kỳ gần nhất, kèm dự báo kỳ tới'
-              : `${filters.block} · ${BLOCK_LABELS[filters.block]}, 12 kỳ gần nhất`
+              : `${filters.block}, ${BLOCK_LABELS[filters.block]}, 12 kỳ gần nhất`
           }
           right={<Link to={ROUTES.FORECASTING} className="text-xs text-blue-600 hover:underline font-medium">Phân tích</Link>}
         >
@@ -181,7 +181,7 @@ export default function Dashboard() {
         <Card
           className="lg:col-span-5"
           title="Số ngày tồn phủ nhu cầu theo danh mục"
-          subtitle={data ? `${data.risk.selected} · DOI = tồn hữu dụng (FEFO) ÷ nhu cầu dự báo/ngày` : undefined}
+          subtitle={data ? `${data.risk.selected}, DOI = tồn hữu dụng (FEFO) ÷ nhu cầu dự báo/ngày` : undefined}
         >
           {data ? <DoiCategoryChart data={data.doi_by_category} thresholds={data.meta.thresholds} /> : <Skeleton className="h-72" />}
         </Card>
@@ -195,7 +195,7 @@ export default function Dashboard() {
           title="Cảnh báo nguy cơ thiếu hụt"
           subtitle={
             data
-              ? `${data.risk.selected} · ${filters.level ? `mức ${LEVEL_TEXT[filters.level]}` : 'Đỏ + Vàng'} · ${data.alerts_total_matched.toLocaleString('vi-VN')} mã khớp, hiện ${Math.min(ALERT_LIMIT, data.alerts_total_matched)}`
+              ? `${data.risk.selected}, ${filters.level ? `mức ${LEVEL_TEXT[filters.level]}` : 'Đỏ + Vàng'}, ${data.alerts_total_matched.toLocaleString('vi-VN')} mã khớp, hiện ${Math.min(ALERT_LIMIT, data.alerts_total_matched)}`
               : undefined
           }
           right={<Link to={ROUTES.ALERTS} className="text-xs text-blue-600 hover:underline font-medium">Xem tất cả</Link>}
@@ -215,7 +215,7 @@ export default function Dashboard() {
           )}
         </Card>
         <div className="lg:col-span-5 grid grid-cols-1 gap-5">
-          <Card title="Phân cấp chăm sóc theo nhóm bệnh" subtitle="Tỷ trọng p̂(g, rổ) — đầu vào định mức thực nghiệm Tầng 2">
+          <Card title="Phân cấp chăm sóc theo nhóm bệnh" subtitle="Tỷ trọng p̂(g, rổ), đầu vào định mức thực nghiệm Tầng 2">
             {data ? <CareLevelChart data={data.care_level} block={filters.block} /> : <Skeleton className="h-40" />}
           </Card>
         </div>
@@ -228,7 +228,7 @@ export default function Dashboard() {
   );
 }
 
-// ── KPI ──────────────────────────────────────────────────────────────────────
+// KPI
 
 const LEVEL_TEXT = { red: 'Đỏ', amber: 'Vàng', green: 'Xanh', grey: 'Xám' } as const;
 
@@ -240,7 +240,7 @@ function buildKpis(
   fcLoading: boolean,
   filters: DashboardFilterState,
 ): KpiProps[] {
-  const n = (v: number | null | undefined) => (v == null ? '—' : v.toLocaleString('vi-VN'));
+  const n = (v: number | null | undefined) => (v == null ? '-' : v.toLocaleString('vi-VN'));
 
   // Số ca kỳ đã chốt
   const blockRow = filters.block === 'all' ? null : data?.cases.by_block.find((b) => b.block_code === filters.block);
@@ -264,16 +264,16 @@ function buildKpis(
 
   // Chất lượng dự báo
   const q = data?.quality;
-  // Số có thể null khi thiếu backtest → không nối "%" vào undefined
+  // Số có thể null khi thiếu backtest thì không nối "%" vào undefined
   const cov = q?.by_block?.length
-    ? q.by_block.map((b) => (b.coverage_pct == null ? '—' : Math.round(b.coverage_pct))).join('/') + '%'
-    : '—';
-  const improve = q?.improvement_vs_naive_pct != null ? `${q.improvement_vs_naive_pct.toFixed(1)}%` : '—';
-  const wape = q?.track_record?.wape_pct != null ? `${q.track_record.wape_pct}%` : '—';
+    ? q.by_block.map((b) => (b.coverage_pct == null ? '-' : Math.round(b.coverage_pct))).join('/') + '%'
+    : '-';
+  const improve = q?.improvement_vs_naive_pct != null ? `${q.improvement_vs_naive_pct.toFixed(1)}%` : '-';
+  const wape = q?.track_record?.wape_pct != null ? `${q.track_record.wape_pct}%` : '-';
 
   return [
     {
-      label: blockRow ? `Số ca ${filters.block} · kỳ chốt` : 'Số ca kỳ đã chốt',
+      label: blockRow ? `Số ca ${filters.block}, kỳ chốt` : 'Số ca kỳ đã chốt',
       value: n(cases),
       unit: 'ca',
       tone: 'blue',
@@ -293,7 +293,7 @@ function buildKpis(
       ) : undefined,
       footer: data?.meta.open_period ? (
         <>
-          Kỳ {data.meta.open_period} đang mở: <b className="text-neutral-700">{n(openCases)}</b> ca · chưa chốt, không tính xu hướng
+          Kỳ {data.meta.open_period} đang mở: <b className="text-neutral-700">{n(openCases)}</b> ca, chưa chốt, không tính xu hướng
         </>
       ) : undefined,
     },
@@ -305,7 +305,7 @@ function buildKpis(
       to: ROUTES.FORECASTING,
       context: fcLoading ? undefined : fcLo != null && fcHi != null ? (
         <>
-          Khoảng <b className="text-neutral-800 tabular-nums">{n(fcLo)}–{n(fcHi)}</b> · mức {Math.round((fc?.level ?? 0.9) * 100)}%
+          Khoảng <b className="text-neutral-800 tabular-nums">{n(fcLo)}-{n(fcHi)}</b>, mức {Math.round((fc?.level ?? 0.9) * 100)}%
         </>
       ) : (
         <span className="text-neutral-500">Chưa ghi nhận dự báo cho kỳ này ở trang Phân tích</span>
@@ -314,7 +314,7 @@ function buildKpis(
         fc?.ready && fcRecordedAt ? (
           <>
             Đã ghi nhận lúc <b className="text-neutral-700">{new Date(fcRecordedAt).toLocaleString('vi-VN')}</b>
-            {fc.ghi_chu.some((g) => g.includes('cận')) && <span className="text-amber-700"> · xem ghi chú</span>}
+            {fc.ghi_chu.some((g) => g.includes('cận')) && <span className="text-amber-700">, xem ghi chú</span>}
           </>
         ) : !fc?.ready ? (
           <span className="text-amber-700">Vào trang Phân tích để ghi nhận dự báo cho kỳ này</span>
@@ -337,7 +337,7 @@ function buildKpis(
       ) : undefined,
       footer: c ? (
         <>
-          trên {n(c.total)} mã {data?.risk.selected} · DOI ≤ {c.nguong.red_days} ngày · {c.zero_stock} mã hết hàng
+          trên {n(c.total)} mã {data?.risk.selected}, DOI ≤ {c.nguong.red_days} ngày, {c.zero_stock} mã hết hàng
         </>
       ) : undefined,
     },
@@ -349,7 +349,7 @@ function buildKpis(
           {risk.label || OPERATIONAL_LEVEL_LABELS[risk.level]}
         </span>
       ) : (
-        '—'
+        '-'
       ),
       tone: riskTone,
       to: ROUTES.ALERTS,
@@ -359,14 +359,14 @@ function buildKpis(
     },
     {
       label: 'Chất lượng dự báo',
-      value: q?.available ? (q.rel_mae_codes ?? '—').toLocaleString('vi-VN') : <span className="text-base font-semibold text-neutral-400">chưa có</span>,
+      value: q?.available ? (q.rel_mae_codes ?? '-').toLocaleString('vi-VN') : <span className="text-base font-semibold text-neutral-400">chưa có</span>,
       unit: q?.available ? 'RelMAE' : undefined,
       tone: 'neutral',
       to: ROUTES.FORECASTING,
       loading: !data,
       context: q?.available ? (
         <>
-          Sai số thấp hơn dự báo cùng kỳ năm trước <b className="text-emerald-700">{improve}</b> · độ phủ{' '}
+          Sai số thấp hơn dự báo cùng kỳ năm trước <b className="text-emerald-700">{improve}</b>, độ phủ{' '}
           <b className="text-neutral-800 tabular-nums">{cov}</b>
           <span className="text-neutral-400"> (mục tiêu {q.coverage_target_pct}%)</span>
         </>
@@ -375,14 +375,14 @@ function buildKpis(
       ),
       footer: q?.available ? (
         <>
-          Kiểm định lùi {q.run_at ? new Date(q.run_at).toLocaleDateString('vi-VN') : ''} · {q.phuong_an}
-          {q.canh_bao && <span className="text-amber-700"> · {q.canh_bao}</span>}
+          Kiểm định lùi {q.run_at ? new Date(q.run_at).toLocaleDateString('vi-VN') : ''}, {q.phuong_an}
+          {q.canh_bao && <span className="text-amber-700">, {q.canh_bao}</span>}
           {q.track_record && q.track_record.n_verified > 0 ? (
             <>
-              {' '}· vận hành: {q.track_record.n_verified} kỳ đã đối chiếu, WAPE {wape}
+              , vận hành: {q.track_record.n_verified} kỳ đã đối chiếu, WAPE {wape}
             </>
           ) : q.track_record && q.track_record.n_runs > 0 ? (
-            <> · vận hành: {q.track_record.n_runs} lần khớp, chưa có kỳ nào chốt</>
+            <>, vận hành: {q.track_record.n_runs} lần khớp, chưa có kỳ nào chốt</>
           ) : null}
         </>
       ) : undefined,
@@ -390,7 +390,7 @@ function buildKpis(
   ];
 }
 
-// ── Khung thẻ ────────────────────────────────────────────────────────────────
+// Khung thẻ
 
 function Card({
   title,

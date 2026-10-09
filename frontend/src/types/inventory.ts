@@ -1,6 +1,6 @@
 /** Hợp đồng dữ liệu /api/v1/inventory (backend app/schemas/base.py); không có trường mua sắm. */
 
-export interface MedicalSupply {
+export interface Drug {
   id: number;
   supply_code: string;
   drug_code: string;
@@ -16,7 +16,7 @@ export interface MedicalSupply {
 export interface Inventory {
   id: number;
   supply_id: number;
-  supply: MedicalSupply | null;
+  supply: Drug | null;
   current_stock: number;      // có thể âm: HIS xuất trước nhập bù sau
   safety_stock: number;       // ngưỡng tham khảo, không tham gia DOI
   location: string | null;

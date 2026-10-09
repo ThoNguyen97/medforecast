@@ -23,7 +23,7 @@ def _has(db: Session, name: str) -> bool:
     return r is not None
 
 
-# ── Mốc thời gian ──
+# Mốc thời gian
 
 def get_period_anchor(db: Session) -> Dict[str, Optional[str]]:
     """Mốc thời gian chuẩn: last_closed_period (KPI neo vào đây), prev_closed_period (mẫu số xu hướng),
@@ -61,7 +61,7 @@ def shift_period(period: Optional[str], months: int) -> Optional[str]:
         return None
 
 
-# ── Số ca (từ mart, region = TOAN_QUOC) ──
+# Số ca (từ mart, region = TOAN_QUOC)
 
 def cases_in_period(db: Session, period: Optional[str],
                     block_code: Optional[str] = None) -> int:
@@ -141,7 +141,7 @@ def trend_pct(db: Session, period: Optional[str],
     return round(100.0 * (now - before) / before, 1)
 
 
-# ── Quy mô danh mục (mẫu số của các tỷ lệ phần trăm) ──
+# Quy mô danh mục (mẫu số của các tỷ lệ phần trăm)
 
 def catalogue_counts(db: Session) -> Dict[str, int]:
     """Ba mẫu số quy mô danh mục: total (toàn bộ), active (còn hoạt động), focus (tỷ trọng hô hấp ≥ 25%)."""
@@ -155,7 +155,7 @@ def catalogue_counts(db: Session) -> Dict[str, int]:
     return out
 
 
-# ── Mức cảnh báo vận hành ──
+# Mức cảnh báo vận hành
 
 # Cùng thang màu với `AlertLevel` ở frontend để mỗi màu chỉ mang một nghĩa.
 NHAN_MUC_CANH_BAO: Dict[str, str] = {
@@ -171,8 +171,8 @@ def danh_gia_muc_canh_bao(
     thresholds: Optional[Dict[str, Any]] = None,
     period: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Mức cảnh báo vận hành từ bộ đếm DOI của Tầng 3: không mã nào đo được → grey, có Đỏ → red,
-    có Vàng → amber, còn lại green. `counts` nhận dict của `dss_dashboard._counts` hoặc `tong_hop` của `alert_rows`.
+    """Mức cảnh báo vận hành từ bộ đếm DOI của Tầng 3: không mã nào đo được thì grey, có Đỏ thì red,
+    có Vàng thì amber, còn lại green. `counts` nhận dict của `dss_dashboard._counts` hoặc `tong_hop` của `alert_rows`.
     """
     red = int(counts.get("red") or 0)
     amber = int(counts.get("amber") or 0)
@@ -192,11 +192,11 @@ def danh_gia_muc_canh_bao(
     amber_days = float(th.get("amber_days") or 0)
 
     if muc == "grey":
-        chi_tiet = ("Không mã nào đo được DOI — thiếu định mức, dự báo kỳ tới "
+        chi_tiet = ("Không mã nào đo được DOI, thiếu định mức, dự báo kỳ tới "
                     "hoặc ảnh chụp tồn kho.")
     else:
-        chi_tiet = (f"{red} mã Đỏ · {amber} mã Vàng trên {do_duoc} mã đo được "
-                    f"(Đỏ ≤ {red_days:.0f} ngày · Vàng ≤ {amber_days:.0f} ngày)")
+        chi_tiet = (f"{red} mã Đỏ, {amber} mã Vàng trên {do_duoc} mã đo được "
+                    f"(Đỏ ≤ {red_days:.0f} ngày, Vàng ≤ {amber_days:.0f} ngày)")
 
     ky = f" trên kỳ chốt {period}" if period else " trên kỳ chốt"
     return {

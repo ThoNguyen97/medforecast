@@ -1,5 +1,5 @@
 """Tầng 3: tồn hữu dụng FEFO, số ngày đáp ứng (DOI) và cảnh báo bốn màu.
-d_eff = D_i / horizon_days; S_usable = Σ_b clamp(d_eff·ngày_còn_hạn_b − C_{b−1}, 0, q_b)
+d_eff = D_i / horizon_days; S_usable = Σ_b clamp(d_eff×ngày_còn_hạn_b − C_{b−1}, 0, q_b)
 DOI = S_usable / d_eff; Đỏ ≤ 18 ngày (trung vị chu kỳ nhập), Vàng ≤ 36, Xanh > 36, Xám không đo được
 """
 from __future__ import annotations
@@ -42,7 +42,7 @@ def get_thresholds(db: Session) -> Dict[str, Any]:
         try:
             out.update(json.loads(r))
         except Exception:                                 # noqa: BLE001
-            logger.warning("dss.thresholds không phải JSON hợp lệ — dùng mặc định.")
+            logger.warning("dss.thresholds không phải JSON hợp lệ, dùng mặc định.")
     return out
 
 
@@ -67,13 +67,13 @@ def _parse_date(v: Any) -> Optional[date]:
         return None
 
 
-# ── Tồn hữu dụng theo FEFO ──
+# Tồn hữu dụng theo FEFO
 
 def usable_stock_fefo(lots: List[Tuple[float, Optional[date]]],
-                      d_daily: float,   # tốc độ tiêu thụ/ngày — nơi gọi truyền d_eff
+                      d_daily: float,   # tốc độ tiêu thụ/ngày: nơi gọi truyền d_eff
                       hom_nay: Optional[date] = None,
                       fefo_window_days: int = 30) -> Dict[str, Any]:
-    """Tồn hữu dụng theo FEFO: sắp lô theo hạn dùng, u_b = clamp(d_daily·ngày_còn_hạn_b − C_{b−1}, 0, q_b).
+    """Tồn hữu dụng theo FEFO: sắp lô theo hạn dùng, u_b = clamp(d_daily×ngày_còn_hạn_b − C_{b−1}, 0, q_b).
     Lô không có hạn dùng được coi là hữu dụng toàn bộ; trả kèm `so_lo_khong_han`.
     """
     hom_nay = hom_nay or date.today()
@@ -149,7 +149,7 @@ def _lots_by_code(db: Session) -> Tuple[Dict[str, List[Tuple[float, Optional[dat
     return out, "khong_co"
 
 
-# ── Gán nhãn ──
+# Gán nhãn
 
 def classify(doi: Optional[float], red_days: float, amber_days: float) -> str:
     if doi is None:
@@ -161,7 +161,7 @@ def classify(doi: Optional[float], red_days: float, amber_days: float) -> str:
     return "green"
 
 
-# ── Bảng cảnh báo ──
+# Bảng cảnh báo
 
 def ngay_neo(db: Session) -> Tuple[date, str]:
     """Ngày "hôm nay" cho FEFO, trả (ngày, nguồn): ảnh chụp lô mới nhất, rồi cuối kỳ đã chốt, rồi date.today().
@@ -179,7 +179,7 @@ def ngay_neo(db: Session) -> Tuple[date, str]:
             y, m = int(ky[:4]), int(ky[5:7])
             d = (date(y + 1, 1, 1) if m == 12 else date(y, m + 1, 1)) - timedelta(days=1)
             return d, f"closed_period:{ky}"
-    except Exception:  # noqa: BLE001 — fallback, không được làm hỏng cảnh báo
+    except Exception:  # noqa: BLE001 (fallback, không được làm hỏng cảnh báo)
         pass
     return date.today(), "today"
 
@@ -243,7 +243,7 @@ def alert_rows(db: Session,
         d_daily = float(r.d_daily or 0)
         d_forecast = demand.get(code)
 
-        # Mẫu số duy nhất là nhu cầu dự báo mỗi ngày; không có D_i → Xám.
+        # Mẫu số duy nhất là nhu cầu dự báo mỗi ngày; không có D_i thì Xám.
         d_eff = (float(d_forecast) / float(horizon)
                  if d_forecast is not None and float(d_forecast) > 0 and horizon > 0
                  else 0.0)
@@ -259,10 +259,10 @@ def alert_rows(db: Session,
         if not lots:
             ly_do = GREY_NO_STOCK_DATA
         elif d_eff <= 0:
-            # Không xuất trong 12 kỳ → no_norm; còn xuất mà chưa có D_i → no_forecast.
+            # Không xuất trong 12 kỳ thì no_norm; còn xuất mà chưa có D_i thì no_forecast.
             ly_do = GREY_NO_NORM if d_daily <= 0 else GREY_NO_FORECAST
         elif s_usable <= 0:
-            # Tồn 0 và có nhu cầu → Đỏ.
+            # Tồn 0 và có nhu cầu thì Đỏ.
             doi = 0.0
         else:
             doi = s_usable / d_eff
@@ -322,18 +322,18 @@ def _canh_bao(tong: int, fefo_that: int, co_demand: bool,
               dem: Dict[str, int], nguon_ton: str = "") -> List[str]:
     cb: List[str] = []
     if tong == 0:
-        cb.append("Không có mã nào có mẫu số — fact_usage_total chưa được nạp.")
+        cb.append("Không có mã nào có mẫu số, fact_usage_total chưa được nạp.")
         return cb
     if fefo_that == 0:
         cb.append(f"CHƯA áp được FEFO cho mã nào (nguồn tồn kho: {nguon_ton or 'không rõ'}) "
-                  "— không có hạn dùng nào đọc được. S_usable đang bằng tồn hiện có. "
+                  "vì không có hạn dùng nào đọc được. S_usable đang bằng tồn hiện có. "
                   "Bấm «Nạp dữ liệu DW» ở trang Dữ liệu bệnh.")
     elif fefo_that < tong:
         khong_ton = dem.get("grey", 0)
         khong_han = tong - fefo_that - khong_ton
         msg = f"{fefo_that}/{tong} mã có lô tồn kèm hạn dùng (đã áp FEFO)"
         if khong_ton:
-            msg += f"; {khong_ton} mã không có dòng tồn kho → Xám"
+            msg += f"; {khong_ton} mã không có dòng tồn kho, xếp Xám"
         if khong_han > 0:
             msg += f"; {khong_han} mã có tồn nhưng lô không có hạn dùng (S_usable = tồn hiện có)"
         cb.append(msg + ".")
@@ -342,6 +342,6 @@ def _canh_bao(tong: int, fefo_that: int, co_demand: bool,
                   "toàn bộ mã về màu Xám, cột nhu cầu và thiếu hụt để trống. "
                   "Ghi nhận dự báo ở trang Phân tích để đo lại.")
     if dem["grey"] > 0.5 * tong:
-        cb.append(f"{dem['grey']}/{tong} mã màu Xám — phần lớn danh mục chưa "
+        cb.append(f"{dem['grey']}/{tong} mã màu Xám: phần lớn danh mục chưa "
                   f"đo được, đừng đọc các tỷ lệ % như thể đại diện cả kho.")
     return cb

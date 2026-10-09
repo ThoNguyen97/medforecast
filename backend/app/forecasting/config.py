@@ -6,7 +6,7 @@ from typing import Optional
 
 @dataclass(frozen=True)
 class ForecastConfig:
-    # ── Thành viên ensemble ──
+    # Thành viên ensemble
     use_weather: bool = True
     """Thêm HarmonicPoisson(thời tiết) vào ensemble và cho SARIMAX dùng exog."""
     weather_min_months: int = 12
@@ -17,31 +17,31 @@ class ForecastConfig:
     """Hình phạt Ridge trên biến đã chuẩn hoá, chọn bằng walk-forward."""
 
     use_ets: bool = True
-    """Thành viên ETS Holt–Winters (cần statsmodels)."""
+    """Thành viên ETS Holt-Winters (cần statsmodels)."""
 
-    # ── Kết hợp thành viên và hiệu chỉnh lệch ──
+    # Kết hợp thành viên và hiệu chỉnh lệch
     combine: str = "inv_mae"
     """'mean' = trung bình đều; 'inv_mae' = trọng số nghịch đảo MAE trên `combine_window` bước gần nhất."""
     combine_window: int = 12
     combine_power: float = 2.0
     combine_min_hist: int = 6
     bias_correct: bool = True
-    """Nhân dự báo nhóm với 1 + shrink·(median(thực tế/dự báo) − 1), chặn trong [1/clip, clip]."""
+    """Nhân dự báo nhóm với 1 + shrink×(median(thực tế/dự báo) − 1), chặn trong [1/clip, clip]."""
     bias_window: int = 12
     bias_shrink: float = 0.5
     bias_clip: float = 1.5
 
-    # ── Phân cấp ──
+    # Phân cấp
     method: str = "top_down_dynamic"
     """Top-down động theo tỷ trọng EWMA."""
     ewma_span: int = 6
 
-    # ── Cửa sổ ──
+    # Cửa sổ
     from_period: Optional[str] = None
     """None = toàn bộ lịch sử."""
     min_train: int = 24
 
-    # ── Khoảng dự báo ──
+    # Khoảng dự báo
     interval_level: float = 0.90
     """Mức khoảng dự báo dùng chung cho mọi màn hình."""
     interval_n_back: int = 24

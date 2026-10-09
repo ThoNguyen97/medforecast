@@ -21,17 +21,17 @@ import {
 const PAGE_SIZE = 25;
 
 const fmt = (v: number | null | undefined, digits = 0) =>
-  v == null ? '—' : v.toLocaleString('vi-VN', { maximumFractionDigits: digits });
+  v == null ? '-' : v.toLocaleString('vi-VN', { maximumFractionDigits: digits });
 
-/** DOI (số ngày) → ngày lịch dd/mm cho thủ kho. */
+/** DOI (số ngày) sang ngày lịch dd/mm cho thủ kho. */
 const ngayHet = (doi: number | null | undefined) => {
-  if (doi == null) return '—';
+  if (doi == null) return '-';
   const d = new Date();
   d.setDate(d.getDate() + Math.floor(doi));
   return d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
 };
 
-/** Cảnh báo thiếu hụt: cùng chuỗi Tầng 1→2→3 với Tổng quan (/dashboard/v2/alerts),
+/** Cảnh báo thiếu hụt: cùng chuỗi Tầng 1, 2, 3 với Tổng quan (/dashboard/v2/alerts),
  *  trả mọi dòng, phân trang server; Δ_need là mức thiếu hụt dự kiến, không phải lượng mua. */
 export default function Alerts() {
   const { setPageTitle } = useUIStore();
@@ -86,7 +86,7 @@ export default function Alerts() {
   const forecastLine = useMemo(() => {
     if (!data?.forecast.ready) return null;
     const parts = data.forecast.blocks.map((b) => `${BLOCK_LABELS[b.block]} ${fmt(b.point)}`);
-    return `${fmt(data.forecast.total.point)} ca · ${parts.join(' · ')}`;
+    return `${fmt(data.forecast.total.point)} ca, ${parts.join(', ')}`;
   }, [data]);
 
   return (
@@ -97,7 +97,7 @@ export default function Alerts() {
           <h2 className="text-3xl font-extrabold text-neutral-900">Cảnh báo thiếu hụt</h2>
           <p className="text-sm text-neutral-600 mt-1">
             Các mã cần xử lý trong {horizon} ngày tới, xếp theo mức nguy cấp
-            {data?.meta.forecast_period ? ` · kỳ dự báo ${data.meta.forecast_period}` : ''}
+            {data?.meta.forecast_period ? `, kỳ dự báo ${data.meta.forecast_period}` : ''}
           </p>
           <p className="text-xs text-neutral-500 mt-1">
             {data?.basis ?? `DOI = Tồn hữu dụng ÷ (Nhu cầu dự báo ÷ ${horizon} ngày)`}
@@ -134,12 +134,12 @@ export default function Alerts() {
           label="Dự báo kỳ tới"
           tone="blue"
           loading={!data}
-          value={data?.forecast.ready ? fmt(data.forecast.total.point) : '—'}
+          value={data?.forecast.ready ? fmt(data.forecast.total.point) : '-'}
           unit={data?.forecast.ready ? 'ca' : undefined}
-          context={forecastLine ?? 'Chưa ghi nhận dự báo kỳ tới ở trang Phân tích — cột nhu cầu/thiếu hụt để trống'}
+          context={forecastLine ?? 'Chưa ghi nhận dự báo kỳ tới ở trang Phân tích, cột nhu cầu/thiếu hụt để trống'}
           footer={
             data?.demand.ready
-              ? `Định mức thực nghiệm · ${fmt(data.demand.so_ma)} mã có nhu cầu trong tập đang xem`
+              ? `Định mức thực nghiệm, ${fmt(data.demand.so_ma)} mã có nhu cầu trong tập đang xem`
               : data?.demand.error
                 ? `Tầng 2 lỗi: ${data.demand.error}`
                 : undefined
@@ -178,12 +178,12 @@ export default function Alerts() {
           loading={!data}
           value={fmt(counts?.grey)}
           unit="mã"
-          context="Chưa đo được — không phải an toàn"
+          context="Chưa đo được: không phải an toàn"
           footer={
             counts?.ly_do_xam
               ? Object.entries(counts.ly_do_xam)
                   .map(([k, n]) => `${GREY_REASON_LABELS[k as keyof typeof GREY_REASON_LABELS] ?? k}: ${n}`)
-                  .join(' · ')
+                  .join(', ')
               : undefined
           }
         />
@@ -239,7 +239,7 @@ export default function Alerts() {
                 )}
               >
                 {lv ? LEVEL_LABELS[lv] : 'Tất cả'}
-                {lv && counts ? ` · ${counts[lv]}` : ''}
+                {lv && counts ? `, ${counts[lv]}` : ''}
               </button>
             ))}
           </div>
@@ -249,8 +249,8 @@ export default function Alerts() {
 
         <div className="px-5 py-3 border-t border-neutral-100 flex flex-wrap items-center justify-between gap-2 text-xs text-neutral-500">
           <span>
-            {data ? `${fmt(data.total)} mã khớp bộ lọc · ${fmt(counts?.total)} mã trong tập` : '…'}
-            {data?.meta.assumptions_note ? ` · ${data.meta.assumptions_note}` : ''}
+            {data ? `${fmt(data.total)} mã khớp bộ lọc, ${fmt(counts?.total)} mã trong tập` : '…'}
+            {data?.meta.assumptions_note ? `, ${data.meta.assumptions_note}` : ''}
           </span>
           <div className="flex items-center gap-2">
             <button
@@ -345,9 +345,9 @@ function AlertsFullTable({
                 <div className="font-medium text-neutral-900 leading-tight">{r.ten}</div>
                 <div className="text-[11px] text-neutral-500 font-mono">
                   {r.supply_code}
-                  {r.don_vi ? ` · ${r.don_vi}` : ''}
-                  {r.ty_trong_hohap != null ? ` · hô hấp ${fmt(r.ty_trong_hohap, 0)}%` : ''}
-                  {r.fefo_ap_dung ? '' : ' · chưa FEFO'}
+                  {r.don_vi ? `, ${r.don_vi}` : ''}
+                  {r.ty_trong_hohap != null ? `, hô hấp ${fmt(r.ty_trong_hohap, 0)}%` : ''}
+                  {r.fefo_ap_dung ? '' : ', chưa FEFO'}
                 </div>
               </td>
               <td className="px-3 py-2.5 text-neutral-600">{r.danh_muc}</td>
@@ -362,9 +362,9 @@ function AlertsFullTable({
               </td>
               <td className="px-3 py-2.5 text-right tabular-nums">
                 {!demandReady ? (
-                  <span className="text-neutral-400">—</span>
+                  <span className="text-neutral-400">-</span>
                 ) : r.delta_need == null ? (
-                  '—'
+                  '-'
                 ) : r.delta_need > 0 ? (
                   <span className="text-red-700 font-semibold">{fmt(r.delta_need)}</span>
                 ) : (
@@ -378,7 +378,7 @@ function AlertsFullTable({
                 {fmt(r.d_eff, 2)}
               </td>
               <td className="px-3 py-2.5 text-right tabular-nums font-semibold whitespace-nowrap">
-                {r.doi == null ? '—' : `${fmt(r.doi, 1)} ng`}
+                {r.doi == null ? '-' : `${fmt(r.doi, 1)} ng`}
               </td>
               <td className="px-3 py-2.5 text-right tabular-nums text-neutral-600 whitespace-nowrap">
                 {ngayHet(r.doi)}

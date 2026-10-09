@@ -1,6 +1,6 @@
 // Hợp đồng /reports/forecast-accuracy và POST /reports/export.
 
-// ── Bộ lọc báo cáo ───────────────────────────────────────────────────────
+// Bộ lọc báo cáo
 
 export interface ReportFilters {
   start_date?: string; // YYYY-MM-DD
@@ -11,7 +11,7 @@ export interface ReportFilters {
   model_used?: string;
 }
 
-// ── Báo cáo độ chính xác dự báo ──────────────────────────────────────────────
+// Báo cáo độ chính xác dự báo
 
 export interface ModelPerformanceSummary {
   model: string;
@@ -49,7 +49,7 @@ export interface ForecastAccuracyReport {
   generated_at: string;
 }
 
-// ── Yêu cầu xuất báo cáo ─────────────────────────────────────────────────────
+// Yêu cầu xuất báo cáo
 
 // Khớp SUPPORTED_TYPES của POST /reports/export
 export type ReportType =
@@ -71,5 +71,5 @@ export interface ExportReportRequest {
   model_used?: string;
 }
 
-// ── Dòng hiệu năng theo tháng (PerformanceTable) ─────────────────────────────
+// Dòng hiệu năng theo tháng (PerformanceTable)
 

@@ -1,4 +1,4 @@
-"""Tầng dữ liệu trung gian: nguồn (STA / file export) → CLEAN (dim/fact) → MART.
+"""Tầng dữ liệu trung gian: nguồn (CSDL trung gian / file export), CLEAN (dim/fact), MART.
 
 DB đích chọn qua PIPELINE_DB_URL hoặc DATABASE_URL, mặc định SQLite.
 """

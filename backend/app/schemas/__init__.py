@@ -13,9 +13,9 @@ from app.schemas.base import (
     UserUpdate,
     UserResponse,
     UserLogin,
-    # Thuốc/vật tư
-    MedicalSupplyBase,
-    MedicalSupplyResponse,
+    # Thuốc
+    DrugBase,
+    DrugResponse,
     # Tồn kho
     InventoryBase,
     InventoryUpdate,
@@ -42,8 +42,8 @@ __all__ = [
     "UserUpdate",
     "UserResponse",
     "UserLogin",
-    "MedicalSupplyBase",
-    "MedicalSupplyResponse",
+    "DrugBase",
+    "DrugResponse",
     "InventoryBase",
     "InventoryUpdate",
     "InventoryResponse",

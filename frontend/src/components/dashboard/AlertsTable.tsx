@@ -4,7 +4,7 @@ import LevelPill from './LevelPill';
 import { GREY_REASON_LABELS, type AlertRow } from '../../types/dashboardV2';
 
 const fmt = (v: number | null | undefined, digits = 0) =>
-  v == null ? '—' : v.toLocaleString('vi-VN', { maximumFractionDigits: digits });
+  v == null ? '-' : v.toLocaleString('vi-VN', { maximumFractionDigits: digits });
 
 /** Bảng cảnh báo theo DOI. "Thiếu hụt dự kiến" = Δ_need trên horizon,
  *  để trống (không phải 0) khi Tầng 2 chưa chạy. */
@@ -61,8 +61,8 @@ export default function AlertsTable({
                 <div className="font-medium text-neutral-900 leading-tight">{r.ten}</div>
                 <div className="text-[11px] text-neutral-500 font-mono">
                   {r.supply_code}
-                  {r.don_vi ? ` · ${r.don_vi}` : ''}
-                  {r.fefo_ap_dung ? '' : ' · chưa FEFO'}
+                  {r.don_vi ? `, ${r.don_vi}` : ''}
+                  {r.fefo_ap_dung ? '' : ', chưa FEFO'}
                 </div>
               </td>
               <td className="px-3 py-2.5 text-neutral-600">{r.danh_muc}</td>
@@ -76,13 +76,13 @@ export default function AlertsTable({
                 {fmt(r.d_eff, 1)}
               </td>
               <td className="px-3 py-2.5 text-right tabular-nums font-semibold whitespace-nowrap">
-                {r.doi == null ? '—' : `${fmt(r.doi, 1)} ng`}
+                {r.doi == null ? '-' : `${fmt(r.doi, 1)} ng`}
               </td>
               <td className="px-3 py-2.5 text-right tabular-nums">
                 {!demandReady ? (
                   <span className="text-neutral-400" title="Ghi nhận dự báo ở trang Phân tích">chưa có dự báo</span>
                 ) : r.delta_need == null ? (
-                  '—'
+                  '-'
                 ) : r.delta_need > 0 ? (
                   <span className="text-red-700 font-semibold">{fmt(r.delta_need)}</span>
                 ) : (

@@ -1,4 +1,4 @@
-# Datasheet — bộ huấn luyện MedForecast v1.0
+# Datasheet: bộ huấn luyện MedForecast v1.0
 
 Viết theo khung *Datasheets for Datasets* (Gebru et al., 2021), rút gọn cho
 phạm vi đồ án.
@@ -13,8 +13,8 @@ thực hiện đồ án; không có tài trợ.
 ## 2. Thành phần
 
 - 3 khối ICD-10 (J00-J06, J09-J18, J20-J22), 20 mã ICD 3 ký tự.
-- Tháng 2019-01 → 2026-09 (92 tháng; kỳ 2026-09 đang mở, `is_complete = 0`).
-  Kỳ đã chốt: 91–92 tháng/khối.
+- Tháng 2019-01 đến 2026-09 (92 tháng; kỳ 2026-09 đang mở, `is_complete = 0`).
+  Kỳ đã chốt: 91-92 tháng/khối.
 - 278 dòng mức khối, 938 dòng mức mã, 20 dòng tỷ trọng.
 - Thời tiết: 93 tháng có dữ liệu, một trạm đại diện.
 - Không có mẫu bị thiếu ở cột `cases`; thiếu ở thời tiết là tháng chưa có
@@ -25,17 +25,17 @@ thực hiện đồ án; không có tài trợ.
 ## 3. Quy trình thu thập
 
 - Số lượt lấy từ bảng khám/điều trị của HIS bằng thủ tục T-SQL
-  `usp_MedForecast_DayDuLieu` (`sql_his/prod/02_usp_MedForecast_DayDuLieu.sql`), đếm DISTINCT lượt theo
-  (tháng, khối) và (tháng, mã), đẩy sang CSDL `MEDFORECAST_DW` trên máy chủ
-  trung gian STA; ứng dụng đọc về bằng tài khoản chỉ đọc.
+  `usp_MedForecast_DayDuLieu` (`sql_his/his_nguon/02_usp_MedForecast_DayDuLieu.sql`), đếm DISTINCT lượt theo
+  (tháng, khối) và (tháng, mã), đẩy sang cơ sở dữ liệu trung gian
+  `MEDFORECAST_DW`; ứng dụng đọc về bằng tài khoản chỉ đọc.
 - Thời tiết tải từ Open-Meteo archive API theo ngày rồi gộp tháng.
 - Thời điểm xuất ghi trong `manifest.json`; sha256 từng file để đối chiếu.
 
 ## 4. Tiền xử lý và làm sạch
 
 - Gộp mã ICD vào khối theo bảng phân cấp cố định; loại lượt không có chẩn đoán
-  chính thuộc J00–J22.
-- Cờ `is_covid` cho 2020-01 → 2021-12; các thành viên hồi quy loại các tháng
+  chính thuộc J00-J22.
+- Cờ `is_covid` cho 2020-01 đến 2021-12; các thành viên hồi quy loại các tháng
   này khỏi ước lượng (không xoá khỏi file).
 - Cờ `is_complete` để loại kỳ đang mở khỏi huấn luyện.
 - Không nội suy, không làm mượt, không cắt ngoại lai; mô hình dùng đúng số liệu
@@ -63,7 +63,7 @@ thực hiện đồ án; không có tài trợ.
   đoán thay đổi, kéo mức nền J09-J18 lên ~3,7×; mô hình thích nghi nhờ xu hướng
   và hệ số lệch, nhưng người dùng cần hiểu đây là thay đổi hành chính, không
   phải dịch bệnh.
-- **Giai đoạn COVID 2020–2021** không đại diện; đã gắn cờ.
+- **Giai đoạn COVID 2020-2021** không đại diện; đã gắn cờ.
 - Một bệnh viện, một trạm thời tiết: không suy rộng cho địa bàn khác nếu không
   huấn luyện lại.
 - Chuỗi ngắn (92 tháng, 7 chu kỳ mùa): đủ cho mô hình thống kê, **không đủ cho
@@ -81,5 +81,5 @@ thực hiện đồ án; không có tài trợ.
 
 ## 8. Cách trích dẫn
 
-[Họ tên tác giả] (2026). *Bộ huấn luyện MedForecast v1.0 — số lượt bệnh hô hấp
-theo tháng và thời tiết, 2019–2026*. Đồ án tốt nghiệp, UIT–VNU-HCM.
+[Họ tên tác giả] (2026). *Bộ huấn luyện MedForecast v1.0: số lượt bệnh hô hấp
+theo tháng và thời tiết, 2019-2026*. Đồ án tốt nghiệp, UIT-VNU-HCM.

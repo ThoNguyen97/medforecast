@@ -10,7 +10,7 @@ import numpy as np
 
 class AdaptiveCombiner:
     """Trọng số w_i ∝ MAE_i^(−power) trên `window` bước gần nhất (trung bình đều khi mode='mean'
-    hoặc chưa đủ `min_hist`), nhân hệ số lệch 1 + shrink·(median − 1) chặn trong [1/clip, clip].
+    hoặc chưa đủ `min_hist`), nhân hệ số lệch 1 + shrink×(median − 1) chặn trong [1/clip, clip].
     """
 
     def __init__(self, mode: str = "mean", window: int = 12, power: float = 1.0,
@@ -33,7 +33,7 @@ class AdaptiveCombiner:
         self.last_weights: Dict[str, float] = {}
         self.last_bias: float = 1.0
 
-    # ── Trọng số ──
+    # Trọng số
     def weights(self, names: List[str]) -> Dict[str, float]:
         if not names:
             return {}
@@ -56,7 +56,7 @@ class AdaptiveCombiner:
         s = sum(full.values())
         return {n: v / s for n, v in full.items()}
 
-    # ── Hệ số lệch ──
+    # Hệ số lệch
     def bias(self) -> float:
         if not self.bias_correct or len(self._ratio) < self.min_hist:
             return 1.0
@@ -68,7 +68,7 @@ class AdaptiveCombiner:
         f = 1.0 + self.bias_shrink * (med - 1.0)
         return float(np.clip(f, 1.0 / self.bias_clip, self.bias_clip))
 
-    # ── Kết hợp ──
+    # Kết hợp
     def combine(self, member_preds: Dict[str, float]) -> Tuple[float, float, Dict[str, float], float]:
         """Trả (dự báo cuối, dự báo trước hiệu chỉnh, trọng số, hệ số lệch)."""
         names = list(member_preds.keys())

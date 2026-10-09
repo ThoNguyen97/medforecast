@@ -18,7 +18,7 @@ interface Props {
   onChange: (filters: ForecastFilters) => void;
   onAnalyze: () => void;
   diseases: DiseaseOption[];
-  /** Cascade tỉnh → quận có dữ liệu thật, gộp với master data VN. */
+  /** Cascade tỉnh sang quận có dữ liệu thật, gộp với master data VN. */
   regionDistricts?: Record<string, string[]>;
   isLoading?: boolean;
   disabled?: boolean;
@@ -47,7 +47,7 @@ export default function ForecastFilterBar({
             onChange={(v) => update({ disease: v })}
           >
             {diseases.length === 0 ? (
-              <option value="">— Chưa có dữ liệu —</option>
+              <option value="">(Chưa có dữ liệu)</option>
             ) : (
               diseases.map((d) => (
                 <option key={d.key} value={d.key}>

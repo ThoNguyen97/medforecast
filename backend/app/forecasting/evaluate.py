@@ -89,7 +89,7 @@ def walk_forward_frames(block: str, group: pd.DataFrame,
     failed_count: Dict[str, int] = {}
     failed_why: Dict[str, str] = {}
 
-    # ── Mức nhóm ──
+    # Mức nhóm
     gwf = run_group_walk_forward(group, cfg, start=min_train)
     group_pred, group_actual, snaive_g = gwf.pred, gwf.actual, gwf.snaive
     members_hist = [list(mp.keys()) for mp in gwf.member_preds]
@@ -109,7 +109,7 @@ def walk_forward_frames(block: str, group: pd.DataFrame,
         if p_g > 0:
             rel_resid.append(a_g / p_g)
 
-    # ── Mức mã ──
+    # Mức mã
     for k, t in enumerate(range(min_train, len(periods))):
         tgt_month = int(group["month"].iloc[t])
         hist_g = group.iloc[:t]

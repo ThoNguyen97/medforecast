@@ -1,8 +1,8 @@
-/* sta/02_bang_dss_phan_cap_ton_kho_lo.sql
-   Chạy trên: STA, CSDL MEDFORECAST_DW.
+/* medforecast_dw/02_bang_dss_phan_cap_ton_kho_lo.sql
+   Chạy trên: CSDL trung gian MEDFORECAST_DW.
    Mục đích: tạo bảng DSS 3 tầng (MF_CaBenh_PhanCap, MF_TieuHao_PhanCap, MF_TieuHao_Tong,
-   MF_TonKho_Lo, MF_LichSuNhap, MF_VatTu_ThuocTinh) và view; không áp ngưỡng ô nhỏ vì hạt tháng × nhóm × rổ.
-   Điều kiện: đã chạy sta/01. Chỉ thêm, không sửa bảng có sẵn; idempotent. */
+   MF_TonKho_Lo) và view; không áp ngưỡng ô nhỏ vì hạt tháng × nhóm × rổ.
+   Điều kiện: đã chạy medforecast_dw/01. Chỉ thêm, không sửa bảng có sẵn; idempotent. */
 
 USE MEDFORECAST_DW;
 GO
@@ -55,7 +55,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'ix_MF_THPC_VatTu')
 GO
 
 
-/* 3) MF_TieuHao_Tong: bỏ chiều bệnh; sta/03 dựng lại với mẫu số toàn viện và định nghĩa view */
+/* 3) MF_TieuHao_Tong: bỏ chiều bệnh; medforecast_dw/03 dựng lại với mẫu số toàn viện và định nghĩa view */
 IF OBJECT_ID('dbo.MF_TieuHao_Tong') IS NULL
 CREATE TABLE dbo.MF_TieuHao_Tong (
     Period      date          NOT NULL,
@@ -101,64 +101,7 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'ix_MF_TKL_HanDung')
 GO
 
 
-/* 5) MF_LichSuNhap: lịch sử nhập kho, thuộc bài toán mua sắm ngoài phạm vi DSS; sta/05 xoá */
-IF OBJECT_ID('dbo.MF_LichSuNhap') IS NULL
-CREATE TABLE dbo.MF_LichSuNhap (
-    chungtu_id        bigint        NOT NULL,
-    supply_code       nvarchar(60)  NOT NULL,
-    lot_id            bigint        NOT NULL,    -- SOLONHAP_ID; 0 = không rõ
-    ngay_chungtu      date          NULL,
-    ngay_nhap         date          NULL,
-    ngay_dat_hang     date          NULL,
-    lead_noibo_ngay   int           NULL,
-    lead_thau_ngay    int           NULL,
-    nhacungcap_id     int           NULL,
-    goithau_id        int           NULL,
-    dondathang_id     bigint        NULL,
-    loai_chungtu      nvarchar(50)  NULL,
-    mucdich_code      nvarchar(50)  NULL,
-    so_luong_yeucau   decimal(18,3) NULL,
-    so_luong_thucte   decimal(18,3) NULL,
-    ty_le_giao_du     decimal(9,4)  NULL,
-    don_gia_thau      decimal(18,4) NULL,
-    han_dung          date          NULL,
-    NgayCapNhat       datetime2(0)  NOT NULL
-        CONSTRAINT DF_MF_LSN_Ngay DEFAULT SYSDATETIME(),
-    CONSTRAINT PK_MF_LichSuNhap PRIMARY KEY (chungtu_id, supply_code, lot_id)
-);
-GO
-IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'ix_MF_LSN_VatTu')
-    CREATE NONCLUSTERED INDEX ix_MF_LSN_VatTu
-        ON dbo.MF_LichSuNhap (supply_code, ngay_nhap);
-GO
-
-
-/* 6) MF_VatTu_ThuocTinh: lead time, MOQ suy từ MF_LichSuNhap, ngoài phạm vi DSS; sta/05 xoá */
-IF OBJECT_ID('dbo.MF_VatTu_ThuocTinh') IS NULL
-CREATE TABLE dbo.MF_VatTu_ThuocTinh (
-    supply_code             nvarchar(60)  NOT NULL PRIMARY KEY,
-    so_lan_nhap             int           NULL,
-    so_nha_cung_cap         int           NULL,
-    lead_time_ngay_trungvi  int           NULL,
-    lead_time_ngay_tb       decimal(10,2) NULL,
-    lead_time_ngay_dolech   decimal(10,2) NULL,   -- σ_L
-    lead_time_ngay_p90      int           NULL,
-    lead_time_nguon         varchar(12)   NULL,   -- 'THAU' | 'NOIBO' | 'MACDINH'
-    chu_ky_nhap_trungvi     int           NULL,   -- ngày
-    moq                     decimal(18,3) NULL,
-    moq_nguon               varchar(12)   NULL,   -- 'QUANSAT' | 'MACDINH'
-    ty_le_giao_du_tb        decimal(9,4)  NULL,
-    don_gia_mua             decimal(18,4) NULL,
-    don_gia_thau            decimal(18,4) NULL,
-    don_gia_von             decimal(18,4) NULL,
-    ngay_nhap_gan_nhat      date          NULL,
-    NgayCapNhat             datetime2(0)  NOT NULL
-        CONSTRAINT DF_MF_VTTT_Ngay DEFAULT SYSDATETIME()
-);
-GO
-
-
-/* 7) Mốc đồng bộ cho các luồng mới */
+/* 5) Mốc đồng bộ cho các luồng mới */
 IF NOT EXISTS (SELECT 1 FROM dbo.MF_Watermark WHERE TenLuong = 'PhanCap')
     INSERT dbo.MF_Watermark (TenLuong, MocDaDay, LanChayCuoi) VALUES ('PhanCap', NULL, NULL);
 IF NOT EXISTS (SELECT 1 FROM dbo.MF_Watermark WHERE TenLuong = 'KhoCungUng')
@@ -166,7 +109,7 @@ IF NOT EXISTS (SELECT 1 FROM dbo.MF_Watermark WHERE TenLuong = 'KhoCungUng')
 GO
 
 
-/* 8) View: đổi mã HIS sang mã ứng dụng qua MF_MapVatTu; vw_MedForecast_TieuHaoTong do sta/03 định nghĩa */
+/* 6) View: đổi mã HIS sang mã ứng dụng qua MF_MapVatTu; vw_MedForecast_TieuHaoTong do medforecast_dw/03 định nghĩa */
 GO
 CREATE OR ALTER VIEW dbo.vw_MedForecast_CaBenhPhanCap
 AS
@@ -208,49 +151,19 @@ LEFT JOIN dbo.MF_MapVatTu m ON m.MaHIS = t.supply_code
 WHERE   t.NgaySnapshot = (SELECT MAX(NgaySnapshot) FROM dbo.MF_TonKho_Lo);
 GO
 
-CREATE OR ALTER VIEW dbo.vw_MedForecast_LichSuNhap
-AS
-SELECT  l.chungtu_id,
-        ISNULL(m.MaApp, l.supply_code) AS supply_code,
-        l.lot_id, l.ngay_chungtu, l.ngay_nhap, l.ngay_dat_hang,
-        l.lead_noibo_ngay, l.lead_thau_ngay,
-        l.nhacungcap_id, l.goithau_id, l.dondathang_id,
-        l.loai_chungtu, l.mucdich_code,
-        l.so_luong_yeucau, l.so_luong_thucte, l.ty_le_giao_du,
-        l.don_gia_thau, l.han_dung
-FROM    dbo.MF_LichSuNhap l
-LEFT JOIN dbo.MF_MapVatTu m ON m.MaHIS = l.supply_code;
-GO
 
-CREATE OR ALTER VIEW dbo.vw_MedForecast_VatTuThuocTinh
-AS
-SELECT  ISNULL(m.MaApp, v.supply_code) AS supply_code,
-        v.so_lan_nhap, v.so_nha_cung_cap,
-        v.lead_time_ngay_trungvi, v.lead_time_ngay_tb,
-        v.lead_time_ngay_dolech, v.lead_time_ngay_p90, v.lead_time_nguon,
-        v.chu_ky_nhap_trungvi,
-        v.moq, v.moq_nguon, v.ty_le_giao_du_tb,
-        v.don_gia_mua, v.don_gia_thau, v.don_gia_von,
-        v.ngay_nhap_gan_nhat
-FROM    dbo.MF_VatTu_ThuocTinh v
-LEFT JOIN dbo.MF_MapVatTu m ON m.MaHIS = v.supply_code;
-GO
-
-
-/* 9) Quyền đọc cho medforecast_app. Bỏ chú thích nếu đã tạo user (sta/01 mục 8)
+/* 7) Quyền đọc cho medforecast_app. Bỏ chú thích nếu đã tạo user (medforecast_dw/01 mục 8)
 GRANT SELECT ON dbo.vw_MedForecast_CaBenhPhanCap    TO medforecast_app;
 GRANT SELECT ON dbo.vw_MedForecast_TieuHaoPhanCap   TO medforecast_app;
 GRANT SELECT ON dbo.vw_MedForecast_TieuHaoTong      TO medforecast_app;
 GRANT SELECT ON dbo.vw_MedForecast_TonKhoLo         TO medforecast_app;
 GRANT SELECT ON dbo.vw_MedForecast_TonKhoLo_MoiNhat TO medforecast_app;
-GRANT SELECT ON dbo.vw_MedForecast_LichSuNhap       TO medforecast_app;
-GRANT SELECT ON dbo.vw_MedForecast_VatTuThuocTinh   TO medforecast_app;
 GRANT SELECT ON dbo.MF_Watermark                    TO medforecast_app;
 GO
 */
 
 
-/* 10) Kiểm tra sau khi chạy */
+/* 8) Kiểm tra sau khi chạy */
 SELECT  t.name AS Bang,
         CASE WHEN t.name LIKE 'MF[_]%' THEN N'bảng dữ liệu' ELSE N'' END AS Loai,
         (SELECT SUM(p.rows) FROM sys.partitions p
@@ -261,5 +174,5 @@ ORDER BY t.name;
 
 SELECT name AS View_ FROM sys.views WHERE name LIKE 'vw[_]MedForecast[_]%' ORDER BY name;
 
-PRINT N'Xong sta/02: đã tạo các bảng MF_* DSS và view vw_MedForecast_* tương ứng.';
+PRINT N'Xong medforecast_dw/02: đã tạo các bảng MF_* DSS và view vw_MedForecast_* tương ứng.';
 GO

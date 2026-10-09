@@ -34,7 +34,7 @@ export default function ConfigurationsSection() {
   );
 }
 
-// ── Danh mục bệnh ──
+// Danh mục bệnh
 
 function DiseaseConfigCard() {
   const { data: diseases = [], isLoading } = useAdminDiseases();
@@ -156,7 +156,7 @@ function DiseaseConfigCard() {
   );
 }
 
-// ── Danh mục nhóm bệnh ──
+// Danh mục nhóm bệnh
 
 function DiseaseGroupConfigCard() {
   const { data: groups = [], isLoading } = useAdminDiseaseGroups();
@@ -195,7 +195,7 @@ function DiseaseGroupConfigCard() {
           <div>
             <h3 className="text-sm font-semibold text-neutral-900">Danh mục nhóm bệnh</h3>
             <p className="text-xs text-neutral-500">
-              Gộp các bệnh liên quan thành nhóm — dùng để hiển thị & lọc
+              Gộp các bệnh liên quan thành nhóm, dùng để hiển thị & lọc
             </p>
           </div>
         </div>
@@ -285,7 +285,7 @@ function DiseaseGroupConfigCard() {
   );
 }
 
-// ── Dialog dùng chung ──
+// Dialog dùng chung
 
 function DiseaseFormDialog({
   initial,
@@ -436,7 +436,7 @@ function DiseaseGroupFormDialog({
           <div className="max-h-48 overflow-y-auto border border-neutral-200 rounded-lg divide-y divide-neutral-100">
             {diseases.length === 0 ? (
               <p className="px-3 py-3 text-xs text-neutral-400">
-                Chưa có bệnh nào trong Danh mục bệnh — thêm bệnh trước.
+                Chưa có bệnh nào trong Danh mục bệnh, thêm bệnh trước.
               </p>
             ) : (
               diseases.map((d) => (
@@ -510,7 +510,7 @@ function ConfirmDialog({
   );
 }
 
-// ── Thành phần dùng chung ──
+// Thành phần dùng chung
 
 const inputClass =
   'w-full h-10 px-3 rounded-lg border border-neutral-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500';

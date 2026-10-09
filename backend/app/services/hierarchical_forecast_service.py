@@ -35,7 +35,7 @@ class HierarchicalForecastService:
             logger.warning("Truy vấn MART lỗi: %s", str(exc)[:200])
             return []
 
-    # ── Đọc dữ liệu MART ──
+    # Đọc dữ liệu MART
     def list_blocks(self, region: str = TOAN_QUOC) -> List[str]:
         rows = self._rows(
             "SELECT DISTINCT block_code FROM mart_monthly_cases_by_block "
@@ -61,7 +61,7 @@ class HierarchicalForecastService:
             "WHERE region=:r ORDER BY period", {"r": region})
         return pd.DataFrame(rows, columns=["period", "temp", "humidity", "rainfall"])
 
-    # ── Dự báo mức nhóm ──
+    # Dự báo mức nhóm
     def forecast_group(self, block: str, region: str = TOAN_QUOC,
                        target_year: Optional[int] = None,
                        target_month: Optional[int] = None) -> dict:
@@ -78,7 +78,7 @@ class HierarchicalForecastService:
             if group.empty or len(group) < SO_THANG_TOI_THIEU:
                 raise ValueError(
                     f"Chỉ có {len(group)} tháng dữ liệu trước kỳ {moc} cho nhóm "
-                    f"{block} — dưới ngưỡng {SO_THANG_TOI_THIEU} tháng, không đủ tin cậy "
+                    f"{block}: dưới ngưỡng {SO_THANG_TOI_THIEU} tháng, không đủ tin cậy "
                     "để chạy ensemble.")
             last = group.iloc[-1]
             ty, tm = target_year, target_month
@@ -113,7 +113,7 @@ class HierarchicalForecastService:
             "n_history_months": int(len(group)),
             "horizon_months": int(horizon),
             "horizon_note": (None if horizon == 1 else
-                             f"Kỳ đích cách điểm neo {horizon} tháng — mô hình khớp 1 bước, "
+                             f"Kỳ đích cách điểm neo {horizon} tháng, mô hình khớp 1 bước, "
                              "khoảng tin cậy chỉ đúng cho bước kế tiếp."),
             "weather_used": bool(gf["weather_used"]),
             "model": {"members_used": gf["members_used"], "members_failed": gf["members_failed"],

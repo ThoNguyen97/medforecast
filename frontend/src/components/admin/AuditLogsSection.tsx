@@ -96,7 +96,7 @@ export default function AuditLogsSection() {
                     </span>
                   </td>
                   <td className="px-5 py-2.5 text-neutral-500">
-                    {log.table_name ?? '—'}
+                    {log.table_name ?? '-'}
                   </td>
                   <td className="px-5 py-2.5 text-neutral-700 font-mono text-xs max-w-[280px] truncate">
                     {formatValue(log.new_value)}
@@ -123,7 +123,7 @@ function formatDate(iso: string) {
 }
 
 function formatValue(val: Record<string, unknown> | null | undefined) {
-  if (!val) return '—';
+  if (!val) return '-';
   const str = JSON.stringify(val);
   return str.length > 80 ? str.slice(0, 77) + '...' : str;
 }

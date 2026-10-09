@@ -7,7 +7,7 @@ from sqlalchemy import func
 from fastapi import HTTPException, status
 
 from app.models.inventory import Inventory
-from app.models.medical_supply import MedicalSupply
+from app.models.drug import Drug
 from app.models.audit_log import AuditLog
 from app.schemas.base import InventoryUpdate
 
@@ -199,9 +199,9 @@ class InventoryService:
         return items
     
     def get_inventory_by_supply(self, supply_id: int) -> List[Inventory]:
-        """Mọi dòng tồn kho của một vật tư; 404 nếu vật tư không tồn tại."""
-        supply = self.db.query(MedicalSupply).filter(
-            MedicalSupply.id == supply_id
+        """Mọi dòng tồn kho của một thuốc; 404 nếu thuốc không tồn tại."""
+        supply = self.db.query(Drug).filter(
+            Drug.id == supply_id
         ).first()
         
         if not supply:
@@ -217,7 +217,7 @@ class InventoryService:
         return items
     
     def get_total_stock_by_supply(self, supply_id: int) -> dict:
-        """Tổng tồn và tổng tồn an toàn của một vật tư trên mọi vị trí."""
+        """Tổng tồn và tổng tồn an toàn của một thuốc trên mọi vị trí."""
         result = self.db.query(
             func.sum(Inventory.current_stock).label("total_stock"),
             func.sum(Inventory.safety_stock).label("total_safety_stock")
@@ -241,8 +241,8 @@ class InventoryService:
         ip_address: str = None
     ) -> Inventory:
         """Tạo dòng tồn kho và ghi audit log (khi có người thực hiện)."""
-        supply = self.db.query(MedicalSupply).filter(
-            MedicalSupply.id == supply_id
+        supply = self.db.query(Drug).filter(
+            Drug.id == supply_id
         ).first()
         
         if not supply:

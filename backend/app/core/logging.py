@@ -49,4 +49,4 @@ def setup_logging(log_level: str = "INFO") -> None:
     logging.getLogger("watchfiles.main").setLevel(logging.WARNING)
 
     logger = logging.getLogger(__name__)
-    logger.info("Logging configured — log files at: %s", LOGS_DIR)
+    logger.info("Logging configured: log files at: %s", LOGS_DIR)

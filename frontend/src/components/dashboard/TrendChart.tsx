@@ -103,7 +103,7 @@ export default function TrendChart({
   if (rows.length === 0) {
     return (
       <div className="h-72 flex items-center justify-center text-sm text-neutral-400">
-        Chưa có dữ liệu xu hướng — hãy đồng bộ HIS.
+        Chưa có dữ liệu xu hướng, hãy đồng bộ HIS.
       </div>
     );
   }
@@ -226,7 +226,7 @@ function LegendItem({ swatch, label }: { swatch: React.ReactNode; label: string 
 function TrendTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: Row }> }) {
   if (!active || !payload?.length) return null;
   const r = payload[0].payload;
-  const fmt = (v: number | null | undefined) => (v == null ? '—' : v.toLocaleString('vi-VN'));
+  const fmt = (v: number | null | undefined) => (v == null ? '-' : v.toLocaleString('vi-VN'));
   return (
     <div className="bg-white border border-neutral-200 rounded-lg shadow-sm px-3 py-2 text-xs">
       <div className="font-semibold text-neutral-900 mb-1">
@@ -246,7 +246,7 @@ function TrendTooltip({ active, payload }: { active?: boolean; payload?: Array<{
               <>
                 <span>Khoảng</span>
                 <span className="text-right tabular-nums">
-                  {fmt(r.khoang[0])}–{fmt(r.khoang[1])}
+                  {fmt(r.khoang[0])}-{fmt(r.khoang[1])}
                 </span>
               </>
             )}

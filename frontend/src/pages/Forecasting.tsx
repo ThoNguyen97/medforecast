@@ -36,7 +36,7 @@ import { formatThoiGianMayChu } from '../utils/formatters';
 /** Khoá sessionStorage giữ bản phân tích chưa ghi nhận (kèm khoá bộ lọc). */
 const KHOA_PHAN_TICH_TAM = 'forecast_phan_tich_tam';
 
-/** Module 5 — Phân tích & Dự báo số ca bệnh. */
+/** Module 5: Phân tích & Dự báo số ca bệnh. */
 export default function Forecasting() {
   const { setPageTitle } = useUIStore();
 
@@ -81,7 +81,7 @@ export default function Forecasting() {
 
   const { data: diseases = [] } = useDiseaseOptions();
 
-  // Tỉnh → quận có dữ liệu trong DB
+  // Tỉnh sang quận có dữ liệu trong DB
   const [regionDistricts, setRegionDistricts] = useState<Record<string, string[]>>({});
   useEffect(() => {
     const load = async () => {
@@ -271,7 +271,7 @@ export default function Forecasting() {
             Dự báo số ca bệnh
           </h2>
           <p className="text-sm text-neutral-500 mt-1">
-            Số ca dự báo theo nhóm bệnh, khu vực và kỳ — tính từ dữ liệu lịch sử và thời tiết.
+            Số ca dự báo theo nhóm bệnh, khu vực và kỳ, tính từ dữ liệu lịch sử và thời tiết.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -510,7 +510,7 @@ export default function Forecasting() {
 
               {/* Ca bệnh gần đây */}
               <RecentMonthDataTable
-                // id null khi chưa ghi nhận → dùng khóa bộ lọc
+                // id null khi chưa ghi nhận thì dùng khóa bộ lọc
                 key={displayResult.forecast.id ?? `${filters.disease}|${filters.province}|${filters.month}`}
                 currentMonth={targetMonthNum}
                 currentYear={targetYearNum}

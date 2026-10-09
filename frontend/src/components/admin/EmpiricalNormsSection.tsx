@@ -8,7 +8,7 @@ import { cn } from '../../utils/cn';
 
 const PAGE_SIZE = 25;
 const fmt = (v: number | null | undefined, d = 0) =>
-  v == null ? '—' : v.toLocaleString('vi-VN', { maximumFractionDigits: d });
+  v == null ? '-' : v.toLocaleString('vi-VN', { maximumFractionDigits: d });
 
 /** Định mức thực nghiệm Tầng 2 theo rổ chăm sóc (chỉ đọc): tử số, mẫu số, Norm. */
 export default function EmpiricalNormsSection() {
@@ -38,7 +38,7 @@ export default function EmpiricalNormsSection() {
           <div>
             <h3 className="text-base font-bold text-neutral-900">Định mức thực nghiệm</h3>
             <p className="text-sm text-neutral-500 mt-0.5">
-              Norm(i, g, rổ) = Σ tiêu hao ÷ Σ ca, đo trên dữ liệu HIS. Chỉ đọc — tự cập nhật sau mỗi lần đồng bộ.
+              Norm(i, g, rổ) = Σ tiêu hao ÷ Σ ca, đo trên dữ liệu HIS. Chỉ đọc, tự cập nhật sau mỗi lần đồng bộ.
             </p>
           </div>
           <div className="flex items-center gap-1">
@@ -52,7 +52,7 @@ export default function EmpiricalNormsSection() {
                   block === b ? 'bg-neutral-900 text-white border-neutral-900' : 'bg-white text-neutral-600 border-neutral-200 hover:bg-neutral-50',
                 )}
               >
-                {b} · {BLOCK_LABELS[b]}
+                {b}: {BLOCK_LABELS[b]}
               </button>
             ))}
           </div>
@@ -63,23 +63,23 @@ export default function EmpiricalNormsSection() {
               {roList.map((r) => (
                 <div key={r.ro} className="rounded-xl border border-neutral-200 px-3 py-2">
                   <div className="text-[11px] uppercase tracking-wide text-neutral-500 font-semibold">
-                    {r.ro} · {r.ten}
+                    {r.ro}: {r.ten}
                   </div>
                   <div className="text-lg font-extrabold tabular-nums text-neutral-900 leading-tight">
                     {fmt(r.ca)} <span className="text-xs font-medium text-neutral-400">ca</span>
                   </div>
                   <div className="text-[11px] text-neutral-500">
                     p̂ = {fmt(r.p_hat * 100, 1)}%
-                    {r.mau_nho && <span className="ml-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-100">mẫu nhỏ → gộp</span>}
+                    {r.mau_nho && <span className="ml-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-100">mẫu nhỏ, đã gộp</span>}
                   </div>
                 </div>
               ))}
             </div>
             <p className="mt-3 text-[12px] text-neutral-600 leading-snug">
               {data.periods.length > 0
-                ? `Cửa sổ ${data.periods[0]} → ${data.periods[data.periods.length - 1]} (${data.periods.length} kỳ)`
-                : 'Chưa có kỳ nào trong cửa sổ (chưa nạp dữ liệu DW)'} ·
-              ngưỡng mẫu nhỏ {data.cfg.min_cases_per_bucket} ca · {fmt(data.total)} mã có tiêu hao trong nhóm.
+                ? `Cửa sổ ${data.periods[0]} đến ${data.periods[data.periods.length - 1]} (${data.periods.length} kỳ)`
+                : 'Chưa có kỳ nào trong cửa sổ (chưa nạp dữ liệu DW)'},
+              {' '}ngưỡng mẫu nhỏ {data.cfg.min_cases_per_bucket} ca, {fmt(data.total)} mã có tiêu hao trong nhóm.
             </p>
             <p className="mt-1 text-[11px] text-neutral-400 leading-snug">{data.cong_thuc}</p>
           </>
@@ -110,7 +110,7 @@ export default function EmpiricalNormsSection() {
           </div>
         ) : data.rows.length === 0 ? (
           <div className="py-12 text-center text-sm text-neutral-400">
-            {data.periods.length === 0 ? 'Chưa có dữ liệu fact_usage/cases_by_care_level — nạp dữ liệu DW trước.' : 'Không có mã nào khớp.'}
+            {data.periods.length === 0 ? 'Chưa có dữ liệu fact_usage/cases_by_care_level: nạp dữ liệu DW trước.' : 'Không có mã nào khớp.'}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -124,7 +124,7 @@ export default function EmpiricalNormsSection() {
                       Norm {r.ro}
                     </th>
                   ))}
-                  <th className="text-right px-5 py-2.5 font-semibold" title="Σ_ro p̂ · Norm — lượng cho MỘT ca dự báo của nhóm">
+                  <th className="text-right px-5 py-2.5 font-semibold" title="Σ_ro p̂ × Norm: lượng cho MỘT ca dự báo của nhóm">
                     Hiệu dụng / ca
                   </th>
                 </tr>
@@ -135,7 +135,7 @@ export default function EmpiricalNormsSection() {
                     <td className="px-5 py-2.5">
                       <div className="font-medium text-neutral-900 leading-tight">{r.ten}</div>
                       <div className="text-[11px] text-neutral-500 font-mono">
-                        {r.supply_code}{r.don_vi ? ` · ${r.don_vi}` : ''}
+                        {r.supply_code}{r.don_vi ? `, ${r.don_vi}` : ''}
                       </div>
                     </td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-neutral-600">{fmt(r.tieu_hao_tong)}</td>
@@ -143,8 +143,8 @@ export default function EmpiricalNormsSection() {
                       const c = r.theo_ro[ro.ro as CareBucket];
                       return (
                         <td key={ro.ro} className="px-3 py-2.5 text-right tabular-nums">
-                          <span className={cn(c?.gop && 'text-amber-800')} title={c ? `${fmt(c.tieu_hao)} ÷ ${fmt(c.ca)}${c.gop ? ' — mẫu nhỏ, dùng định mức gộp nhóm' : ''}` : ''}>
-                            {c ? fmt(c.norm, 3) : '—'}
+                          <span className={cn(c?.gop && 'text-amber-800')} title={c ? `${fmt(c.tieu_hao)} ÷ ${fmt(c.ca)}${c.gop ? ', mẫu nhỏ, dùng định mức gộp nhóm' : ''}` : ''}>
+                            {c ? fmt(c.norm, 3) : '-'}
                           </span>
                           {c && !c.gop && (
                             <span className="block text-[10px] text-neutral-400">{fmt(c.tieu_hao)} ÷ {fmt(c.ca)}</span>
@@ -161,7 +161,7 @@ export default function EmpiricalNormsSection() {
         )}
 
         <div className="px-5 py-3 border-t border-neutral-100 flex flex-wrap items-center justify-between gap-2 text-xs text-neutral-500">
-          <span>{data ? `${fmt(data.total)} mã · sắp theo tiêu hao giảm dần` : '…'}</span>
+          <span>{data ? `${fmt(data.total)} mã, sắp theo tiêu hao giảm dần` : '…'}</span>
           <div className="flex items-center gap-2">
             <button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="h-8 px-3 rounded-lg border border-neutral-200 bg-white disabled:opacity-40">Trước</button>
             <span className="tabular-nums">{page} / {totalPages}</span>

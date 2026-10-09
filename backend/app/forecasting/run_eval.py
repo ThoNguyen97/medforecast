@@ -65,10 +65,10 @@ def main():
     out = Path(args.out); out.mkdir(parents=True, exist_ok=True)
     db = args.db
     if not co_statsmodels:
-        print("⚠ KHÔNG có statsmodels → ensemble KHÔNG có SARIMAX. Số này KHÔNG phải số "
+        print("CẢNH BÁO: KHÔNG có statsmodels nên ensemble KHÔNG có SARIMAX. Số này KHÔNG phải số "
               "chính thức; chỉ dùng để kiểm tra mã.", file=sys.stderr)
     if bien_the:
-        print(f"⚠ BIẾN THỂ đối chứng, không phải cấu hình sản xuất: {bien_the}", file=sys.stderr)
+        print(f"CẢNH BÁO: BIẾN THỂ đối chứng, không phải cấu hình sản xuất: {bien_the}", file=sys.stderr)
 
     blocks = da.list_blocks(db)
     rows_pc, rows_nhom, rows_tv, per_block = [], [], [], {}
@@ -139,11 +139,11 @@ def main():
         "config": cfg.as_record(),
     }, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    # ── In ra màn hình ──
+    # In ra màn hình
     pd.set_option("display.width", 160)
     pd.set_option("display.float_format", lambda x: f"{x:,.3f}")
     pd.set_option("display.max_colwidth", 60)
-    print("\n=== PHÂN CẤP — mức MÃ, walk-forward 1 bước ===")
+    print("\n=== PHÂN CẤP: mức MÃ, walk-forward 1 bước ===")
     print(df_pc.round(3).to_string(index=False))
     print("\n=== MỨC NHÓM + độ phủ khoảng dự báo ===")
     print(pd.DataFrame(rows_nhom).round(3).to_string(index=False))
@@ -155,7 +155,7 @@ def main():
     print("\n=== SMEARING (đối chứng) ===")
     print(pd.DataFrame(rows_sm).round(3).to_string(index=False))
     if not df_kh.empty:
-        print("\n=== KẾT HỢP THÀNH VIÊN — RelMAE nhóm theo biến thể ===")
+        print("\n=== KẾT HỢP THÀNH VIÊN: RelMAE nhóm theo biến thể ===")
         print(df_kh.pivot_table(index="bien_the", columns="nhom", values="RelMAE").round(3).to_string())
     best = tong.loc[tong["RelMAE"].idxmin(), "phuong_an"]
     print(f"\n>> RelMAE thấp nhất: {best}")

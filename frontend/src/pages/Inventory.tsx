@@ -19,7 +19,7 @@ import InventoryTable, {
 
 const PAGE_SIZE = 10;
 
-/** Module 6 — Danh mục & tồn kho (chỉ thuốc). Nhãn DOI lấy từ /dashboard/v2/alerts,
+/** Module 6: Danh mục & tồn kho (chỉ thuốc). Nhãn DOI lấy từ /dashboard/v2/alerts,
  *  ghép với /inventory theo supply_code ở client; mã không tiêu hao ẩn mặc định. */
 export default function Inventory() {
   const { setPageTitle } = useUIStore();
@@ -86,10 +86,10 @@ function InventoryContent() {
       return {
         id: item.id,
         code,
-        name: supply.ten_hoat_chat ?? d?.ten ?? '—',
+        name: supply.ten_hoat_chat ?? d?.ten ?? '-',
         category: d?.danh_muc ?? nhanDanhMuc(supply.category),
         group: supply.group_name ?? d?.nhom ?? '',
-        unit: supply.unit ?? d?.don_vi ?? '—',
+        unit: supply.unit ?? d?.don_vi ?? '-',
         currentStock: d ? d.s_total : item.current_stock ?? 0,
         usableStock: d ? d.s_usable : null,
         dDaily: d ? d.d_eff : null,
@@ -105,7 +105,7 @@ function InventoryContent() {
   const categoryOptions = useMemo(() => {
     const unique = new Set<string>();
     allRows.forEach((r) => {
-      if (r.category && r.category !== '—') unique.add(r.category);
+      if (r.category && r.category !== '-') unique.add(r.category);
     });
     return Array.from(unique)
       .sort((a, b) => a.localeCompare(b, 'vi'))
@@ -141,7 +141,7 @@ function InventoryContent() {
     setPage(1);
   }, [filters.search, filters.category, filters.status, filters.showUnmeasured]);
 
-  // ── Xử lý sự kiện ──────────────────────────────────────────────────────────
+  // Xử lý sự kiện
   const handleDownloadTemplate = () => {
     window.open(`${api.defaults.baseURL}/inventory/template`, '_blank');
   };
@@ -267,7 +267,7 @@ function InventoryContent() {
 
       {doiQuery.isError && (
         <div className="text-sm text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-          Không tải được nhãn DOI (/dashboard/v2/alerts) — bảng dưới chỉ hiện danh mục và tồn kho.
+          Không tải được nhãn DOI (/dashboard/v2/alerts): bảng dưới chỉ hiện danh mục và tồn kho.
         </div>
       )}
 
@@ -377,7 +377,7 @@ function InventoryContent() {
               </div>
             ) : (
               <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">
-                ✓ Tất cả các dòng đã được xử lý thành công.
+                Tất cả các dòng đã được xử lý thành công.
               </div>
             )}
             <div className="flex justify-end mt-4">
@@ -395,7 +395,7 @@ function InventoryContent() {
   );
 }
 
-// ── Hàm hỗ trợ ───────────────────────────────────────────────────────────────
+// Hàm hỗ trợ
 
 /** `category` từ HIS đã là nhãn tiếng Việt; chỉ dữ liệu nhập tay dùng khoá `medicine`. */
 function nhanDanhMuc(category: string | null | undefined): string {
@@ -446,7 +446,7 @@ function ActionButton({
 }
 
 
-// ── Hộp thoại thêm thuốc ──────────────────────────────────────────
+// Hộp thoại thêm thuốc
 
 function AddSupplyDialog({
   onClose,
@@ -478,7 +478,7 @@ function AddSupplyDialog({
     }
     try {
       setSubmitting(true);
-      // Dùng /inventory/import (tự tạo MedicalSupply) vì /supplies/ đòi trường form không có
+      // Dùng /inventory/import (tự tạo Drug) vì /supplies/ đòi trường form không có
       // và chỉ mở cho Administrator.
       const oCsv = (v: string | number) => {
         const t = String(v ?? '');
@@ -510,7 +510,7 @@ function AddSupplyDialog({
         setError(
           kq.errors?.[0]?.reason
             ? `Không thêm được: ${kq.errors[0].reason}`
-            : 'Không thêm được thuốc — máy chủ không nhận dòng nào.',
+            : 'Không thêm được thuốc: máy chủ không nhận dòng nào.',
         );
         return;
       }
@@ -645,7 +645,7 @@ function Field({
 }
 
 
-// ── Hộp thoại sửa thuốc ──────────────────────────────────────────
+// Hộp thoại sửa thuốc
 
 function EditSupplyDialog({
   item,
@@ -700,7 +700,7 @@ function EditSupplyDialog({
             <div className="text-xs text-neutral-500 mb-1">Thuốc</div>
             <div className="font-semibold text-neutral-900">{item.name}</div>
             <div className="text-sm text-neutral-600 mt-0.5">
-              Mã: {item.code} · Danh mục: {item.category}
+              Mã: {item.code}, Danh mục: {item.category}
             </div>
           </div>
           <Field label="Tồn kho đầu kỳ (chỉ dùng khi chưa có ảnh chụp lô từ HIS)">
@@ -743,7 +743,7 @@ function EditSupplyDialog({
 }
 
 
-// ── Hộp thoại xác nhận xoá ──────────────────────────────────────────
+// Hộp thoại xác nhận xoá
 
 function ConfirmDeleteDialog({
   item,
@@ -782,7 +782,7 @@ function ConfirmDeleteDialog({
           <div className="bg-red-50 rounded-lg p-3 mb-4">
             <div className="font-semibold text-neutral-900">{item.name}</div>
             <div className="text-sm text-neutral-600 mt-0.5">
-              Mã: {item.code} • Tồn kho: {item.currentStock} {item.unit}
+              Mã: {item.code}, Tồn kho: {item.currentStock} {item.unit}
             </div>
           </div>
           <div className="flex items-center justify-end gap-2">

@@ -1,4 +1,4 @@
-"""GET /api/v1/disease-cases/export — xuất Excel theo bộ lọc UI."""
+"""GET /api/v1/disease-cases/export: xuất Excel theo bộ lọc UI."""
 import io
 from datetime import datetime
 

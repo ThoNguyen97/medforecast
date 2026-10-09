@@ -95,7 +95,7 @@ def _khao_sat():
             if not col.nullable and mac_dinh is None:
                 canh_bao.append(
                     f"{ten}.{col.name}: khai báo NOT NULL nhưng không có giá trị mặc "
-                    f"định — SQLite không thêm được. Hãy đặt default trong model, "
+                    f"định: SQLite không thêm được. Hãy đặt default trong model, "
                     f"hoặc thêm cột cho phép NULL rồi cập nhật dữ liệu.")
                 continue
             cau = f"ALTER TABLE {ten} ADD COLUMN {col.name} {kieu}"
@@ -127,7 +127,7 @@ def main() -> int:
     db = _duong_dan_db()
     print(f"DB: {engine.url}")
     if db is not None and not db.exists():
-        print(f"✗ Không thấy file {db}. Máy này chưa từng chạy — "
+        print(f"LỖI: Không thấy file {db}. Máy này chưa từng chạy, "
               f"hãy dùng: python scripts/khoi_tao_moi.py")
         return 1
 
@@ -141,10 +141,10 @@ def main() -> int:
     except Exception as exc:                                # noqa: BLE001
         kq_view = {"(bỏ qua)": str(exc)}
     for ten, tt in kq_view.items():
-        print(("✓ " if tt == "đã tạo" else "! ") + f"{ten}: {tt}")
+        print(("" if tt == "đã tạo" else "! ") + f"{ten}: {tt}")
 
     if not bang_thieu and not cot_thieu and not canh_bao:
-        print("✓ Lược đồ DB đã khớp mã nguồn, không cần làm gì thêm.")
+        print("Lược đồ DB đã khớp mã nguồn, không cần làm gì thêm.")
         return 0
 
     print()
@@ -162,31 +162,31 @@ def main() -> int:
             print(f"  ! {c}")
 
     if not args.ap_dung:
-        print("\n→ Đây mới là kế hoạch. Chạy lại với --ap-dung để thực thi.")
+        print("\nĐây mới là kế hoạch. Chạy lại với --ap-dung để thực thi.")
         return 0
 
     if db is not None and not args.khong_sao_luu:
         luu = db.with_name(f"{db.stem}.saoluu_{datetime.now():%Y%m%d_%H%M%S}{db.suffix}")
         shutil.copy2(db, luu)
-        print(f"\n✓ Đã sao lưu: {luu.name}")
+        print(f"\nĐã sao lưu: {luu.name}")
 
     if bang_thieu:
         Base.metadata.create_all(bind=engine)
         if PipelineBase is not None:
             PipelineBase.metadata.create_all(bind=engine)
-        print(f"✓ Đã tạo {len(bang_thieu)} bảng.")
+        print(f"Đã tạo {len(bang_thieu)} bảng.")
 
     ok = 0
     with engine.begin() as conn:
         for _, cau, mo_ta in cot_thieu:
             try:
                 conn.execute(text(cau))
-                print(f"✓ {mo_ta}")
+                print(f"{mo_ta}")
                 ok += 1
             except Exception as exc:                    # noqa: BLE001
-                print(f"✗ {mo_ta}: {exc}")
+                print(f"LỖI: {mo_ta}: {exc}")
     if cot_thieu:
-        print(f"✓ Thêm {ok}/{len(cot_thieu)} cột.")
+        print(f"Thêm {ok}/{len(cot_thieu)} cột.")
 
     print("\nXong. Khởi động lại backend rồi kiểm tra lại màn hình liên quan.")
     return 0

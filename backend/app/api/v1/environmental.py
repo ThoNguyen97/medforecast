@@ -99,7 +99,7 @@ def get_environmental_data_range(
     return data
 
 
-# ── File mẫu, bộ lọc, import CSV, xu hướng ──
+# File mẫu, bộ lọc, import CSV, xu hướng
 
 @router.get("/template")
 async def download_template():
@@ -124,7 +124,7 @@ async def env_distinct_values(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> dict:
-    """Tỉnh/thành, quận/phường phân biệt và ánh xạ tỉnh → quận cho bộ lọc phân cấp."""
+    """Tỉnh/thành, quận/phường phân biệt và ánh xạ tỉnh sang quận cho bộ lọc phân cấp."""
     from app.models.environmental_data import EnvironmentalData
 
     provinces = (
@@ -435,7 +435,7 @@ def delete_environmental_record(
     return {"message": "deleted"}
 
 
-# ── Open-Meteo ──
+# Open-Meteo
 
 @router.post("/sync-openmeteo")
 def sync_openmeteo(

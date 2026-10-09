@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Cấu hình kết nối MEDFORECAST_DW (STA) lưu trong system_config, ưu tiên hơn biến môi trường PIPELINE_*.
+"""Cấu hình kết nối MEDFORECAST_DW lưu trong system_config, ưu tiên hơn biến môi trường PIPELINE_*.
 Mật khẩu mã hoá Fernet với khoá dẫn xuất từ SECRET_KEY (cần thuận nghịch để kết nối);
 API không bao giờ trả mật khẩu về client.
 """
@@ -23,8 +23,8 @@ CONFIG_KEY = "his_sync.connection"
 
 # Hồ sơ câu SQL: app đọc view nào từ nguồn.
 SQL_PROFILES = {
-    "sta": {"case": "case_sta.sql", "inventory": "inventory_sta.sql",
-            "case_group": "case_group_sta.sql"},
+    "dw": {"case": "case_dw.sql", "inventory": "inventory_dw.sql",
+            "case_group": "case_group_dw.sql"},
 }
 
 MAC_DINH = {
@@ -37,7 +37,7 @@ MAC_DINH = {
     "username": "medforecast_app",
     "driver": "ODBC Driver 18 for SQL Server",
     "trust_cert": True,        # chấp nhận chứng chỉ tự ký
-    "sql_profile": "sta",
+    "sql_profile": "dw",
     "lookback_months": 3,      # số kỳ nạp lại mỗi lần đồng bộ
 }
 
@@ -49,11 +49,11 @@ VIEW_UNG_DUNG = [
     ("vw_MedForecast_TieuHaoTong",     "tiêu hao toàn viện (Tầng 2/3)"),
     ("vw_MedForecast_CaBenhPhanCap",   "ca bệnh theo rổ chăm sóc (Tầng 2)"),
     ("vw_MedForecast_TieuHaoPhanCap",  "tiêu hao theo rổ chăm sóc (Tầng 2)"),
-    ("vw_MedForecast_TonKhoLo_MoiNhat", "tồn kho theo lô — ảnh chụp mới nhất (FEFO)"),
+    ("vw_MedForecast_TonKhoLo_MoiNhat", "tồn kho theo lô: ảnh chụp mới nhất (FEFO)"),
 ]
 
 
-# ── Mã hoá mật khẩu ──
+# Mã hoá mật khẩu
 def _fernet():
     from cryptography.fernet import Fernet
     key = base64.urlsafe_b64encode(
@@ -69,7 +69,7 @@ def _giai_ma(ban_ma: str) -> str:
     return _fernet().decrypt(ban_ma.encode("ascii")).decode("utf-8")
 
 
-# ── Đọc / ghi cấu hình ──
+# Đọc / ghi cấu hình
 def _doc_tho(db: Session) -> Optional[dict]:
     row = (db.query(SystemConfig)
              .filter(SystemConfig.config_key == CONFIG_KEY).first())
@@ -78,7 +78,7 @@ def _doc_tho(db: Session) -> Optional[dict]:
     try:
         return json.loads(row.config_value)
     except (ValueError, TypeError):
-        logger.warning("Cấu hình %s trong DB không phải JSON hợp lệ — bỏ qua.",
+        logger.warning("Cấu hình %s trong DB không phải JSON hợp lệ, bỏ qua.",
                        CONFIG_KEY)
         return None
 
@@ -86,6 +86,8 @@ def _doc_tho(db: Session) -> Optional[dict]:
 def get_config(db: Session) -> dict:
     """Cấu hình cho client: không kèm mật khẩu, chỉ báo đã đặt hay chưa."""
     cfg = {**MAC_DINH, **(_doc_tho(db) or {})}
+    if cfg.get("sql_profile") not in SQL_PROFILES:
+        cfg["sql_profile"] = MAC_DINH["sql_profile"]
     cfg["has_password"] = bool(cfg.pop("password_enc", ""))
     cfg["da_luu_trong_db"] = _doc_tho(db) is not None
     return cfg
@@ -97,7 +99,7 @@ def save_config(db: Session, payload: dict, user_id: Optional[int]) -> dict:
     moi = {k: payload[k] for k in MAC_DINH if k in payload}
 
     if moi.get("sql_profile") not in SQL_PROFILES:
-        moi["sql_profile"] = "sta"
+        moi["sql_profile"] = "dw"
     moi["lookback_months"] = max(0, int(moi.get("lookback_months", 3)))
     moi["port"] = int(moi.get("port") or 1433)
     for k in ("host", "instance", "database", "username", "driver"):
@@ -116,7 +118,7 @@ def save_config(db: Session, payload: dict, user_id: Optional[int]) -> dict:
              .filter(SystemConfig.config_key == CONFIG_KEY).first())
     if row is None:
         row = SystemConfig(config_key=CONFIG_KEY,
-                           description="Kết nối CSDL MEDFORECAST_DW trên STA "
+                           description="Kết nối CSDL MEDFORECAST_DW "
                                        "(mật khẩu đã mã hoá nếu dùng SQL auth)")
         db.add(row)
     row.config_value = json.dumps(moi, ensure_ascii=False)
@@ -125,7 +127,7 @@ def save_config(db: Session, payload: dict, user_id: Optional[int]) -> dict:
     return get_config(db)
 
 
-# ── Dựng chuỗi kết nối ──
+# Dựng chuỗi kết nối
 # Thứ tự ưu tiên khi driver cấu hình không có trên máy (IM002).
 DRIVER_UU_TIEN = [
     "ODBC Driver 18 for SQL Server",
@@ -191,10 +193,10 @@ def build_connector(db: Session):
     if thieu:
         raise RuntimeError(
             f"Cấu hình kết nối MEDFORECAST_DW trong DB thiếu: {', '.join(thieu)}. "
-            "Vào Quản trị → Nguồn dữ liệu (CSDL DW) để bổ sung.")
+            "Vào Quản trị > Nguồn dữ liệu (CSDL DW) để bổ sung.")
 
     from app.data_pipeline.connectors import SqlServerConnector, _load_sql
-    ho_so = SQL_PROFILES.get(cfg.get("sql_profile", "sta"), SQL_PROFILES["sta"])
+    ho_so = SQL_PROFILES.get(cfg.get("sql_profile", "dw"), SQL_PROFILES["dw"])
     return SqlServerConnector(
         _chuoi_ket_noi(cfg),
         case_sql=_load_sql(ho_so["case"]),
@@ -203,7 +205,7 @@ def build_connector(db: Session):
     )
 
 
-# ── Thử kết nối ──
+# Thử kết nối
 def test_connection(db: Session, payload: dict) -> dict:
     """Thử kết nối bằng cấu hình chưa lưu, trả kết quả từng bước; mật khẩu rỗng thì dùng mật khẩu đã lưu."""
     cfg = {**MAC_DINH, **{k: v for k, v in payload.items() if v is not None}}
@@ -223,7 +225,7 @@ def test_connection(db: Session, payload: dict) -> dict:
     driver_that, dung_ten = driver_kha_dung(cfg.get("driver") or MAC_DINH["driver"])
     if not dung_ten:
         steps.append({"name": "Driver ODBC", "ok": True,
-                      "detail": (f"Máy không có '{cfg.get('driver')}' — dùng '{driver_that}' "
+                      "detail": (f"Máy không có '{cfg.get('driver')}', dùng '{driver_that}' "
                                  "đang cài. Lưu cấu hình để ghi nhớ driver này.")})
         cfg["driver"] = driver_that
     try:
@@ -239,8 +241,8 @@ def test_connection(db: Session, payload: dict) -> dict:
                 so_bang = c.execute(text(
                     "SELECT COUNT(*) FROM sys.tables WHERE name LIKE 'MF[_]%'")).scalar()
                 goi_y_quyen = ("" if so_bang >= 9 else
-                               " → Đăng nhập được nhưng không thấy bảng: user trong DB chưa được cấp "
-                               "quyền SELECT. Chạy phần GRANT trong sql_his/sta/*.sql, hoặc chọn "
+                               " Hướng xử lý: Đăng nhập được nhưng không thấy bảng: user trong DB chưa được cấp "
+                               "quyền SELECT. Chạy phần GRANT trong sql_his/medforecast_dw/*.sql, hoặc chọn "
                                "Windows Authentication.")
                 steps.append({"name": "Bảng MF_* trong MEDFORECAST_DW", "ok": so_bang >= 9,
                               "detail": f"{so_bang} bảng dbo.MF_* (cần ≥ 9 bảng nghiệp vụ){goi_y_quyen}"})
@@ -259,9 +261,9 @@ def test_connection(db: Session, payload: dict) -> dict:
             except Exception as e:  # noqa: BLE001
                 steps.append({"name": "Mốc dữ liệu bệnh viện chốt", "ok": False,
                               "detail": f"Không đọc được MF_Watermark: {str(e)[:120]}"})
-            ho_so = SQL_PROFILES.get(cfg.get("sql_profile", "sta"),
-                                     SQL_PROFILES["sta"])
-            if ho_so is SQL_PROFILES["sta"]:
+            ho_so = SQL_PROFILES.get(cfg.get("sql_profile", "dw"),
+                                     SQL_PROFILES["dw"])
+            if ho_so is SQL_PROFILES["dw"]:
                 for view, nhan in VIEW_UNG_DUNG:
                     try:
                         n = c.execute(
@@ -269,15 +271,15 @@ def test_connection(db: Session, payload: dict) -> dict:
                         steps.append({
                             "name": nhan, "ok": bool(n),
                             "detail": (f"{view}: {n:,} dòng" if n else
-                                       f"{view} RỖNG — kho trung gian chưa được "
+                                       f"{view} RỖNG: kho trung gian chưa được "
                                        "cập nhật")})
                         ok = ok and bool(n)
                     except Exception as e:
                         ok = False
                         loi_v = str(e)
                         if "permission was denied" in loi_v:
-                            loi_v = ("SELECT bị từ chối — cấp quyền bằng "
-                                     "phần GRANT trong sql_his/sta/*.sql")
+                            loi_v = ("SELECT bị từ chối: cấp quyền bằng "
+                                     "phần GRANT trong sql_his/medforecast_dw/*.sql")
                         steps.append({"name": nhan, "ok": False,
                                       "detail": f"Không đọc được {view}: {loi_v[:150]}"})
         eng.dispose()
@@ -291,13 +293,13 @@ def test_connection(db: Session, payload: dict) -> dict:
                 co = ", ".join(d for d in pyodbc.drivers() if "SQL Server" in d) or "không có"
             except Exception:  # noqa: BLE001
                 co = "không kiểm tra được (thiếu pyodbc)"
-            goi_y = (f" → Tên driver '{cfg.get('driver')}' không có trên máy; driver SQL Server "
+            goi_y = (f" Hướng xử lý: Tên driver '{cfg.get('driver')}' không có trên máy; driver SQL Server "
                      f"đang cài: {co}. Chọn đúng tên trong ô Driver ODBC hoặc cài ODBC Driver 18.")
         elif "Login failed" in loi:
-            goi_y = (" → Sai tài khoản/mật khẩu; kiểm tra tài khoản medforecast_app "
-                     "trên STA hoặc chọn Windows Authentication.")
+            goi_y = (" Hướng xử lý: Sai tài khoản/mật khẩu; kiểm tra tài khoản medforecast_app "
+                     "trên CSDL trung gian hoặc chọn Windows Authentication.")
         elif "timeout" in loi.lower() or "TCP" in loi:
-            goi_y = (" → Không tới được SQL Server: kiểm tra địa chỉ/port máy chủ STA, "
+            goi_y = (" Hướng xử lý: Không tới được SQL Server: kiểm tra địa chỉ/port máy chủ CSDL trung gian, "
                      "tên instance và TCP/IP đã bật trên máy chủ.")
         steps.append({"name": "Kết nối SQL Server", "ok": False,
                       "detail": loi[:300] + goi_y})

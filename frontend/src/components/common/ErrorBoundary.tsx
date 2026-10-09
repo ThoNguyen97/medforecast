@@ -45,7 +45,7 @@ export default class ErrorBoundary extends Component<Props, State> {
               Trang này gặp lỗi và không hiển thị được
             </h2>
             <p className="text-sm text-neutral-600 mt-1">
-              Các trang khác vẫn dùng bình thường — chọn một mục khác ở thanh bên.
+              Các trang khác vẫn dùng bình thường, chọn một mục khác ở thanh bên.
               Nếu lỗi lặp lại, gửi nội dung bên dưới cho người phát triển.
             </p>
             <pre className="mt-3 text-xs bg-neutral-50 border border-neutral-200 rounded-lg p-3 overflow-x-auto text-red-700 whitespace-pre-wrap">

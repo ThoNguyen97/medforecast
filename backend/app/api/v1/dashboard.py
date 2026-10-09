@@ -46,7 +46,7 @@ def get_dashboard_v2_alerts(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Dict:
-    """Bảng cảnh báo đầy đủ, phân trang server; cùng chuỗi Tầng 1 → 2 → 3 với `/v2`."""
+    """Bảng cảnh báo đầy đủ, phân trang server; cùng chuỗi Tầng 1, 2, 3 với `/v2`."""
     try:
         return dss_dashboard.alerts_payload(db, focus=focus, level=level, q=q,
                                             danh_muc=danh_muc, limit=limit, offset=offset)

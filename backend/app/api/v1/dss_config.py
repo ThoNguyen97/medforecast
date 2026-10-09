@@ -22,17 +22,17 @@ router = APIRouter(tags=["dss-config"])
 logger = logging.getLogger(__name__)
 
 
-# ── Mô tả tham số (hiển thị dưới ô nhập) ──
+# Mô tả tham số (hiển thị dưới ô nhập)
 
 MO_TA: Dict[str, Dict[str, Dict[str, Any]]] = {
     "thresholds": {
         "doi_red_days": {
             "ten": "Ngưỡng Đỏ (ngày tồn kho)",
-            "y_nghia": "DOI ≤ giá trị này → Đỏ. Mặc định 18 = trung vị chu kỳ nhập kho thực tế của bệnh viện.",
+            "y_nghia": "DOI ≤ giá trị này thì Đỏ. Mặc định 18 = trung vị chu kỳ nhập kho thực tế của bệnh viện.",
             "min": 1, "max": 365},
         "doi_amber_days": {
             "ten": "Ngưỡng Vàng (ngày tồn kho)",
-            "y_nghia": "Đỏ < DOI ≤ giá trị này → Vàng; lớn hơn → Xanh. Mặc định 36 = hai chu kỳ nhập.",
+            "y_nghia": "Đỏ < DOI ≤ giá trị này thì Vàng; lớn hơn thì Xanh. Mặc định 36 = hai chu kỳ nhập.",
             "min": 2, "max": 730},
         "horizon_days": {
             "ten": "Chân trời nhu cầu (ngày)",
@@ -93,12 +93,12 @@ def _doc_hien_tai(db: Session) -> Dict[str, Any]:
             "config_key": "dss.care_level",
         },
         "cong_thuc": [
-            "Tầng 1  Ŷ_g — ensemble thống kê theo nhóm ICD (J00-J06 / J09-J18 / J20-J22)",
-            "Tầng 2  D_i = Σ_ro Ŷ_g · p̂(g,ro) · Norm(i,g,ro) + D_nền,i",
-            "        p̂(g,ro) = ca(g,ro)/ca(g); Norm(i,g,ro) = Σ tiêu hao / Σ ca — cùng cửa sổ window_periods",
+            "Tầng 1  Ŷ_g: ensemble thống kê theo nhóm ICD (J00-J06 / J09-J18 / J20-J22)",
+            "Tầng 2  D_i = Σ_ro Ŷ_g × p̂(g,ro) × Norm(i,g,ro) + D_nền,i",
+            "        p̂(g,ro) = ca(g,ro)/ca(g); Norm(i,g,ro) = Σ tiêu hao / Σ ca: cùng cửa sổ window_periods",
             "Tầng 3  DOI_i = tồn hữu dụng FEFO_i / (D_i / horizon_days); Đỏ ≤ doi_red_days, Vàng ≤ doi_amber_days",
             "        Thiếu hụt_i = D_i − tồn hữu dụng_i, không âm (chưa trừ hàng đang về)",
-            "        mã không có D_i → không có mẫu số → Xám, lý do 'chưa có dự báo'",
+            "        mã không có D_i thì không có mẫu số, xếp Xám, lý do 'chưa có dự báo'",
         ],
     }
 

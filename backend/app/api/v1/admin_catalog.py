@@ -1,4 +1,4 @@
-"""Danh mục quản trị: bệnh, nhóm bệnh, khu vực — lưu JSON trong system_config.
+"""Danh mục quản trị: bệnh, nhóm bệnh, khu vực, lưu JSON trong system_config.
 Đọc: mọi người dùng; ghi: Administrator. GET không ghi DB.
 Nhóm bệnh ở đây chỉ để hiển thị, không đổi NHOM_ICD của mô hình dự báo.
 """
@@ -25,7 +25,7 @@ DISEASES_KEY = "admin.diseases"
 DISEASE_GROUPS_KEY = "admin.disease_groups"
 REGIONS_KEY = "admin.regions"
 
-# ── Helpers ──
+# Helpers
 
 def _get_or_init(db: Session, key: str, default: str) -> SystemConfig:
     """Dòng cấu hình theo khoá; chưa có thì trả bản mặc định chưa ghi DB (persist khi `_save_list`)."""
@@ -52,7 +52,7 @@ def _save_list(db: Session, cfg: SystemConfig, items: List[Dict[str, Any]], user
     db.commit()
 
 
-# ── Danh mục bệnh ──
+# Danh mục bệnh
 
 class DiseaseItem(BaseModel):
     key: str = Field(..., min_length=2, max_length=64)
@@ -141,7 +141,7 @@ def _seed_diseases() -> List[Dict[str, Any]]:
     ]
 
 
-# ── Nhóm bệnh ──
+# Nhóm bệnh
 
 class DiseaseGroupItem(BaseModel):
     key: str = Field(..., min_length=2, max_length=64)
@@ -212,7 +212,7 @@ def _seed_disease_groups() -> List[Dict[str, Any]]:
     ]
 
 
-# ── Khu vực ──
+# Khu vực
 
 class RegionItem(BaseModel):
     name: str = Field(..., min_length=1, max_length=120)

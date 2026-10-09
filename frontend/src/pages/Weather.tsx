@@ -73,7 +73,7 @@ export default function Weather() {
   const [filterMonth, setFilterMonth] = useState<string>('all');
   const [filterProvince, setFilterProvince] = useState<string>('all');
   const [provinces, setProvinces] = useState<string[]>([]);
-  // Tỉnh → quận có dữ liệu trong DB
+  // Tỉnh sang quận có dữ liệu trong DB
   const [provinceDistricts, setProvinceDistricts] = useState<Record<string, string[]>>({});
 
   // Phân trang
@@ -291,9 +291,9 @@ export default function Weather() {
       });
       const d = res.data ?? {};
       alert(
-        `✓ Open-Meteo sync xong cho ${d.province}\n` +
+        `Open-Meteo sync xong cho ${d.province}\n` +
           `Mới: ${d.imported}, cập nhật: ${d.updated}, tổng ${d.total_months} tháng.\n` +
-          `(historical ${d.historical_days} ngày · forecast ${d.forecast_days} ngày · AQI ${d.air_quality_days} ngày)`,
+          `(historical ${d.historical_days} ngày, forecast ${d.forecast_days} ngày, AQI ${d.air_quality_days} ngày)`,
       );
       loadData();
       loadDistinctValues();
@@ -782,7 +782,7 @@ export default function Weather() {
                 >
                   {provinces.length === 0 && (
                     <option value="" disabled>
-                      Chưa có tỉnh/thành — vui lòng nhập tay
+                      Chưa có tỉnh/thành: vui lòng nhập tay
                     </option>
                   )}
                   {provinces.map((p) => (
@@ -824,7 +824,7 @@ export default function Weather() {
                         }}
                         className="input"
                       >
-                        <option value="">— Không xác định —</option>
+                        <option value="">(Không xác định)</option>
                         {list.map((d) => (
                           <option key={d} value={d}>
                             {d}
@@ -845,7 +845,7 @@ export default function Weather() {
                   );
                 })()}
               </Field>
-              <Field label="Nhiệt độ TB (°C)" hint="10–45°C">
+              <Field label="Nhiệt độ TB (°C)" hint="10-45°C">
                 <input
                   type="number"
                   step="0.1"
@@ -854,7 +854,7 @@ export default function Weather() {
                   className="input"
                 />
               </Field>
-              <Field label="Độ ẩm (%)" hint="0–100%">
+              <Field label="Độ ẩm (%)" hint="0-100%">
                 <input
                   type="number"
                   step="0.1"
@@ -983,13 +983,13 @@ export default function Weather() {
                 </div>
                 {importResult.truncated && (
                   <p className="text-xs text-neutral-500 mt-2">
-                    * Chỉ hiển thị 200 dòng lỗi đầu tiên — vui lòng kiểm tra file gốc.
+                    * Chỉ hiển thị 200 dòng lỗi đầu tiên, vui lòng kiểm tra file gốc.
                   </p>
                 )}
               </div>
             ) : (
               <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">
-                ✓ Tất cả các dòng đã được xử lý thành công.
+                Tất cả các dòng đã được xử lý thành công.
               </div>
             )}
             <div className="flex justify-end mt-4">
@@ -1028,7 +1028,7 @@ function Field({
 }
 
 function fmt(v: number | null | undefined, decimals = 1): string {
-  if (v == null) return '—';
+  if (v == null) return '-';
   return Number(v).toLocaleString('vi-VN', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,

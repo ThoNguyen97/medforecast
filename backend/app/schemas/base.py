@@ -5,7 +5,7 @@ from typing import Generic, List, Optional, TypeVar
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-# ── Enums ─────────────────────────────────────────────────────────────────────
+# Enums
 
 class UserRole(str, Enum):
     ADMINISTRATOR = "Administrator"
@@ -13,14 +13,14 @@ class UserRole(str, Enum):
     INVENTORY_MANAGER = "Inventory_Manager"
 
 
-# ── Cấu hình chung ─────────────────────────────────────────────────────────────
+# Cấu hình chung
 
 class ORMBase(BaseModel):
     """Lớp nền bật from_attributes (đọc từ ORM) cho các schema response."""
     model_config = ConfigDict(from_attributes=True)
 
 
-# ── Pagination ────────────────────────────────────────────────────────────────
+# Pagination
 
 T = TypeVar("T")
 
@@ -33,7 +33,7 @@ class PaginatedResponse(BaseModel, Generic[T]):
     items: List[T]
 
 
-# ── Auth schemas ──────────────────────────────────────────────────────────────
+# Auth schemas
 
 class Token(BaseModel):
     access_token: str
@@ -49,7 +49,7 @@ class LoginResponse(BaseModel):
     user: "UserResponse"
 
 
-# ── User schemas ──────────────────────────────────────────────────────────────
+# User schemas
 
 class UserBase(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
@@ -80,9 +80,9 @@ class UserLogin(BaseModel):
     password: str
 
 
-# ── Medical Supply schemas ────────────────────────────────────────────────────
+# Drug schemas
 
-class MedicalSupplyBase(BaseModel):
+class DrugBase(BaseModel):
     supply_code: str = Field(..., description="Mã hệ thống nội bộ (VT001-VT015)")
     drug_code: str = Field(..., description="Mã từ cột DrugCode trong dữ liệu lịch sử")
     ten_hoat_chat: str = Field(..., description="Tên hoạt chất từ cột TenHoatChat")
@@ -93,12 +93,12 @@ class MedicalSupplyBase(BaseModel):
     description: Optional[str] = None
 
 
-class MedicalSupplyResponse(ORMBase, MedicalSupplyBase):
+class DrugResponse(ORMBase, DrugBase):
     id: int
     created_at: datetime
 
 
-# ── Inventory schemas ─────────────────────────────────────────────────────────
+# Inventory schemas
 
 class InventoryBase(BaseModel):
     supply_id: int
@@ -118,14 +118,14 @@ class InventoryUpdate(BaseModel):
 class InventoryResponse(ORMBase, InventoryBase):
     id: int
     last_updated: datetime
-    supply: Optional[MedicalSupplyResponse] = None
+    supply: Optional[DrugResponse] = None
     # Tồn âm có thật trong HIS (xuất trước, nhập bù sau); giữ ge=0 ở chiều trả ra
     # sẽ gây ResponseValidationError cho cả danh sách.
     current_stock: int
     safety_stock: int
 
 
-# ── Environmental Data schemas ────────────────────────────────────────────────
+# Environmental Data schemas
 
 class EnvironmentalDataBase(BaseModel):
     recorded_at: datetime
@@ -159,7 +159,7 @@ class EnvironmentalDataResponse(ORMBase, EnvironmentalDataBase):
     created_at: datetime
 
 
-# ── Disease Case schemas ──────────────────────────────────────────────────────
+# Disease Case schemas
 
 class DiseaseCaseBase(BaseModel):
     recorded_at: datetime
@@ -199,13 +199,13 @@ class DiseaseCaseResponse(ORMBase, DiseaseCaseBase):
     created_at: datetime
 
 
-# ── Forecast schemas ──────────────────────────────────────────────────────────
+# Forecast schemas
 
 
-# ── Supply Requirement schemas ────────────────────────────────────────────────
+# Supply Requirement schemas
 
 class SupplyRequirementSummaryItem(BaseModel):
-    """Tổng hợp nhu cầu theo loại thuốc/vật tư."""
+    """Tổng hợp nhu cầu theo loại thuốc."""
     supply_id: int
     supply_name: str
     supply_category: Optional[str] = None
@@ -218,16 +218,16 @@ class SupplyRequirementSummaryItem(BaseModel):
 
 
 class SupplyRequirementSummaryResponse(BaseModel):
-    """Response của endpoint tổng hợp nhu cầu thuốc/vật tư."""
+    """Response của endpoint tổng hợp nhu cầu thuốc."""
     total_supplies: int
     supplies_with_shortage: int
     items: List[SupplyRequirementSummaryItem]
 
 
-# ── Dashboard schemas ─────────────────────────────────────────────────────────
+# Dashboard schemas
 
 
-# ── System Config schemas ─────────────────────────────────────────────────────
+# System Config schemas
 
 class SystemConfigResponse(ORMBase):
     id: int
@@ -243,10 +243,10 @@ class SystemConfigUpdate(BaseModel):
     description: Optional[str] = None
 
 
-# ── Threshold schemas ─────────────────────────────────────────────────────────
+# Threshold schemas
 
 
-# ── Audit Log schemas ─────────────────────────────────────────────────────────
+# Audit Log schemas
 
 class AuditLogResponse(ORMBase):
     """Một bản ghi nhật ký kiểm toán."""
@@ -270,7 +270,7 @@ class AuditLogListResponse(BaseModel):
     items: List[AuditLogResponse]
 
 
-# ── System Log schemas ────────────────────────────────────────────────────────
+# System Log schemas
 
 class SystemLogResponse(ORMBase):
     """Một bản ghi log hệ thống."""

@@ -42,7 +42,7 @@ const TABS: { key: TabKey; label: string; icon: React.ComponentType<{ className?
   { key: 'audit-logs', label: 'Nhật ký hệ thống', icon: Activity },
 ];
 
-/** Module 9 — Quản trị */
+/** Module 9: Quản trị */
 export default function Settings() {
   const { setPageTitle } = useUIStore();
   const { user } = useAuthStore();
@@ -76,7 +76,7 @@ export default function Settings() {
         </div>
         <div className="inline-flex items-center gap-2 text-xs text-neutral-500">
           <SettingsIcon className="w-4 h-4" />
-          Module 9 — Quản trị
+          Module 9: Quản trị
         </div>
       </div>
 

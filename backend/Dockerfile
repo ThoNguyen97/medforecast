@@ -6,7 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Driver ODBC THẬT cho SQL Server (kết nối HIS).
-# `unixodbc-dev` chỉ là thư viện phát triển — thiếu gói này pyodbc sẽ báo
+# `unixodbc-dev` chỉ là thư viện phát triển, thiếu gói này pyodbc sẽ báo
 # "Can't open lib 'ODBC Driver 18 for SQL Server' : file not found".
 RUN curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
       | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg \

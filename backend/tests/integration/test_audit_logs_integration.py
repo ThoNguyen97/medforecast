@@ -14,7 +14,7 @@ from app.models.system_log import SystemLog
 from app.core.security import hash_password, create_access_token
 
 
-# ── CSDL test ──
+# CSDL test
 
 @pytest.fixture(scope="function")
 def db_session():
@@ -156,7 +156,7 @@ def seeded_system_logs(db_session):
     return logs
 
 
-# ── Nhật ký kiểm toán ──
+# Nhật ký kiểm toán
 
 class TestAuditLogs:
     def test_audit_logs_requires_auth(self, client):
@@ -243,7 +243,7 @@ class TestAuditLogs:
         assert "created_at" in item
 
 
-# ── Log hệ thống ──
+# Log hệ thống
 
 class TestSystemLogs:
     def test_system_logs_requires_auth(self, client):
@@ -304,7 +304,7 @@ class TestSystemLogs:
         assert resp.status_code == 422
 
 
-# ── Log lỗi ──
+# Log lỗi
 
 class TestErrorLogs:
     def test_error_logs_requires_auth(self, client):
@@ -337,7 +337,7 @@ class TestErrorLogs:
         assert data["items"][0]["module_name"] == "database"
 
 
-# ── Dọn log ──
+# Dọn log
 
 class TestLogCleanup:
     def test_cleanup_requires_auth(self, client):

@@ -4,7 +4,7 @@ import type { BlockCode } from '../types/dashboardV2';
 
 /** API DSS: cảnh báo thiếu hụt, tham số DSS, bảng định mức thực nghiệm. */
 export const dssService = {
-  /** Dòng cảnh báo, cùng chuỗi Tầng 1→2→3 với Tổng quan, phân trang server. */
+  /** Dòng cảnh báo, cùng chuỗi Tầng 1, 2, 3 với Tổng quan, phân trang server. */
   async getAlerts(p: AlertsQuery): Promise<AlertsPayload> {
     const r = await api.get<AlertsPayload>('/dashboard/v2/alerts', {
       params: {

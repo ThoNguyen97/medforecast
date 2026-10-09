@@ -1,6 +1,6 @@
-"""Connector nguồn dữ liệu (file export CSV/Excel hoặc view STA qua pyodbc), cùng hợp đồng cột.
+"""Connector nguồn dữ liệu (file export CSV/Excel hoặc view MEDFORECAST_DW qua pyodbc), cùng hợp đồng cột.
 
-Cột `cases` là tổng ca của (tháng × mã ICD × tỉnh) lặp trên mọi dòng vật tư; pipeline lấy max() để khử lặp.
+Cột `cases` là tổng ca của (tháng × mã ICD × tỉnh) lặp trên mọi dòng thuốc; pipeline lấy max() để khử lặp.
 Nạp tăng dần lùi PIPELINE_LOOKBACK_MONTHS tháng (mặc định 3) vì mã ICD chốt trễ; an toàn do fact ghi xóa-rồi-chèn.
 """
 from __future__ import annotations
@@ -102,7 +102,7 @@ def _conform(df: pd.DataFrame, columns: Iterable[str],
         df = pd.DataFrame(columns=columns)
     missing = [c for c in columns if c not in df.columns]
     if missing:
-        logger.warning("Nguồn thiếu cột %s — điền NULL để giữ hợp đồng dữ liệu.", missing)
+        logger.warning("Nguồn thiếu cột %s: điền NULL để giữ hợp đồng dữ liệu.", missing)
     for c in missing:
         df[c] = None
     extra = [c for c in df.columns if c not in columns]
@@ -167,7 +167,7 @@ class FileConnector(SourceConnector):
 
 
 class SqlServerConnector(SourceConnector):
-    """Đọc view vw_MedForecast_* trên STA qua pyodbc (cần driver msodbcsql17/18).
+    """Đọc view vw_MedForecast_* trên CSDL trung gian qua pyodbc (cần driver msodbcsql17/18).
 
     Câu SQL trong sql/ phải giữ tên cột đầu ra và tham số `:since_date`.
     """
@@ -181,9 +181,9 @@ class SqlServerConnector(SourceConnector):
         self.conn_str = conn_str
         # Ưu tiên: tham số > biến môi trường > file mặc định trong sql/.
         self.case_sql = case_sql or _sql_from_env(
-            "PIPELINE_CASE_SQL_FILE", "case_sta.sql")
+            "PIPELINE_CASE_SQL_FILE", "case_dw.sql")
         self.inventory_sql = inventory_sql or _sql_from_env(
-            "PIPELINE_INVENTORY_SQL_FILE", "inventory_sta.sql")
+            "PIPELINE_INVENTORY_SQL_FILE", "inventory_dw.sql")
         # Không đặt biến môi trường thì để trống, pipeline cộng dồn từ mã.
         self.case_group_sql = case_group_sql if case_group_sql is not None else (
             _load_sql(os.environ["PIPELINE_CASE_GROUP_SQL_FILE"])
@@ -227,7 +227,7 @@ class SqlServerConnector(SourceConnector):
             params["since_date"] = f"{start}-01" if start else EPOCH_DATE
         elif start:
             logger.warning(
-                "case_sql không có tham số :since_date — sẽ nạp lại TOÀN BỘ lịch sử "
+                "case_sql không có tham số :since_date, sẽ nạp lại TOÀN BỘ lịch sử "
                 "mỗi lần đồng bộ. Thêm 'AND <cột ngày khám> >= :since_date' vào SQL.")
         df = self._read(self.case_sql, params)
         return _conform(df, CASE_COLUMNS, CASE_NUMERIC)

@@ -195,7 +195,7 @@ export default function DiseaseCaseDetail() {
           </div>
           <p className="text-sm text-neutral-500 mt-1 flex items-center gap-1.5">
             <Activity className="w-3.5 h-3.5" />
-            Khu vực: {regionLabel} · Bệnh: {diseaseLabel(data.case.disease_type)}
+            Khu vực: {regionLabel}, Bệnh: {diseaseLabel(data.case.disease_type)}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -335,7 +335,7 @@ export default function DiseaseCaseDetail() {
                   className="px-6 py-12 text-center text-neutral-400"
                 >
                   {data.supplies.length === 0
-                    ? 'Chưa có định mức thuốc cho nhóm bệnh này — định mức thực nghiệm sinh ra sau khi đồng bộ HIS.'
+                    ? 'Chưa có định mức thuốc cho nhóm bệnh này, định mức thực nghiệm sinh ra sau khi đồng bộ HIS.'
                     : 'Không có thuốc nào khớp bộ lọc.'}
                 </td>
               </tr>
@@ -361,7 +361,7 @@ export default function DiseaseCaseDetail() {
                       {s.source === 'norm' && (
                         <span
                           className="text-[10px] px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 font-medium"
-                          title={`Định mức thực nghiệm theo khối ${s.khoi ?? ''} (Σ p̂·Norm)`}
+                          title={`Định mức thực nghiệm theo khối ${s.khoi ?? ''} (Σ p̂×Norm)`}
                         >
                           định mức thực nghiệm
                         </span>

@@ -1,4 +1,4 @@
-"""Nạp bốn luồng DSS từ view STA về DB local (ba luồng theo kỳ, một ảnh chụp tồn kho theo lô).
+"""Nạp bốn luồng DSS từ view MEDFORECAST_DW về DB local (ba luồng theo kỳ, một ảnh chụp tồn kho theo lô).
 
 Mỗi luồng một transaction riêng, ghi kiểu xoá-rồi-chèn theo khoá phân vùng nên idempotent
 và dòng bị huỷ bên nguồn cũng biến mất bên local.
@@ -24,10 +24,10 @@ LOOKBACK_MONTHS = int(os.environ.get("DSS_LOOKBACK_MONTHS", "3"))
 INSERT_CHUNK = 1000
 
 
-# ── Đặc tả các luồng ──
+# Đặc tả các luồng
 FLOWS: Dict[str, Dict[str, Any]] = {
     "usage_total": {
-        "sql_file": "usage_total_sta.sql",
+        "sql_file": "usage_total_dw.sql",
         "table": "fact_usage_total",
         "map": {
             "period":             "__period__",
@@ -49,7 +49,7 @@ FLOWS: Dict[str, Dict[str, Any]] = {
         "required": ["supply_code", "so_luong_toan_vien"],
     },
     "cases_care_level": {
-        "sql_file": "cases_care_level_sta.sql",
+        "sql_file": "cases_care_level_dw.sql",
         "table": "fact_cases_by_care_level",
         "map": {
             "period":     "__period__",
@@ -62,7 +62,7 @@ FLOWS: Dict[str, Dict[str, Any]] = {
         "required": ["block_code", "ro", "cases"],
     },
     "usage_care_level": {
-        "sql_file": "usage_care_level_sta.sql",
+        "sql_file": "usage_care_level_dw.sql",
         "table": "fact_usage_by_care_level",
         "map": {
             "period":      "__period__",
@@ -79,7 +79,7 @@ FLOWS: Dict[str, Dict[str, Any]] = {
     },
     # `partition` đổi khoá xoá-rồi-chèn từ `period` sang `snapshot_date`.
     "inventory_lot": {
-        "sql_file": "inventory_lot_sta.sql",
+        "sql_file": "inventory_lot_dw.sql",
         "table": "fact_inventory_lot",
         "partition": "snapshot_date",
         "map": {
@@ -109,7 +109,7 @@ THU_TU_NAP = ("usage_total", "cases_care_level", "usage_care_level", "inventory_
 RO_HOP_LE = {"NGT", "NT1", "NT2", "NT3", "NT0"}
 
 
-# ── DDL: bốn bảng fact nằm ngoài Base.metadata ──
+# DDL: bốn bảng fact nằm ngoài Base.metadata
 DDL = [
     """
     CREATE TABLE IF NOT EXISTS fact_cases_by_care_level (
@@ -177,7 +177,7 @@ def ensure_tables(db) -> None:
     db.commit()
 
 
-# ── Tiện ích ──
+# Tiện ích
 def _period_key(v: Any) -> Optional[str]:
     """Đưa date hoặc chuỗi 'YYYY-MM-DD' / 'YYYY-MM' / 'MM/YYYY' về 'YYYY-MM'."""
     if v is None or (isinstance(v, float) and pd.isna(v)):
@@ -268,9 +268,9 @@ def _watermark(db, table: str) -> Optional[str]:
         return None
 
 
-# ── Nạp một luồng ──
+# Nạp một luồng
 def _fetch(connector, sql: str, since_period: Optional[str]) -> pd.DataFrame:
-    """Đọc từ STA qua `_read()` của connector để dùng chung engine, timeout và đọc theo lô."""
+    """Đọc từ MEDFORECAST_DW qua `_read()` của connector để dùng chung engine, timeout và đọc theo lô."""
     if not sql.strip():
         return pd.DataFrame()
     params: Dict[str, Any] = {}
@@ -324,7 +324,7 @@ def _prepare(df: pd.DataFrame, spec: Dict[str, Any]) -> pd.DataFrame:
         la = ~out["ro"].astype(str).isin(RO_HOP_LE)
         if la.any():
             logger.warning("%s: %d dòng có rổ chăm sóc ngoài {NGT,NT1,NT2,NT3,NT0} "
-                           "— dồn về NT0.", spec["table"], int(la.sum()))
+                           "đã dồn về NT0.", spec["table"], int(la.sum()))
             out.loc[la, "ro"] = "NT0"
 
     if "is_vtyt" in out.columns:
@@ -335,7 +335,7 @@ def _prepare(df: pd.DataFrame, spec: Dict[str, Any]) -> pd.DataFrame:
                         "supply_code", "lot_id", "so_kho") if c in out.columns]
     if keys and out.duplicated(subset=keys).any():
         n = int(out.duplicated(subset=keys).sum())
-        logger.warning("%s: %d dòng trùng khoá từ nguồn — gộp lại.", spec["table"], n)
+        logger.warning("%s: %d dòng trùng khoá từ nguồn, gộp lại.", spec["table"], n)
         so = [c for c in spec.get("sum", []) if c in out.columns and c not in keys]
         chu = [c for c in out.columns if c not in keys + so]
         out = (out.groupby(keys, as_index=False)
@@ -386,7 +386,7 @@ def load_flow(db, connector, flow: str, full: bool = False) -> Dict[str, Any]:
         if "Invalid column name" in msg and flow == "usage_total":
             raise RuntimeError(
                 "vw_MedForecast_TieuHaoTong thiếu cột. "
-                "Chạy lại sql_his/sta/03_bang_tieu_hao_tong.sql trên STA. "
+                "Chạy lại sql_his/medforecast_dw/03_bang_tieu_hao_tong.sql trên CSDL trung gian. "
                 f"Lỗi gốc: {msg[:200]}") from exc
         raise
     df = _prepare(raw, spec)
@@ -399,7 +399,7 @@ def load_flow(db, connector, flow: str, full: bool = False) -> Dict[str, Any]:
         raise
 
     periods = sorted(df[khoa_pv].unique().tolist()) if not df.empty else []
-    logger.info("%s: nạp %d dòng cho %d kỳ (%s → %s)", spec["table"], n, len(periods),
+    logger.info("%s: nạp %d dòng cho %d kỳ (%s đến %s)", spec["table"], n, len(periods),
                 periods[0] if periods else "-", periods[-1] if periods else "-")
     return {
         "flow": flow, "status": "ok", "table": spec["table"],

@@ -1,6 +1,6 @@
 """Mô hình dự báo chuỗi tháng trên numpy/pandas; SARIMAX/ETS tự thêm nếu có statsmodels.
 
-Giao diện chung: fit(df[month, cases, is_covid]) → predict(next_month) -> float; cờ `fitted` và tên `name`.
+Giao diện chung: fit(df[month, cases, is_covid]), predict(next_month) -> float; cờ `fitted` và tên `name`.
 """
 from __future__ import annotations
 import logging
@@ -40,7 +40,7 @@ def _ridge_standardized(X: np.ndarray, t: np.ndarray, lam: float):
     p = Xs.shape[1]
     I = np.eye(p); I[0, 0] = 0.0
     beta_s = np.linalg.solve(Xs.T @ Xs + lam * I, Xs.T @ t)
-    # b_j = b_s_j / sd_j ; b_0 = b_s_0 − Σ b_j·mu_j
+    # b_j = b_s_j / sd_j ; b_0 = b_s_0 − Σ b_j×mu_j
     beta = np.empty(p)
     beta[1:] = beta_s[1:] / sd
     beta[0] = beta_s[0] - float(np.dot(beta[1:], mu))
@@ -274,7 +274,7 @@ class Ensemble:
             except Exception as exc:                          # noqa: BLE001
                 m.fitted = False
                 self.members_failed[getattr(m, "name", type(m).__name__)] = f"fit: {exc}"
-                logger.warning("Ensemble: thành viên %s rớt khi fit — %s",
+                logger.warning("Ensemble: thành viên %s rớt khi fit, %s",
                                getattr(m, "name", type(m).__name__), exc)
         return self
 
@@ -294,7 +294,7 @@ class Ensemble:
                 out[nm] = v
             except Exception as exc:                          # noqa: BLE001
                 self.members_failed[nm] = f"predict: {exc}"
-                logger.warning("Ensemble: thành viên %s rớt khi predict — %s", nm, exc)
+                logger.warning("Ensemble: thành viên %s rớt khi predict, %s", nm, exc)
         self.members_used = list(out.keys())
         return out
 
@@ -302,7 +302,7 @@ class Ensemble:
         """Trung bình đều, dùng ở mức mã."""
         vals = self.predict_members(next_month)
         if not vals:
-            logger.error("Ensemble: KHÔNG thành viên nào dự báo được — trả 0.")
+            logger.error("Ensemble: KHÔNG thành viên nào dự báo được, trả 0.")
             return 0.0
         return float(np.mean(list(vals.values())))
 

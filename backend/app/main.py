@@ -25,7 +25,7 @@ logger.info("Database tables verified / created.")
 if settings.DATABASE_URL.startswith("sqlite:///"):
     from pathlib import Path as _Path
     _db = _Path(settings.DATABASE_URL[len("sqlite:///"):]).resolve()
-    logger.info("SQLite đang dùng: %s (tồn tại=%s, %s bytes) — CWD=%s",
+    logger.info("SQLite đang dùng: %s (tồn tại=%s, %s bytes), CWD=%s",
                 _db, _db.exists(), _db.stat().st_size if _db.exists() else 0,
                 _Path.cwd())
 
@@ -44,7 +44,7 @@ try:
     _da = [k for k, v in _kq.items() if v in _xong]
     _bo = {k: v for k, v in _kq.items() if v not in _xong}
     logger.info("Lược đồ ngoài ORM: %d/%d mục sẵn sàng %s", len(_da), len(_kq),
-                ("— chờ dữ liệu: %s" % _bo) if _bo else "")
+                ("(chờ dữ liệu: %s)" % _bo) if _bo else "")
 except Exception as _e:  # noqa: BLE001
     logger.warning("Bỏ qua dựng lược đồ ngoài ORM (non-fatal): %s", _e)
 
@@ -75,7 +75,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.VERSION,
-    description="Hệ thống hỗ trợ ra quyết định (DSS): dự báo ca bệnh hô hấp theo chuỗi thời gian và cảnh báo ngưỡng tồn kho vật tư y tế",
+    description="Hệ thống hỗ trợ ra quyết định (DSS): dự báo ca bệnh hô hấp theo chuỗi thời gian và cảnh báo ngưỡng tồn kho thuốc",
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,
@@ -96,7 +96,7 @@ logger.info("CORS configured for origins: %s", settings.cors_origins_list)
 async def root():
     """Thông tin cơ bản của dịch vụ."""
     return {
-        "message": "MedForecast - Hệ thống DSS dự báo ca bệnh và cảnh báo thiếu hụt vật tư y tế",
+        "message": "MedForecast - Hệ thống DSS dự báo ca bệnh và cảnh báo thiếu hụt thuốc",
         "version": settings.VERSION,
         "environment": settings.ENVIRONMENT,
         "docs": "/docs",

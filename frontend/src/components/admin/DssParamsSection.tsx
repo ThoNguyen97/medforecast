@@ -115,8 +115,8 @@ export default function DssParamsSection() {
 
       <div className="grid lg:grid-cols-2 gap-4">
         <ParamCard
-          title="Tầng 3 — Ngưỡng cảnh báo"
-          subtitle={`system_config → ${data.thresholds.config_key}`}
+          title="Tầng 3: Ngưỡng cảnh báo"
+          subtitle={`system_config: ${data.thresholds.config_key}`}
           nguon={data.thresholds.nguon}
           keys={Object.keys(data.thresholds.mo_ta)}
           moTa={data.thresholds.mo_ta}
@@ -125,8 +125,8 @@ export default function DssParamsSection() {
           onChange={(k, v) => setDraft({ ...draft, thresholds: { ...draft.thresholds, [k]: v } })}
         />
         <ParamCard
-          title="Tầng 2 — Định mức & tỷ trọng rổ"
-          subtitle={`system_config → ${data.care_level.config_key}`}
+          title="Tầng 2: Định mức & tỷ trọng rổ"
+          subtitle={`system_config: ${data.care_level.config_key}`}
           nguon={data.care_level.nguon}
           keys={Object.keys(data.care_level.mo_ta)}
           moTa={data.care_level.mo_ta}
@@ -171,8 +171,8 @@ function ParamCard<T extends Record<string, number | string>>({
                 </label>
                 <p className="text-xs text-neutral-500 mt-0.5 leading-snug">{m.y_nghia}</p>
                 <p className="text-[11px] text-neutral-400 mt-0.5 font-mono">
-                  {k} · mặc định {String(defaults[k])}
-                  {!isKy && m.min != null ? ` · [${m.min}, ${m.max}]` : ''}
+                  {k}, mặc định {String(defaults[k])}
+                  {!isKy && m.min != null ? `, [${m.min}, ${m.max}]` : ''}
                 </p>
               </div>
               <input

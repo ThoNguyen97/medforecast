@@ -2,7 +2,7 @@
  *  (backend: dss_dashboard.py, dss_config.py, dss_demand.py). */
 import type { AlertLevel, AlertRow, BlockCode, CareBucket, Period, Thresholds } from './dashboardV2';
 
-// ─── /dashboard/v2/alerts ────────────────────────────────────────────────────
+// /dashboard/v2/alerts
 
 export interface AlertsQuery {
   focus: boolean;
@@ -68,7 +68,7 @@ export interface AlertsPayload {
   rows: AlertRow[];
 }
 
-// ─── /dss/params ─────────────────────────────────────────────────────────────
+// /dss/params
 
 export interface ParamMeta {
   ten: string;
@@ -112,7 +112,7 @@ export interface DssParamsUpdate {
   care_level?: Partial<CareLevelParams>;
 }
 
-// ─── /dss/norms ──────────────────────────────────────────────────────────────
+// /dss/norms
 
 interface NormRoCell {
   tieu_hao: number;
@@ -129,7 +129,7 @@ export interface NormRow {
   nhom: string | null;
   tieu_hao_tong: number;
   norm_gop: number;
-  /** Σ_ro p̂ · Norm: lượng cần cho một ca dự báo */
+  /** Σ_ro p̂ × Norm: lượng cần cho một ca dự báo */
   norm_hieu_dung: number;
   theo_ro: Partial<Record<CareBucket, NormRoCell>>;
 }

@@ -1,4 +1,4 @@
-"""Payload cho Tổng quan và Cảnh báo thiếu hụt: chuỗi Tầng 1 (đã ghi nhận) → 2 → 3,
+"""Payload cho Tổng quan và Cảnh báo thiếu hụt: chuỗi Tầng 1 (đã ghi nhận), 2, 3,
 dự báo xem trước có cache theo dấu vân tay dữ liệu, sổ theo dõi mô hình và chất lượng backtest.
 Thiếu hụt dự kiến Δ_need = max(0, D_forecast − S_usable).
 """
@@ -30,7 +30,7 @@ KETQUA_BACKTEST_DIR = Path(__file__).resolve().parents[2] / "ketqua_backtest"
 PHUONG_AN_CHINH_THUC = "Top-down động"
 
 
-# ── Cache dự báo mức nhóm ──
+# Cache dự báo mức nhóm
 
 _CACHE_DDL = """
 CREATE TABLE IF NOT EXISTS dss_forecast_cache (
@@ -69,7 +69,7 @@ def _ensure_cache(db: Session) -> None:
     db.commit()
 
 
-# ── Sổ theo dõi mô hình ──
+# Sổ theo dõi mô hình
 
 def _log_run(db: Session, block: str, fp: str, payload: Dict[str, Any]) -> None:
     m = payload.get("model") or {}
@@ -166,7 +166,7 @@ def forecast_history(db: Session, limit: int = 60) -> Dict[str, Any]:
     n_runs = db.execute(text("SELECT COUNT(*) FROM forecast_runs")).scalar() or 0
     return {"items": items, "summary": {**tong, "n_runs": int(n_runs)},
             "ghi_chu": ("Mỗi dòng là một lần app khớp mô hình (cache miss). Tổng kết chỉ tính lần khớp "
-                        "cuối của mỗi (khối, kỳ) sau khi kỳ đó chốt — số màn hình đã hiện, không chỉnh lại.")}
+                        "cuối của mỗi (khối, kỳ) sau khi kỳ đó chốt, số màn hình đã hiện, không chỉnh lại.")}
 
 
 def _read_cache(db: Session, block: str, fp: str) -> Optional[Dict[str, Any]]:
@@ -239,17 +239,17 @@ def forecast_payload(db: Session, compute: bool = True,
 
     ghi_chu: List[str] = []
     if ready and tong["lower"] is not None:
-        ghi_chu.append("Khoảng của tổng = cộng khoảng ba khối — bảo thủ (rộng hơn "
+        ghi_chu.append("Khoảng của tổng = cộng khoảng ba khối, bảo thủ (rộng hơn "
                        "khoảng thật vì bỏ qua bù trừ giữa các khối).")
     for x in blocks:
         if x.get("lower") is not None and x["lower"] > x["point"]:
             ghi_chu.append(f"{x['block']}: cận dưới ({x['lower']}) nằm trên điểm dự báo "
-                           f"({x['point']:.0f}) — mô hình dự báo THẤP có hệ thống cho "
+                           f"({x['point']:.0f}), mô hình dự báo THẤP có hệ thống cho "
                            "khối này trong các bước walk-forward gần đây; đọc khoảng, "
                            "đừng đọc điểm.")
         if x.get("upper") is not None and x["upper"] < x["point"]:
             ghi_chu.append(f"{x['block']}: cận trên ({x['upper']}) nằm dưới điểm dự báo "
-                           f"({x['point']:.0f}) — mô hình dự báo CAO có hệ thống cho "
+                           f"({x['point']:.0f}), mô hình dự báo CAO có hệ thống cho "
                            "khối này gần đây; đọc khoảng, đừng đọc điểm.")
 
     return {
@@ -267,7 +267,7 @@ def forecast_payload(db: Session, compute: bool = True,
     }
 
 
-# ── Chuỗi xu hướng 12 kỳ (tổng, từng khối, cùng kỳ năm trước) ──
+# Chuỗi xu hướng 12 kỳ (tổng, từng khối, cùng kỳ năm trước)
 
 def _trend_series(db: Session, end_period: Optional[str], n: int = 12) -> Dict[str, Any]:
     if not end_period or not ps._has(db, "mart_monthly_cases_by_block"):
@@ -308,7 +308,7 @@ def _trend_series(db: Session, end_period: Optional[str], n: int = 12) -> Dict[s
             "last_year": last_year}
 
 
-# ── Chất lượng dự báo (kết quả backtest chính thức) ──
+# Chất lượng dự báo (kết quả backtest chính thức)
 
 def _read_csv(path: Path) -> List[Dict[str, str]]:
     with open(path, encoding="utf-8-sig", newline="") as f:
@@ -387,11 +387,11 @@ def backtest_quality(dir_: Path = KETQUA_BACKTEST_DIR) -> Dict[str, Any]:
                     "MAE / MAE(seasonal naive) trên cùng tập kiểm; < 1 là tốt hơn naive."),
     })
     if co_sm is False:
-        out["canh_bao"] = "Backtest chạy KHÔNG có statsmodels (thiếu SARIMAX) — không phải số chính thức."
+        out["canh_bao"] = "Backtest chạy KHÔNG có statsmodels (thiếu SARIMAX): không phải số chính thức."
     return out
 
 
-# ── DOI theo danh mục ──
+# DOI theo danh mục
 
 def _doi_by_category(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     gom: Dict[str, Dict[str, Any]] = {}
@@ -414,7 +414,7 @@ def _doi_by_category(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return out
 
 
-# ── Diễn giải nhanh theo quy tắc ──
+# Diễn giải nhanh theo quy tắc
 
 def _insights(anchor, cases_last, cases_prev, trend, fc, sig, tap, doi_cat,
               grey_reasons: Dict[str, int]) -> List[Dict[str, str]]:
@@ -427,7 +427,7 @@ def _insights(anchor, cases_last, cases_prev, trend, fc, sig, tap, doi_cat,
                     f"({cases_prev:,} ca)."})
     if fc.get("ready"):
         t = fc["total"]
-        khoang = (f", khoảng {t['lower']:,}–{t['upper']:,} (mức {int(fc['level']*100)}%)"
+        khoang = (f", khoảng {t['lower']:,}-{t['upper']:,} (mức {int(fc['level']*100)}%)"
                   if t.get("lower") is not None else "")
         ins.append({"tone": "info", "text":
                     f"Dự báo kỳ {fc['target_period']}: {t['point']:,} ca{khoang}."})
@@ -436,7 +436,7 @@ def _insights(anchor, cases_last, cases_prev, trend, fc, sig, tap, doi_cat,
                 ins.append({"tone": "warn", "text": g})
     else:
         ins.append({"tone": "warn", "text":
-                    "Chưa ghi nhận dự báo cho kỳ tới ở trang Phân tích — cột "
+                    "Chưa ghi nhận dự báo cho kỳ tới ở trang Phân tích, cột "
                     "\"Thiếu hụt dự kiến\" để trống. DOI vẫn đúng vì mẫu số lấy từ "
                     "tiêu hao 12 kỳ, không phụ thuộc dự báo."})
     if sig.get("measured"):
@@ -466,7 +466,7 @@ def _ly_do_xam_ten(key: str) -> str:
     }.get(key, key)
 
 
-# ── Payload chính ──
+# Payload chính
 
 def recorded_forecast_payload(db: Session) -> Dict[str, Any]:
     """Ŷ_g ba khối kỳ tới từ bản đã ghi nhận (Toàn quốc), nguồn duy nhất nuôi Tầng 2/3.
@@ -565,7 +565,7 @@ def care_level_payload(db: Session) -> Dict[str, Any]:
 
 
 def tang1_tang2(db: Session):
-    """Tầng 1 (bản đã ghi nhận) → Tầng 2; trả (fc, thresholds, {supply_code: D_forecast}, meta)."""
+    """Tầng 1 (bản đã ghi nhận) rồi Tầng 2; trả (fc, thresholds, {supply_code: D_forecast}, meta)."""
     fc = recorded_forecast_payload(db)
     du_bao_nhom = {x["block"]: float(x["point"]) for x in fc["blocks"]} if fc["ready"] else {}
     th = dss_alerts.get_thresholds(db)
@@ -590,8 +590,8 @@ def tang1_tang2(db: Session):
 def _chuoi_cong_thuc(horizon: int, do_ngay: float, vang_ngay: float) -> str:
     """Dòng công thức hiện trên giao diện, dựng từ ngưỡng thực tế để luôn khớp công thức đang chạy."""
     return (f"DOI = Tồn hữu dụng ÷ (Nhu cầu dự báo ÷ {horizon} ngày)"
-            f" · Thiếu hụt = Nhu cầu dự báo − Tồn hữu dụng, không âm"
-            f" · Đỏ ≤ {do_ngay:.0f} · Vàng ≤ {vang_ngay:.0f} · Xanh > {vang_ngay:.0f} ngày")
+            f", Thiếu hụt = Nhu cầu dự báo − Tồn hữu dụng, không âm"
+            f", Đỏ ≤ {do_ngay:.0f}, Vàng ≤ {vang_ngay:.0f}, Xanh > {vang_ngay:.0f} ngày")
 
 
 def _counts(al: Dict[str, Any]) -> Dict[str, Any]:
@@ -635,7 +635,7 @@ def alerts_payload(db: Session, focus: bool = True, level: Optional[str] = None,
     canh_bao = list(al.get("canh_bao") or [])
     if not al.get("san_sang"):
         canh_bao.append((al.get("ly_do") or "Chưa có dữ liệu tồn kho / tiêu hao.")
-                        + " Cấu hình tại Quản trị → Nguồn dữ liệu (CSDL DW), rồi bấm «Nạp dữ liệu DW» ở trang Dữ liệu bệnh.")
+                        + " Cấu hình tại Quản trị > Nguồn dữ liệu (CSDL DW), rồi bấm «Nạp dữ liệu DW» ở trang Dữ liệu bệnh.")
 
     if level is not None:
         rows = [r for r in rows if r["muc"] == level]
@@ -695,7 +695,7 @@ def overview_payload(db: Session, focus: bool = True,
     trend = ps.trend_pct(db, last_closed, prev_closed)
     blocks_closed = ps.cases_by_block(db, last_closed)
 
-    # Tầng 1 (bản đã ghi nhận) → Tầng 2
+    # Tầng 1 (bản đã ghi nhận) rồi Tầng 2
     fc, th, nhu_cau, nhu_cau_meta = tang1_tang2(db)
 
     # Tầng 3: tính cả hai tập để bộ lọc phía giao diện đổi tức thì.
@@ -704,12 +704,12 @@ def overview_payload(db: Session, focus: bool = True,
     chon = al_focus if focus else al_all
 
     dem_focus, dem_all = _counts(al_focus), _counts(al_all)
-    # Chưa có dữ liệu thuốc → trả lý do thay vì 0/0/0/0.
+    # Chưa có dữ liệu thuốc thì trả lý do thay vì 0/0/0/0.
     canh_bao_tang3 = list(chon.get("canh_bao") or [])
     if not chon.get("san_sang"):
         canh_bao_tang3.append(
             (chon.get("ly_do") or "Chưa có dữ liệu tồn kho / tiêu hao.")
-            + " Cấu hình tại Quản trị → Nguồn dữ liệu (CSDL DW), rồi bấm «Nạp dữ liệu DW» ở trang Dữ liệu bệnh.")
+            + " Cấu hình tại Quản trị > Nguồn dữ liệu (CSDL DW), rồi bấm «Nạp dữ liệu DW» ở trang Dữ liệu bệnh.")
     dem = dem_focus if focus else dem_all
     sig = {**dem, "nguong": {"red_days": float(th["doi_red_days"]),
                              "amber_days": float(th["doi_amber_days"])}}
@@ -728,7 +728,7 @@ def overview_payload(db: Session, focus: bool = True,
     risk = ps.danh_gia_muc_canh_bao(dem_focus, sig["nguong"], last_closed)
     cat = ps.catalogue_counts(db)
 
-    # Tình trạng dữ liệu cục bộ; trạng thái STA lấy qua /sync/status.
+    # Tình trạng dữ liệu cục bộ; trạng thái MEDFORECAST_DW lấy qua /sync/status.
     dss_tables: Dict[str, Any] = {}
     for t, k in (("fact_usage_total", "period"), ("fact_cases_by_care_level", "period"),
                  ("fact_usage_by_care_level", "period"), ("fact_inventory_lot", "snapshot_date")):
@@ -775,7 +775,7 @@ def overview_payload(db: Session, focus: bool = True,
             "last_closed": {"period": last_closed, "cases": cases_last, "trend_pct": trend,
                             "prev_period": prev_closed, "prev_cases": cases_prev},
             "open": {"period": open_p, "cases": cases_open,
-                     "note": "Kỳ chưa chốt — không tính vào xu hướng."},
+                     "note": "Kỳ chưa chốt: không tính vào xu hướng."},
             "by_block": blocks_closed,
         },
         "forecast": {  # bản tóm tắt; bản đầy đủ ở /dashboard/v2/forecast

@@ -19,7 +19,7 @@ export interface Thresholds {
   amber_days: number;
 }
 
-// ─── /v2 ─────────────────────────────────────────────────────────────────────
+// /v2
 
 export interface DashboardMeta {
   generated_at: string;
@@ -138,7 +138,7 @@ export interface AlertRow {
   s_total: number;
   s_usable: number;
   s_expiring: number;
-  /** tiêu hao toàn viện TB 12 kỳ / ngày — chỉ để tham chiếu */
+  /** tiêu hao toàn viện TB 12 kỳ / ngày: chỉ để tham chiếu */
   d_daily: number;
   /** mẫu số DOI: d_forecast / horizon_days, hoặc d_daily khi mã chưa có dự báo */
   d_eff: number;
@@ -283,7 +283,7 @@ export interface DashboardV2Params {
   limit?: number;
 }
 
-// ─── /v2/forecast ────────────────────────────────────────────────────────────
+// /v2/forecast
 
 export const BLOCK_LABELS: Record<BlockCode, string> = {
   'J00-J06': 'Hô hấp trên',

@@ -1,5 +1,5 @@
 """API báo cáo: xem trước JSON và xuất PDF/Excel (6 loại báo cáo).
-Số ca neo vào kỳ đã chốt; thiếu hụt đi cùng chuỗi Tầng 1→2→3 để khớp màn hình.
+Số ca neo vào kỳ đã chốt; thiếu hụt đi cùng chuỗi Tầng 1, 2, 3 để khớp màn hình.
 """
 
 import io
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["reports"])
 
 
-# ── Helpers ──
+# Helpers
 
 def _default_date_range(
     start_date: Optional[date],
@@ -35,14 +35,14 @@ def _default_date_range(
     default_days_back: int = 30,
     default_days_forward: int = 60,
 ):
-    """Khoảng ngày mặc định: 30 ngày lùi → 60 ngày tới (bao cả kỳ dự báo)."""
+    """Khoảng ngày mặc định: 30 ngày lùi đến 60 ngày tới (bao cả kỳ dự báo)."""
     today = date.today()
     end = end_date or (today + timedelta(days=default_days_forward))
     start = start_date or (today - timedelta(days=default_days_back))
     return start, end
 
 
-# ── Báo cáo độ chính xác dự báo ──
+# Báo cáo độ chính xác dự báo
 
 @router.get("/forecast-accuracy")
 async def get_forecast_accuracy_report(
@@ -167,7 +167,7 @@ async def get_forecast_accuracy_report(
     }
 
 
-# ── Xuất báo cáo ──
+# Xuất báo cáo
 
 
 from pydantic import BaseModel
@@ -271,7 +271,7 @@ async def export_report(
                         detail=f"Loại báo cáo không hỗ trợ: {payload.report_type}")
 
 
-# ── Lấy dữ liệu cho báo cáo xuất ──
+# Lấy dữ liệu cho báo cáo xuất
 
 async def _build_accuracy_data(
     db: Session,
@@ -291,7 +291,7 @@ async def _build_accuracy_data(
     return query.order_by(DiseaseForecast.forecast_date).all()
 
 
-# ── Dựng PDF ──
+# Dựng PDF
 
 # Font Unicode đăng ký lười một lần; thất bại thì giữ Helvetica (không dấu).
 PDF_FONT_REGULAR = "Helvetica"
@@ -447,7 +447,7 @@ def _render_accuracy_pdf(forecasts: list, start: date, end: date) -> Response:
     _patch_styles_for_unicode(styles)
     story = [
         Paragraph(
-            f"Forecast Accuracy Report – {start} to {end}  "
+            f"Forecast Accuracy Report - {start} to {end}  "
             f"(Generated {datetime.now().strftime('%Y-%m-%d %H:%M')})",
             styles["Title"],
         ),
@@ -484,7 +484,7 @@ def _render_accuracy_pdf(forecasts: list, start: date, end: date) -> Response:
     )
 
 
-# ── Báo cáo tổng quan (dashboard-summary) ──
+# Báo cáo tổng quan (dashboard-summary)
 
 
 async def _build_dashboard_summary_data(db: Session) -> Dict:
@@ -556,7 +556,7 @@ async def _build_dashboard_summary_data(db: Session) -> Dict:
 
     return {
         "as_of": today.isoformat(),
-        "month_label": f"{last_closed[5:7]}/{last_closed[:4]}" if last_closed else "—",
+        "month_label": f"{last_closed[5:7]}/{last_closed[:4]}" if last_closed else "-",
         "last_closed_period": last_closed,
         "open_period": anchor["open_period"],
         "forecast_period": fc.get("target_period"),
@@ -624,9 +624,9 @@ def _render_dashboard_summary_pdf(data: Dict) -> Response:
             [
                 "Thuốc thiếu hụt",
                 f"{kpi['shortage_supplies_count']:,} mục",
-                "—",
+                "-",
             ],
-            ["Mức cảnh báo vận hành", kpi["overall_risk"], "—"],
+            ["Mức cảnh báo vận hành", kpi["overall_risk"], "-"],
         ],
         colWidths=[8 * cm, 5 * cm, 4 * cm],
         repeatRows=1,
@@ -711,7 +711,7 @@ def _render_dashboard_summary_pdf(data: Dict) -> Response:
     )
 
 
-# ── Lấy dữ liệu cho các báo cáo nghiệp vụ ──
+# Lấy dữ liệu cho các báo cáo nghiệp vụ
 
 
 async def _build_epidemic_data(
@@ -808,7 +808,7 @@ async def _build_forecast_data(
 
     items = [
         {
-            "month": r.forecast_date.strftime("%m/%Y") if r.forecast_date else "—",
+            "month": r.forecast_date.strftime("%m/%Y") if r.forecast_date else "-",
             "disease_label": _vi_disease(r.disease_type),
             "location": r.location or "Toàn thành phố",
             "predicted_cases": r.predicted_cases or 0,
@@ -816,7 +816,7 @@ async def _build_forecast_data(
             "deviation_pct": _do_lech(r),
             "baseline_cases": r.baseline_cases or 0,
             "risk_level": r.risk_level or "",
-            "risk_label": risk_label.get(r.risk_level or "", "—"),
+            "risk_label": risk_label.get(r.risk_level or "", "-"),
             "explanation": (r.explanation or "")[:300],
         }
         for r in rows
@@ -924,15 +924,15 @@ def _ascii_filename(s: str) -> str:
 
 
 def _vi_disease(key: str) -> str:
-    return {"respiratory": "Bệnh hô hấp"}.get(key or "", key or "—")
+    return {"respiratory": "Bệnh hô hấp"}.get(key or "", key or "-")
 
 
 def _vi_category(key: str) -> str:
-    """Nhãn danh mục: giá trị từ PROD đã là tiếng Việt; chỉ ánh xạ các khoá kỹ thuật."""
-    return {"medicine": "Thuốc", "iv_fluid": "Dịch truyền", "other": "Khác"}.get(key or "", key or "—")
+    """Nhãn danh mục: giá trị từ CSDL HIS đã là tiếng Việt; chỉ ánh xạ các khoá kỹ thuật."""
+    return {"medicine": "Thuốc", "iv_fluid": "Dịch truyền", "other": "Khác"}.get(key or "", key or "-")
 
 
-# ── PDF: epidemic / forecast / inventory / shortage ──
+# PDF: epidemic / forecast / inventory / shortage
 
 
 def _generic_pdf(
@@ -1040,8 +1040,8 @@ def _render_forecast_pdf(data: Dict, start: date, end: date) -> Response:
             it["disease_label"],
             it["location"],
             f"{it['predicted_cases']:,}",
-            f"{it['actual_cases']:,}" if it["actual_cases"] is not None else "—",
-            f"{it['deviation_pct']:+.1f}%" if it["deviation_pct"] is not None else "—",
+            f"{it['actual_cases']:,}" if it["actual_cases"] is not None else "-",
+            f"{it['deviation_pct']:+.1f}%" if it["deviation_pct"] is not None else "-",
             it["risk_label"],
             it["explanation"][:200],
         ]
@@ -1069,7 +1069,7 @@ def _render_inventory_pdf(data: Dict) -> Response:
             f"{it['current_stock']:,}",
             f"{it['usable_stock']:,}",
             f"{it['d_daily']:,.2f}",
-            "—" if it["doi"] is None else f"{it['doi']:,.1f}",
+            "-" if it["doi"] is None else f"{it['doi']:,.1f}",
             it["status"],
         ]
         for it in data["items"]
@@ -1085,8 +1085,8 @@ def _render_inventory_pdf(data: Dict) -> Response:
             f"<b>Tổng thuốc:</b> {s['total']:,} | "
             f"<b>Đỏ:</b> {s['red']:,} | <b>Vàng:</b> {s['amber']:,} | "
             f"<b>Xanh:</b> {s['green']:,} | <b>Xám:</b> {s['grey']:,}",
-            f"DOI = tồn hữu dụng (FEFO) / (nhu cầu dự báo / chân trời) · Đỏ ≤ {s['red_days']:.0f} · "
-            f"Vàng ≤ {s['amber_days']:.0f} ngày · Nguồn tồn: {s['stock_source']}",
+            f"DOI = tồn hữu dụng (FEFO) / (nhu cầu dự báo / chân trời), Đỏ ≤ {s['red_days']:.0f}, "
+            f"Vàng ≤ {s['amber_days']:.0f} ngày, Nguồn tồn: {s['stock_source']}",
         ],
     )
 
@@ -1117,7 +1117,7 @@ def _render_shortage_pdf(data: Dict, start: date, end: date) -> Response:
     )
 
 
-# ── Excel (openpyxl) ──
+# Excel (openpyxl)
 
 
 def _generic_excel(
@@ -1195,7 +1195,7 @@ def _render_epidemic_excel(data: Dict, start: date, end: date) -> Response:
         rows=rows,
         column_widths=[12, 24, 28, 12],
         filename_prefix="bao_cao_dich_benh",
-        title_line=f"Báo cáo Tình hình Dịch bệnh — {start.strftime('%d/%m/%Y')} đến {end.strftime('%d/%m/%Y')}",
+        title_line=f"Báo cáo Tình hình Dịch bệnh, {start.strftime('%d/%m/%Y')} đến {end.strftime('%d/%m/%Y')}",
     )
 
 
@@ -1206,8 +1206,8 @@ def _render_forecast_excel(data: Dict, start: date, end: date) -> Response:
             it["disease_label"],
             it["location"],
             it["predicted_cases"],
-            it["actual_cases"] if it["actual_cases"] is not None else "—",
-            f"{it['deviation_pct']:+.1f}%" if it["deviation_pct"] is not None else "—",
+            it["actual_cases"] if it["actual_cases"] is not None else "-",
+            f"{it['deviation_pct']:+.1f}%" if it["deviation_pct"] is not None else "-",
             it["baseline_cases"],
             it["risk_label"],
             it["explanation"],
@@ -1223,7 +1223,7 @@ def _render_forecast_excel(data: Dict, start: date, end: date) -> Response:
         rows=rows,
         column_widths=[10, 22, 24, 14, 14, 10, 12, 14, 60],
         filename_prefix="bao_cao_du_bao",
-        title_line=f"Báo cáo Dự báo Ca bệnh — {start.strftime('%d/%m/%Y')} đến {end.strftime('%d/%m/%Y')}",
+        title_line=f"Báo cáo Dự báo Ca bệnh, {start.strftime('%d/%m/%Y')} đến {end.strftime('%d/%m/%Y')}",
     )
 
 
@@ -1249,8 +1249,8 @@ def _render_inventory_excel(data: Dict) -> Response:
         rows=rows,
         column_widths=[10, 40, 18, 8, 12, 16, 14, 12, 8],
         filename_prefix="bao_cao_ton_kho_thuoc",
-        title_line=(f"Báo cáo Tồn kho Thuốc — {datetime.now().strftime('%d/%m/%Y')} · "
-                    f"Đỏ ≤ {s['red_days']:.0f} · Vàng ≤ {s['amber_days']:.0f} ngày"),
+        title_line=(f"Báo cáo Tồn kho Thuốc: {datetime.now().strftime('%d/%m/%Y')}, "
+                    f"Đỏ ≤ {s['red_days']:.0f}, Vàng ≤ {s['amber_days']:.0f} ngày"),
     )
 
 
@@ -1272,7 +1272,7 @@ def _render_shortage_excel(data: Dict, start: date, end: date) -> Response:
         rows=rows,
         column_widths=[40, 14, 8, 14, 14, 14],
         filename_prefix="bao_cao_thieu_hut",
-        title_line=f"Báo cáo Thiếu hụt Thuốc — {start.strftime('%d/%m/%Y')} đến {end.strftime('%d/%m/%Y')}",
+        title_line=f"Báo cáo Thiếu hụt Thuốc: {start.strftime('%d/%m/%Y')} đến {end.strftime('%d/%m/%Y')}",
     )
 
 
@@ -1295,7 +1295,7 @@ def _render_accuracy_excel(forecasts, start: date, end: date) -> Response:
         rows=rows,
         column_widths=[12, 22, 14, 12, 12, 12, 12],
         filename_prefix="bao_cao_chinh_xac",
-        title_line=f"Báo cáo Độ chính xác Dự báo — {start.strftime('%d/%m/%Y')} đến {end.strftime('%d/%m/%Y')}",
+        title_line=f"Báo cáo Độ chính xác Dự báo, {start.strftime('%d/%m/%Y')} đến {end.strftime('%d/%m/%Y')}",
     )
 
 
@@ -1335,8 +1335,8 @@ def _render_dashboard_summary_excel(data: Dict) -> Response:
     kpi_rows = [
         ("Tổng số ca hiện tại", kpi["total_cases_current"], f"{kpi['cases_trend_pct']:+.1f}%"),
         ("Số ca dự báo tháng tới", kpi["predicted_cases_next_month"], f"{kpi['predicted_trend_pct']:+.1f}%"),
-        ("Thuốc thiếu hụt", f"{kpi['shortage_supplies_count']} mục", "—"),
-        ("Mức cảnh báo vận hành", kpi["overall_risk"], "—"),
+        ("Thuốc thiếu hụt", f"{kpi['shortage_supplies_count']} mục", "-"),
+        ("Mức cảnh báo vận hành", kpi["overall_risk"], "-"),
     ]
     for r in kpi_rows:
         for c, v in enumerate(r, 1):

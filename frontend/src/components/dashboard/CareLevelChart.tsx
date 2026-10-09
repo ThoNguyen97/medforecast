@@ -6,7 +6,7 @@ import {
   type CareLevelSection,
 } from '../../types/dashboardV2';
 
-/** Dải xanh tuần tự (250 → 700); NT0 xám vì chưa phân cấp. */
+/** Dải xanh tuần tự (250 đến 700); NT0 xám vì chưa phân cấp. */
 const BUCKET_COLOR: Record<CareBucket, string> = {
   NGT: '#86b6ef',
   NT1: '#3987e5',
@@ -101,13 +101,13 @@ export default function CareLevelChart({
         {present.map((ro) => (
           <span key={ro} className="inline-flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-sm" style={{ background: BUCKET_COLOR[ro] }} />
-            {ro} · {CARE_BUCKET_LABELS[ro]}
+            {ro}: {CARE_BUCKET_LABELS[ro]}
           </span>
         ))}
       </div>
       {data.cua_so?.tu_ky && (
         <p className="mt-2 text-[11px] text-neutral-500">
-          Cửa sổ {data.cua_so.so_ky} kỳ ({data.cua_so.tu_ky} → {data.cua_so.den_ky}); rổ mẫu nhỏ đã co ngót về nhóm.
+          Cửa sổ {data.cua_so.so_ky} kỳ ({data.cua_so.tu_ky} đến {data.cua_so.den_ky}); rổ mẫu nhỏ đã co ngót về nhóm.
         </p>
       )}
     </div>

@@ -1,4 +1,4 @@
-"""Thành viên ETS Holt–Winters của ensemble (cần statsmodels).
+"""Thành viên ETS Holt-Winters của ensemble (cần statsmodels).
 
 Xu hướng cộng giảm chấn, mùa cộng 12, khớp trên log1p(cases); tháng COVID nội suy vì ETS cần chuỗi liên tục.
 """
@@ -11,7 +11,7 @@ MIN_OBS = 24   # hai chu kỳ mùa
 
 
 class EtsForecaster:
-    """Holt–Winters cộng, xu hướng giảm chấn, mùa 12, trên log1p."""
+    """Holt-Winters cộng, xu hướng giảm chấn, mùa 12, trên log1p."""
     name = "ets"
     fitted = False
 

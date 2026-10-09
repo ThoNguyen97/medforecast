@@ -13,9 +13,9 @@ from .db import Base
 PK = Integer
 
 
-# ── Dimensions ──
+# Dimensions
 class DimIcd(Base):
-    """Danh mục ICD phân cấp Mã → Nhóm → Chương (từ TM_ICD)."""
+    """Danh mục ICD phân cấp Mã, Nhóm, Chương (từ TM_ICD)."""
     __tablename__ = "dim_icd"
     icd_code = Column(String(20), primary_key=True)
     icd_name = Column(String(400))
@@ -27,7 +27,7 @@ class DimIcd(Base):
 
 
 class DimSupply(Base):
-    """Danh mục vật tư/thuốc."""
+    """Danh mục thuốc."""
     __tablename__ = "dim_supply"
     supply_code = Column(String(60), primary_key=True)
     drug_code = Column(String(60))
@@ -42,9 +42,9 @@ class DimRegion(Base):
     region = Column(String(120), primary_key=True)
 
 
-# ── Facts ──
+# Facts
 class FactDiseaseCase(Base):
-    """Số ca theo tháng × mã ICD × địa bàn (đã khử trùng số ca lặp theo vật tư)."""
+    """Số ca theo tháng × mã ICD × địa bàn (đã khử trùng số ca lặp theo thuốc)."""
     __tablename__ = "fact_disease_case"
     id = Column(PK, primary_key=True, autoincrement=True)
     period = Column(String(7), index=True)          # 'YYYY-MM'
@@ -55,14 +55,14 @@ class FactDiseaseCase(Base):
     block_code = Column(String(20), index=True)
     region = Column(String(120), index=True)
     cases = Column(Integer)
-    is_covid = Column(Boolean, default=False)       # 2020–2021
+    is_covid = Column(Boolean, default=False)       # 2020-2021
     is_complete = Column(Boolean, default=True)     # tháng đã trọn vẹn
     __table_args__ = (
         UniqueConstraint("period", "icd_code", "region", name="uq_fact_case"),
     )
 
 
-# ── Marts ──
+# Marts
 class MartMonthlyCasesByBlock(Base):
     """Tổng số ca theo tháng × nhóm ICD, đầu vào huấn luyện mô hình tầng nhóm."""
     __tablename__ = "mart_monthly_cases_by_block"
@@ -124,7 +124,7 @@ class MartMonthlyWeather(Base):
     )
 
 
-# ── Sync state ──
+# Sync state
 class SyncState(Base):
     """Watermark và nhật ký mỗi lần đồng bộ."""
     __tablename__ = "sync_state"

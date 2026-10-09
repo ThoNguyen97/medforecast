@@ -10,7 +10,7 @@ interface SyncRunResult {
   mode: 'full' | 'incremental';
 }
 
-/** Cấu hình kết nối MEDFORECAST_DW trên STA; server không trả mật khẩu về client. */
+/** Cấu hình kết nối MEDFORECAST_DW; server không trả mật khẩu về client. */
 export interface HisConnectionConfig {
   source: 'sqlserver';
   host: string;
@@ -22,7 +22,7 @@ export interface HisConnectionConfig {
   username: string;
   driver: string;
   trust_cert: boolean;
-  sql_profile: 'sta' | 'mssql';
+  sql_profile: 'dw' | 'mssql';
   lookback_months: number;
   has_password: boolean;
   da_luu_trong_db: boolean;

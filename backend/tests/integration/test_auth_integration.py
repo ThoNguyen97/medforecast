@@ -12,7 +12,7 @@ from app.models.user import User
 from app.core.security import hash_password, create_access_token
 
 
-# ── CSDL test ──
+# CSDL test
 
 @pytest.fixture(scope="function")
 def db_session():
@@ -76,7 +76,7 @@ def inactive_user(db_session):
     return user
 
 
-# ── Đăng nhập ──
+# Đăng nhập
 
 class TestLogin:
     def test_login_success_returns_token(self, client, active_admin):
@@ -126,7 +126,7 @@ class TestLogin:
         assert resp.status_code in [401, 422]
 
 
-# ── Người dùng hiện tại ──
+# Người dùng hiện tại
 
 class TestGetCurrentUser:
     def test_get_me_with_valid_token(self, client, active_admin):
@@ -161,7 +161,7 @@ class TestGetCurrentUser:
         assert resp.status_code == 401
 
 
-# ── Refresh token ──
+# Refresh token
 
 class TestRefreshToken:
     def test_refresh_token_returns_new_token(self, client, active_admin):
@@ -200,7 +200,7 @@ class TestRefreshToken:
         assert resp.status_code == 401
 
 
-# ── Đăng xuất ──
+# Đăng xuất
 
 class TestLogout:
     def test_logout_with_valid_token(self, client, active_admin):
@@ -217,7 +217,7 @@ class TestLogout:
         assert resp.status_code == 401
 
 
-# ── Phân quyền / route được bảo vệ ──
+# Phân quyền / route được bảo vệ
 
 class TestProtectedRoutes:
     def test_protected_route_requires_authentication(self, client):

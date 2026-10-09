@@ -66,7 +66,7 @@ def get_expiring_items(
     return items
 
 
-# ── Route tĩnh, khai báo trước "/{inventory_id}" ──
+# Route tĩnh, khai báo trước "/{inventory_id}"
 
 @router.get("/template", include_in_schema=True)
 async def download_inventory_template():
@@ -210,15 +210,15 @@ def batch_update_inventory(
 
 
 
-# ── Helpers import/export ──
+# Helpers import/export
 
 async def _do_inventory_import(file: "UploadFile", db: Session, current_user: User) -> Any:
-    """Đọc CSV, tìm hoặc tạo MedicalSupply, rồi upsert dòng Inventory tương ứng."""
+    """Đọc CSV, tìm hoặc tạo Drug, rồi upsert dòng Inventory tương ứng."""
     import csv as _csv
     import io as _io
     from datetime import datetime as _dt
 
-    from app.models.medical_supply import MedicalSupply
+    from app.models.drug import Drug
     from app.models.inventory import Inventory as InventoryModel
 
     if not file.filename or not file.filename.lower().endswith(".csv"):
@@ -276,24 +276,24 @@ async def _do_inventory_import(file: "UploadFile", db: Session, current_user: Us
                 except ValueError:
                     continue
 
-        # Khớp MedicalSupply lần lượt theo supply_code, drug_code, ten_hoat_chat.
+        # Khớp Drug lần lượt theo supply_code, drug_code, ten_hoat_chat.
         supply = None
         if supply_code:
             supply = (
-                db.query(MedicalSupply)
-                .filter(MedicalSupply.supply_code == supply_code)
+                db.query(Drug)
+                .filter(Drug.supply_code == supply_code)
                 .first()
             )
         if supply is None and drug_code:
             supply = (
-                db.query(MedicalSupply)
-                .filter(MedicalSupply.drug_code == drug_code)
+                db.query(Drug)
+                .filter(Drug.drug_code == drug_code)
                 .first()
             )
         if supply is None and ten_hoat_chat:
             supply = (
-                db.query(MedicalSupply)
-                .filter(MedicalSupply.ten_hoat_chat == ten_hoat_chat)
+                db.query(Drug)
+                .filter(Drug.ten_hoat_chat == ten_hoat_chat)
                 .first()
             )
 
@@ -305,7 +305,7 @@ async def _do_inventory_import(file: "UploadFile", db: Session, current_user: Us
                 drug_code = supply_code
             if not ten_hoat_chat:
                 ten_hoat_chat = supply_code
-            supply = MedicalSupply(
+            supply = Drug(
                 supply_code=supply_code,
                 drug_code=drug_code,
                 ten_hoat_chat=ten_hoat_chat,
@@ -370,7 +370,7 @@ def _do_inventory_export(db: Session) -> Any:
     from datetime import datetime as _dt
     from fastapi.responses import Response
 
-    from app.models.medical_supply import MedicalSupply
+    from app.models.drug import Drug
     from app.models.inventory import Inventory as InventoryModel
 
     rows = (
@@ -379,16 +379,16 @@ def _do_inventory_export(db: Session) -> Any:
             InventoryModel.current_stock,
             InventoryModel.safety_stock,
             InventoryModel.expiry_date,
-            MedicalSupply.id.label("supply_id"),
-            MedicalSupply.supply_code,
-            MedicalSupply.drug_code,
-            MedicalSupply.ten_hoat_chat,
-            MedicalSupply.group_name,
-            MedicalSupply.category,
-            MedicalSupply.unit,
+            Drug.id.label("supply_id"),
+            Drug.supply_code,
+            Drug.drug_code,
+            Drug.ten_hoat_chat,
+            Drug.group_name,
+            Drug.category,
+            Drug.unit,
         )
-        .join(MedicalSupply, MedicalSupply.id == InventoryModel.supply_id)
-        .order_by(MedicalSupply.supply_code)
+        .join(Drug, Drug.id == InventoryModel.supply_id)
+        .order_by(Drug.supply_code)
         .all()
     )
 
@@ -399,7 +399,7 @@ def _do_inventory_export(db: Session) -> Any:
     except ImportError:
         raise HTTPException(
             status_code=500,
-            detail="openpyxl not installed — không thể xuất Excel",
+            detail="openpyxl not installed: không thể xuất Excel",
         )
 
     wb = openpyxl.Workbook()

@@ -3,7 +3,7 @@
 // 5 thành phố trực thuộc trung ương, xếp đầu dropdown
 const MAJOR_CITIES = ['TP. Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng', 'Hải Phòng', 'Cần Thơ'];
 
-/** Chuẩn hoá tên tỉnh/thành về dạng ngắn của VN_REGIONS ("Thành phố Hồ Chí Minh" → "TP. Hồ Chí Minh"). */
+/** Chuẩn hoá tên tỉnh/thành về dạng ngắn của VN_REGIONS ("Thành phố Hồ Chí Minh" thành "TP. Hồ Chí Minh"). */
 const PROVINCE_ALIASES: Record<string, string> = {
   'Thành phố Hồ Chí Minh': 'TP. Hồ Chí Minh',
   'Thành Phố Hồ Chí Minh': 'TP. Hồ Chí Minh',
@@ -23,9 +23,9 @@ export function normalizeProvinceName(name: string): string {
   return PROVINCE_ALIASES[trimmed] ?? trimmed;
 }
 
-// Tỉnh/thành → đơn vị cấp huyện
+// Tỉnh/thành sang đơn vị cấp huyện
 const VN_REGIONS: Record<string, string[]> = {
-  // ── 5 thành phố trực thuộc trung ương ──────────────────────────────
+  // 5 thành phố trực thuộc trung ương
   'TP. Hồ Chí Minh': [
     'Quận 1', 'Quận 3', 'Quận 4', 'Quận 5', 'Quận 6', 'Quận 7', 'Quận 8',
     'Quận 10', 'Quận 11', 'Quận 12',
@@ -62,7 +62,7 @@ const VN_REGIONS: Record<string, string[]> = {
     'Huyện Cờ Đỏ', 'Huyện Phong Điền', 'Huyện Thới Lai', 'Huyện Vĩnh Thạnh',
   ],
 
-  // ── 58 tỉnh còn lại ───────────────────────────────────────────────
+  // 58 tỉnh còn lại
   'An Giang': [
     'Thành phố Long Xuyên', 'Thành phố Châu Đốc',
     'Thị xã Tân Châu',

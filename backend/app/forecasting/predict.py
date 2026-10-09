@@ -56,10 +56,10 @@ def main(argv=None):
     res = predict_from_artifact(args.model, args.block)
     if args.json:
         print(json.dumps(res, ensure_ascii=False, indent=2)); return
-    print(f"Artifact huấn luyện lúc {res['trained_at']} · khoảng {int(res['level']*100)}%")
+    print(f"Artifact huấn luyện lúc {res['trained_at']}, khoảng {int(res['level']*100)}%")
     for b, r in res["blocks"].items():
-        print(f"{b}: kỳ {r['target_period']} → {r['point']} ca [{r['lower']}–{r['upper']}] "
-              f"(thô {r['point_raw']} × lệch {r['bias_factor']}) · trọng số {r['weights']}")
+        print(f"{b}: kỳ {r['target_period']}: {r['point']} ca [{r['lower']}-{r['upper']}] "
+              f"(thô {r['point_raw']} × lệch {r['bias_factor']}), trọng số {r['weights']}")
         if r["by_code_top_down_fixed"]:
             print("   mức mã:", r["by_code_top_down_fixed"])
 
