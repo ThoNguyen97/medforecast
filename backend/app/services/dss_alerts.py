@@ -328,15 +328,6 @@ def _canh_bao(tong: int, fefo_that: int, co_demand: bool,
         cb.append(f"CHƯA áp được FEFO cho mã nào (nguồn tồn kho: {nguon_ton or 'không rõ'}) "
                   "vì không có hạn dùng nào đọc được. S_usable đang bằng tồn hiện có. "
                   "Bấm «Nạp dữ liệu DW» ở trang Dữ liệu bệnh.")
-    elif fefo_that < tong:
-        khong_ton = dem.get("grey", 0)
-        khong_han = tong - fefo_that - khong_ton
-        msg = f"{fefo_that}/{tong} mã có lô tồn kèm hạn dùng (đã áp FEFO)"
-        if khong_ton:
-            msg += f"; {khong_ton} mã không có dòng tồn kho, xếp Xám"
-        if khong_han > 0:
-            msg += f"; {khong_han} mã có tồn nhưng lô không có hạn dùng (S_usable = tồn hiện có)"
-        cb.append(msg + ".")
     if not co_demand:
         cb.append("Chưa có nhu cầu dự báo kỳ tới (Tầng 2): không có mẫu số nên "
                   "toàn bộ mã về màu Xám, cột nhu cầu và thiếu hụt để trống. "
